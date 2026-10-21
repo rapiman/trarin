@@ -261,6 +261,25 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     bytes después (+101 y +129); el segundo `0x260C` del `0x260D`, vacío en mono, lleva una copia
     de la lista de paneo del primero, con valor −100 en la primera y +100 en la segunda (int16 en
     +28 del `0x260A`).
+- **Quitar una pista de audio** [verificado en Pro Tools 12: comparado con una pista borrada en Pro
+  Tools sobre la misma sesión guardada de nuevo sin cambios, y abriendo, guardando de nuevo y
+  cerrando las sesiones de trarin]. Es lo inverso de crearla:
+  - en `0x2519`: la cantidad (antes de la primera entrada y entre las mitades), la entrada y sus dos
+    `0x251A`. Las pistas siguientes bajan su número (u16 de la entrada y u32 a 22 bytes del final
+    del `0x251A`); una pista con número 0 no tiene número y no corre a las demás. Los
+    identificadores de 8 bytes pueden contener `5A`, que el lector toma por un hijo: trarin
+    reescribe el `0x251A` entero;
+  - las playlists del canal (u32 tras su `0x261B`, índices de `0x1015`) y sus entradas `0x1052`;
+    las playlists y canales que quedan corren sus índices, y los canales de audio siguientes bajan
+    su número de canal de audio;
+  - el canal de `0x2624`; los `0x2015` mayores que el del canal bajan en 1;
+  - la pista sale de cada grupo `0x202A` y las siguientes bajan (si es la única de un grupo, trarin
+    da error); `0x202C` como al crear; su tira `0x2589` y el u16 de las siguientes;
+  - en el índice, los grupos de los bloques quitados; las entradas `(0x2519, 1, k) + 0x251A` y
+    `(0x2624, 1, k) + … + 0x2627` siguientes bajan su número, y la de `0x2716` lleva la cantidad.
+  Las regiones y archivos de la pista quedan en la lista de clips. Pro Tools también borra las
+  definiciones de fundidos `0x2630` que dejan de usarse; trarin las deja, y Pro Tools abre la
+  sesión igual.
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 

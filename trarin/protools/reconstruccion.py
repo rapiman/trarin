@@ -75,7 +75,9 @@ def reconstruir(d, reemplazos):
     Un reemplazo puede llevar un cuarto elemento: la posición del bloque que lo
     contiene. Así se insertan o quitan bloques hijos completos (un bloque nuevo
     al final de una lista, justo donde termina el último hijo, o un hijo
-    entero que se elimina): solo ese bloque y sus ancestros cambian de tamaño."""
+    entero que se elimina): solo ese bloque y sus ancestros cambian de tamaño.
+    Un hijo entero también se puede reemplazar por otro: el índice puede seguir
+    apuntando a su comienzo."""
     bloques = arbol(d)
     todos = list(_todos(bloques))
     padres = _padres(bloques)
@@ -136,6 +138,7 @@ def reconstruir(d, reemplazos):
             return b.inicio <= i and f <= b.fin
         return b.pos == c or any(a.pos == b.pos for a in _ancestros(por_pos[c], padres))
     eliminados = [(i, f) for i, f, n in reemplazos if (i, f) in contenedores]
+    nuevos = {(i, f): n for i, f, n in reemplazos}   # un bloque reemplazado por otro sigue en su lugar
     for b in todos:
         if any(i <= b.pos and b.fin <= f and b.pos != contenedores[(i, f)] for i, f in eliminados):
             continue                                    # bloque quitado entero
@@ -147,7 +150,7 @@ def reconstruir(d, reemplazos):
     struct.pack_into("<I", salida, 0x14 + 7, nueva(final.pos))
     for k in indice:
         v = struct.unpack_from("<I", d, k)[0]
-        if any(i <= v < f for i, f in eliminados):
+        if any(i <= v < f and not (v == i and nuevos[(i, f)]) for i, f in eliminados):
             raise ErrorReconstruccion(f"el índice apunta a un bloque quitado ({v})")
         struct.pack_into("<I", salida, nueva(k), nueva(v))
     return bytes(salida)
