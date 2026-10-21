@@ -81,8 +81,11 @@ La transformación es simétrica: la misma operación cifra y descifra.
 - Ticks: 960 000 por negra. Las posiciones musicales llevan un desplazamiento de `10**12`.
 - **Tempo**: patrón `Const 01 00 2E 00 00 00 TMS`. Desde `TMS`: tick int64 en +19, bpm double en
   +29, pulso u32 en +37 [verificado con la sesión de tempo variable].
-- **Compases**: patrón `29 20 'Meter' 02 00`, cantidad en +4 y eventos de 36 bytes: int64 tick,
-  u32 número de compás, u32 numerador, u32 denominador [verificado].
+- **Compases** (bloque `0x2029`, dos copias): tras `29 20 'Meter' 02 00`, u32 largo del resto,
+  u32 cantidad y eventos de 36 bytes: int64 tick (+10¹²), u32 número de compás, u32 numerador,
+  u32 denominador y 16 bytes fijos; luego una tabla de 16 bytes por evento (u32 compás mostrado,
+  u32 1, 8 bytes en cero) y 8 bytes finales. Sin eventos, Pro Tools usa 4/4 [verificado: trarin
+  reescribe la lista y el resultado es idéntico byte a byte al que guarda Pro Tools].
 - **Marcadores / ubicaciones de memoria** [verificado por experimento]: bloques `0x2077` hijos de
   la primera lista `0x2030` que los contiene (la lista aparece dos veces). Carga: u16 número;
   byte +3 banderas (bit 1 = selección; en el corpus aparecen 1 y 9 para marcadores); u32 largo en

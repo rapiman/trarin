@@ -381,8 +381,9 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     de regiones de audio. Cualquier otro cambio da un error."""
     from .protools.escritura import escribir_cambios
     _verificar_mismas_entidades(comun, original)
+    compases = None
     if [_sin(x) for x in comun["compases"]] != [_sin(x) for x in original["compases"]]:
-        raise ErrorComun("Pro Tools: cambiar compases aún no está soportado")
+        compases = [{k: c[k] for k in ("tick", "numerador", "denominador")} for c in comun["compases"]]
     tempo = None
     if [_sin(x) for x in comun["tempo"]] != [_sin(x) for x in original["tempo"]]:
         tempo = [{"tick": t["tick"], "bpm": t["bpm"]} for t in comun["tempo"]]
@@ -437,7 +438,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                 j = int(c["id"].rsplit("#", 1)[1])
                 regiones.setdefault(p["id"], {})[j] = cambio
     return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
-                            marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres)
+                            marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
+                            compases=compases)
 
 
 def _cambios_marcadores_pt(nuevos, originales):
