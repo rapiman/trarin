@@ -32,6 +32,21 @@ def _frecuencia(d, bloques):
     return struct.unpack_from("<I", d, b[0].inicio + 4)[0] if b else None
 
 
+# Código de cadencia de timecode (tabla de pt_api; en el corpus PT12 solo se
+# ha visto 0x07). En PT12 el código está en el primer byte del bloque 0x204D.
+_CADENCIAS = {0x01: "24", 0x02: "25", 0x03: "29.97", 0x05: "29.97 drop", 0x07: "30",
+              0x08: "30 drop", 0x09: "23.976", 0x0A: "50", 0x0B: "59.94", 0x0C: "59.94 drop",
+              0x0D: "60", 0x0E: "60 drop", 0x0F: "47.952", 0x10: "48", 0x11: "100",
+              0x12: "119.88", 0x13: "119.88 drop", 0x14: "120", 0x15: "120 drop"}
+
+
+def _cuadros(d, bloques):
+    b = next(iter(buscar(bloques, 0x204D)), None)
+    if not b:
+        return None
+    return _CADENCIAS.get(d[b.inicio + 2], f"0x{d[b.inicio + 2]:02x}")
+
+
 def leer(ruta) -> dict:
     """Lee una sesión .ptx y devuelve un dict listo para volcar a YAML/JSON.
 
@@ -56,10 +71,11 @@ def leer(ruta) -> dict:
         return ev
 
     archivos = P.leer_archivos_audio(d, bloques)
-    regiones = P.leer_regiones_audio(d, bloques)
+    regiones = P.leer_regiones_audio(d, bloques, P.leer_clip_gain(d, bloques))
+    fundidos = P.leer_fundidos(d, bloques)
     lista_pistas = P.leer_lista_pistas(d, bloques)
     nombres = [p["nombre"] for p in lista_pistas]
-    pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None)
+    pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None, fundidos)
     grupos = P.leer_grupos(d, bloques)
     for g in grupos:
         g["pistas"] = [nombres[i] if i < len(nombres) else i for i in g["pistas"]]
@@ -69,7 +85,7 @@ def leer(ruta) -> dict:
 
     for p in pistas_audio + playlists_inactivas:
         for c in p["canales"]:
-            for r in c["regiones"]:
+            for r in c["regiones"] + c.get("fundidos", []):
                 if fs:
                     s = r["muestra"] / fs
                     r["segundos"] = round(s, 6)
@@ -86,6 +102,7 @@ def leer(ruta) -> dict:
             "version": version,
             "archivo": ruta.name,
             "frecuencia_muestreo": fs,
+            "cuadros_por_segundo": _cuadros(d, bloques),
         },
         "unidades": {"ticks_por_negra": tiempo.TICKS_NEGRA},
         "tempo": [ubicar(e) for e in tempo],
@@ -99,5 +116,5 @@ def leer(ruta) -> dict:
         "midi": {"regiones": regiones_midi},
         "pistas_midi": pistas_midi,
         "mezcla": mezcla,
-        "pendiente": ["significado de parámetros en el estado propio de cada plugin", "colores de regiones", "playlists MIDI alternativas"],
+        "pendiente": ["significado de parámetros en el estado propio de cada plugin", "colores de regiones", "byte +15 de cada colocación (valores 1, 2, 3)", "playlists MIDI alternativas"],
     }
