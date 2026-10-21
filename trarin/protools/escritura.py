@@ -73,9 +73,11 @@ def _colocaciones(d, bloques, nombre_playlist):
                     if ri < len(fundidos):
                         g = fundidos[ri]
                         fun.append({"pos": f.inicio, "ancla": muestra, "inicio": muestra - g["pre_roll"],
-                                    "fin": muestra - g["pre_roll"] + g["muestras"], "tipo": g["tipo"]})
+                                    "fin": muestra - g["pre_roll"] + g["muestras"], "tipo": g["tipo"],
+                                    "bloque": e.pos, "fin_bloque": e.fin})
                 elif ri < len(regiones):
-                    regs.append({"pos": f.inicio, "muestra": muestra, "largo": regiones[ri]["muestras"]})
+                    regs.append({"pos": f.inicio, "muestra": muestra, "largo": regiones[ri]["muestras"],
+                                 "indice": ri, "bloque": e.pos, "fin_bloque": e.fin})
         canales.append((sorted(regs, key=lambda r: r["muestra"]), sorted(fun, key=lambda r: r["ancla"])))
     return canales
 
@@ -278,6 +280,78 @@ def _cambios_notas(d, bloques, cambios):
     reemplazos = [(b.inicio + 2, b.inicio + 6, struct.pack("<I", len(chunks) + len(por_region))),
                   (b.fin, b.fin, insercion, b.pos)]
     return reemplazos, out
+
+
+def _entradas_playlist(d, bloques, nombre_playlist):
+    """Bloques 0x1052 de los canales de una playlist de audio, en orden."""
+    lista = _primero(bloques, 0x1015)
+    for c in (lista.hijos if lista else []):
+        if c.tipo_contenido != 0x1014:
+            continue
+        nombre, j = P._cadena(d, c.inicio + 2)
+        if nombre == nombre_playlist:
+            n = struct.unpack_from("<I", d, j + 1)[0]
+            ids = struct.unpack_from(f"<{n}H", d, j + 5)
+            mapa = _primero(bloques, 0x1054)
+            entradas = [x for x in mapa.hijos if x.tipo_contenido == 0x1052]
+            return [entradas[i] for i in ids]
+    raise ErrorEscritura(f"no se encontró la playlist {nombre_playlist!r}")
+
+
+def _plantilla_colocacion(d, bloques):
+    """Bytes de un 0x1050 de región (no de fundido) de la sesión."""
+    for e in buscar(bloques, 0x1050):
+        f = next((h for h in e.hijos if h.tipo_contenido == 0x104F), None)
+        if f is not None and d[f.fin] == 0 and e.tamano == 44:
+            return bytes(d[e.pos:e.fin])
+    raise ErrorEscritura("no hay una colocación de región que sirva de plantilla en esta sesión")
+
+
+def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
+    """nuevos: [(índices de región por canal, muestra)]; borrados: [índice del
+    clip]. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
+    región, +25 muestra, relativos al 0x1050) dentro del 0x1052 de cada canal,
+    que lleva la cantidad (u32) tras su nombre. Un clip borrado se lleva sus
+    fundidos de entrada y salida; si tiene un fundido cruzado, da error."""
+    entradas = _entradas_playlist(d, bloques, pista)
+    canales = _colocaciones(d, bloques, pista)
+    base = canales[0][0]
+    plantilla = _plantilla_colocacion(d, bloques) if nuevos else None
+    reemplazos = []
+    for k, (e, (regs, fun)) in enumerate(zip(entradas, canales)):
+        quitar = []
+        for j in borrados:
+            ref = base[j]
+            r = next(x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"])
+            quitar.append((r["bloque"], r["fin_bloque"]))
+            ini, fin = r["muestra"], r["muestra"] + r["largo"]
+            for f in fun:
+                if f["fin"] <= ini or f["inicio"] >= fin:
+                    continue
+                if f["tipo"] == "cruzado" or f["inicio"] < ini or f["fin"] > fin:
+                    raise ErrorEscritura(f"{pista}#{j}: el clip tiene un fundido cruzado; quitarlo en Pro Tools")
+                quitar.append((f["bloque"], f["fin_bloque"]))
+        for a, b in quitar:
+            reemplazos.append((a, b, b"", e.pos))
+        insercion = b""
+        for indices, muestra in nuevos:
+            if muestra < 0:
+                raise ErrorEscritura(f"{pista}: posición negativa")
+            col = bytearray(plantilla)
+            col[18] = 0
+            struct.pack_into("<I", col, 20, indices[k])
+            col[25:30] = int(muestra).to_bytes(5, "little")
+            insercion += bytes(col)
+        largo_nombre = struct.unpack_from("<I", d, e.inicio + 2)[0]
+        p_cant = e.inicio + 6 + largo_nombre
+        cantidad = struct.unpack_from("<I", d, p_cant)[0]
+        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos))))
+        if insercion:
+            hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
+            punto = hijos[-1].fin if hijos else p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2)
+                                                              and e.fin - (p_cant + 4) > 2 else 0)
+            reemplazos.append((punto, punto, insercion, e.pos))
+    return reemplazos
 
 
 # ------------------------------------------------------------------- mezcla
@@ -660,7 +734,7 @@ def _cambios_compases(d, bloques, compases):
 
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
                      marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None,
-                     notas=None):
+                     notas=None, clips_nuevos=None, clips_borrados=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -692,6 +766,9 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     if tempo is not None:
         reemplazos += _cambios_tempo(d, bloques, tempo)
     reemplazos += reemplazos_notas
+    for pista in set(clips_nuevos or {}) | set(clips_borrados or {}):
+        reemplazos += _altas_bajas_clips(d, bloques, pista, (clips_nuevos or {}).get(pista, []),
+                                         (clips_borrados or {}).get(pista, []))
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
