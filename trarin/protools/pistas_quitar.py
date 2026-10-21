@@ -1,4 +1,4 @@
-"""Quitar pistas de audio de una sesión .ptx.
+"""Quitar pistas de audio o MIDI de una sesión .ptx.
 
 Verificado borrando una pista de audio con clips y fundidos en Pro Tools 12 y
 comparando con la misma sesión guardada de nuevo sin cambios. Es lo inverso de
@@ -16,6 +16,11 @@ agregar una pista (ver pistas_nuevas.py):
 * el índice 0x0002: los grupos de los bloques quitados y los números de las
   entradas por pista y por canal.
 
+Una pista MIDI no tiene playlists 0x1014/0x1052: se quita su 0x1057 de 0x1058,
+su salida 0x2005 de 0x2004 si ningún otro canal la usa (los u32 en +14 de los
+0x2036 que apuntan más allá bajan), y los canales 0x2620/0x2621 siguientes bajan
+su número n; 0x202C no cambia.
+
 Las regiones y archivos de la pista quedan en la lista de clips, como al borrar
 la pista en Pro Tools. Las definiciones de fundidos (0x2630) también quedan.
 """
@@ -30,7 +35,7 @@ from .reconstruccion import reconstruir
 
 
 def quitar_pistas(d, nombres):
-    """d: sesión descifrada. nombres: pistas de audio a quitar. Devuelve la
+    """d: sesión descifrada. nombres: pistas de audio o MIDI a quitar. Devuelve la
     sesión descifrada sin esas pistas."""
     for nombre in nombres:
         d = _quitar_una(d, nombre)
@@ -48,16 +53,17 @@ def _quitar_una(d, nombre):
     i = next((k for k, e in enumerate(entradas) if e[3] == nombre), None)
     if i is None:
         raise ErrorPista(f"no existe la pista {nombre!r}")
-    if entradas[i][2] != 0:
-        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio")
+    midi = entradas[i][2] == 1
+    if entradas[i][2] not in (0, 1):
+        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio o MIDI")
     if len(entradas) < 2:
         raise ErrorPista("la sesión debe conservar al menos una pista")
     raiz = _primero(bloques, 0x2624)
     if raiz is None or len(raiz.hijos) != len(entradas):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canal = raiz.hijos[i]
-    if canal.tipo_contenido != 0x261C:
-        raise ErrorPista(f"{nombre}: el canal no es de audio")
+    if canal.tipo_contenido != (0x2620 if midi else 0x261C):
+        raise ErrorPista(f"{nombre}: el canal no corresponde al tipo de pista")
     n = len(entradas)
     reemplazos = []
     quitados = []                       # (pos, fin) de bloques que se quitan enteros
@@ -88,50 +94,10 @@ def _quitar_una(d, nombre):
                 struct.pack_into("<I", b, len(b) - 22, v - 1)   # pueden parecer hijos
                 reemplazos.append((h.pos, h.fin, bytes(b), L.pos))
 
-    # 2) playlists del canal y sus entradas 0x1052
-    sb = next(h for h in canal.hijos if h.tipo_contenido == 0x261B)
-    n_audio, k_pl = struct.unpack_from("<IH", d, sb.fin)
-    propias = set(struct.unpack_from(f"<{k_pl}I", d, sb.fin + 6))
-    lista_pl = _primero(bloques, 0x1015)
-    mapa = _primero(bloques, 0x1054)
-    pls = [h for h in lista_pl.hijos if h.tipo_contenido == 0x1014]
-    e1052 = [h for h in mapa.hijos if h.tipo_contenido == 0x1052]
-    refs = []
-    for b in pls:
-        _, j = _cadena(d, b.inicio + 2)
-        k = struct.unpack_from("<I", d, j + 1)[0]
-        refs.append((j + 5, list(struct.unpack_from(f"<{k}H", d, j + 5))))
-    if any(p >= len(pls) for p in propias):
-        raise ErrorPista(f"{nombre}: playlists del canal no reconocidas")
-    m_quitar = {x for p in propias for x in refs[p][1]}
-    if any(x >= len(e1052) for x in m_quitar):
-        raise ErrorPista(f"{nombre}: entradas de playlist no reconocidas")
-    for p in sorted(propias):
-        quitar(pls[p], lista_pl)
-    for x in sorted(m_quitar):
-        quitar(e1052[x], mapa)
-    for p, (q, lista) in enumerate(refs):
-        if p in propias:
-            continue
-        nueva = [x - sum(1 for y in m_quitar if y < x) for x in lista]
-        if nueva != lista:
-            reemplazos.append((q, q + 2 * len(lista), struct.pack(f"<{len(lista)}H", *nueva)))
-    n_pl = struct.unpack_from("<I", d, lista_pl.inicio + 2)[0]
-    n_map = struct.unpack_from("<I", d, mapa.inicio + 2)[0]
-    reemplazos.append((lista_pl.inicio + 2, lista_pl.inicio + 6, struct.pack("<I", n_pl - len(propias))))
-    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_map - len(m_quitar))))
-
-    # 3) canal de mezcla; los demás corren su número de audio y sus playlists
-    for c in raiz.hijos:
-        if c is canal or c.tipo_contenido != 0x261C:
-            continue
-        sbc = next(h for h in c.hijos if h.tipo_contenido == 0x261B)
-        a, k = struct.unpack_from("<IH", d, sbc.fin)
-        lista = list(struct.unpack_from(f"<{k}I", d, sbc.fin + 6))
-        nueva = [x - sum(1 for y in propias if y < x) for x in lista]
-        a2 = a - (a > n_audio)
-        if (a2, nueva) != (a, lista):
-            reemplazos.append((sbc.fin, sbc.fin + 6 + 4 * k, struct.pack(f"<IH{k}I", a2, k, *nueva)))
+    if midi:
+        _quitar_midi(d, bloques, raiz, canal, nombre, quitar, reemplazos)
+    else:
+        _quitar_audio(d, bloques, raiz, canal, nombre, quitar, reemplazos)
     quitar(canal, raiz)
     reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(raiz.hijos) - 1)))
     num = [struct.unpack_from("<I", d, b.fin - 4)[0] for b in buscar([canal], 0x2015)]
@@ -144,7 +110,7 @@ def _quitar_una(d, nombre):
             if v > corte:
                 reemplazos.append((b.fin - 4, b.fin, struct.pack("<I", v - 1)))
 
-    # 4) grupos
+    # 4) grupos (0x202C no cambia con las pistas MIDI)
     for grp in buscar(bloques, 0x202A):
         nom, p = _cadena(d, grp.inicio + 2)
         cnt = struct.unpack_from("<I", d, p + 7)[0]
@@ -154,7 +120,7 @@ def _quitar_una(d, nombre):
             if not nueva:
                 raise ErrorPista(f"{nombre}: es la única pista del grupo {nom!r}")
             reemplazos.append((p + 7, p + 11 + 2 * cnt, struct.pack(f"<I{len(nueva)}H", len(nueva), *nueva)))
-    for gc in buscar(bloques, 0x202C):
+    for gc in buscar(bloques, 0x202C) if not midi else []:
         a1, a2 = struct.unpack_from("<II", d, gc.inicio + 14)
         if struct.unpack_from("<I", d, gc.inicio + 2)[0] == 1 and (a1, a2) == (n - 1, n):
             reemplazos.append((gc.inicio + 14, gc.inicio + 22, struct.pack("<II", n - 2, n - 1)))
@@ -218,3 +184,113 @@ def _indice_sin(d, bloques, quitados, n_pista, n_canal):
     salida = bytearray(d[:final.inicio]) + nuevo
     struct.pack_into("<I", salida, final.pos + 3, len(nuevo))
     return bytes(salida)
+
+
+def _quitar_audio(d, bloques, raiz, canal, nombre, quitar, reemplazos):
+    """Playlists del canal (índices de 0x1015 tras su 0x261B) con sus entradas
+    0x1052; las demás playlists y canales de audio corren sus índices."""
+    sb = next(h for h in canal.hijos if h.tipo_contenido == 0x261B)
+    n_audio, k_pl = struct.unpack_from("<IH", d, sb.fin)
+    propias = set(struct.unpack_from(f"<{k_pl}I", d, sb.fin + 6))
+    lista_pl = _primero(bloques, 0x1015)
+    mapa = _primero(bloques, 0x1054)
+    pls = [h for h in lista_pl.hijos if h.tipo_contenido == 0x1014]
+    e1052 = [h for h in mapa.hijos if h.tipo_contenido == 0x1052]
+    refs = []
+    for b in pls:
+        _, j = _cadena(d, b.inicio + 2)
+        k = struct.unpack_from("<I", d, j + 1)[0]
+        refs.append((j + 5, list(struct.unpack_from(f"<{k}H", d, j + 5))))
+    if any(p >= len(pls) for p in propias):
+        raise ErrorPista(f"{nombre}: playlists del canal no reconocidas")
+    m_quitar = {x for p in propias for x in refs[p][1]}
+    if any(x >= len(e1052) for x in m_quitar):
+        raise ErrorPista(f"{nombre}: entradas de playlist no reconocidas")
+    for p in sorted(propias):
+        quitar(pls[p], lista_pl)
+    for x in sorted(m_quitar):
+        quitar(e1052[x], mapa)
+    for p, (q, lista) in enumerate(refs):
+        if p in propias:
+            continue
+        nueva = [x - sum(1 for y in m_quitar if y < x) for x in lista]
+        if nueva != lista:
+            reemplazos.append((q, q + 2 * len(lista), struct.pack(f"<{len(lista)}H", *nueva)))
+    n_pl = struct.unpack_from("<I", d, lista_pl.inicio + 2)[0]
+    n_map = struct.unpack_from("<I", d, mapa.inicio + 2)[0]
+    reemplazos.append((lista_pl.inicio + 2, lista_pl.inicio + 6, struct.pack("<I", n_pl - len(propias))))
+    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_map - len(m_quitar))))
+
+    # 3) canal de mezcla; los demás corren su número de audio y sus playlists
+    for c in raiz.hijos:
+        if c is canal or c.tipo_contenido != 0x261C:
+            continue
+        sbc = next(h for h in c.hijos if h.tipo_contenido == 0x261B)
+        a, k = struct.unpack_from("<IH", d, sbc.fin)
+        lista = list(struct.unpack_from(f"<{k}I", d, sbc.fin + 6))
+        nueva = [x - sum(1 for y in propias if y < x) for x in lista]
+        a2 = a - (a > n_audio)
+        if (a2, nueva) != (a, lista):
+            reemplazos.append((sbc.fin, sbc.fin + 6 + 4 * k, struct.pack(f"<IH{k}I", a2, k, *nueva)))
+
+
+def _n_midi(d, c):
+    """Número n del canal entre los 0x2620/0x2621 (desde 0): en un 0x2620,
+    'u32 n | u32 1 | u32 n | u8 1' tras su 0x102D; en un 0x2621 (instrumento),
+    'u32 n | u16 1 | u32 n | u8 1' justo antes de su 0x2010. Devuelve
+    (posición, formato, n)."""
+    if c.tipo_contenido == 0x2620:
+        cab = next(h for h in c.hijos if h.tipo_contenido == 0x102D)
+        q, fmt = cab.fin, "<III"
+    else:
+        h = next((h for h in c.hijos if h.tipo_contenido == 0x2010), None)
+        if h is None:
+            raise ErrorPista("número del canal de instrumento no reconocido")
+        q, fmt = h.pos - 11, "<IHI"
+    n, uno, n2 = struct.unpack_from(fmt, d, q)
+    if uno != 1 or n != n2 or d[q + struct.calcsize(fmt)] != 1:
+        raise ErrorPista("número del canal MIDI no reconocido")
+    return q, fmt, n
+
+
+def _quitar_midi(d, bloques, raiz, canal, nombre, quitar, reemplazos):
+    """Playlist 0x1057 de la pista, su salida 0x2005 (si ningún otro canal la
+    usa; los 0x2036 que apuntan más allá bajan) y el número n de los canales
+    0x2620/0x2621 siguientes [verificado borrando una pista MIDI en Pro Tools 12]."""
+    mapa = _primero(bloques, 0x1058)
+    pls = [h for h in (mapa.hijos if mapa else []) if h.tipo_contenido == 0x1057
+           and _cadena(d, h.inicio + 2)[0] == nombre]
+    if len(pls) != 1:
+        raise ErrorPista(f"{nombre}: playlist MIDI no reconocida")
+    quitar(pls[0], mapa)
+    n_1058 = struct.unpack_from("<I", d, mapa.inicio + 2)[0]
+    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_1058 - 1)))
+    # salidas MIDI
+    salidas = _primero(bloques, 0x2004)
+    l2005 = [h for h in (salidas.hijos if salidas else []) if h.tipo_contenido == 0x2005]
+    refs = {c.pos: (buscar([c], 0x2036) if c.tipo_contenido in (0x2620, 0x2621) else [])
+            for c in raiz.hijos}
+    propias = {struct.unpack_from("<I", d, b.inicio + 14)[0] for b in refs[canal.pos]}
+    otras = {struct.unpack_from("<I", d, b.inicio + 14)[0] for c in raiz.hijos if c is not canal
+             for b in refs[c.pos]}
+    sale = sorted(k for k in propias if k not in otras and 1 <= k <= len(l2005))
+    for k in sale:
+        quitar(l2005[k - 1], salidas)
+    if sale:
+        reemplazos.append((salidas.inicio + 2, salidas.inicio + 6, struct.pack("<I", len(l2005) - len(sale))))
+        for c in raiz.hijos:
+            if c is canal:
+                continue
+            for b in refs[c.pos]:
+                v = struct.unpack_from("<I", d, b.inicio + 14)[0]
+                v2 = v - sum(1 for k in sale if k < v)
+                if v2 != v:
+                    reemplazos.append((b.inicio + 14, b.inicio + 18, struct.pack("<I", v2)))
+    # número de los canales MIDI e instrumento siguientes
+    _, _, n_q = _n_midi(d, canal)
+    for c in raiz.hijos:
+        if c is canal or c.tipo_contenido not in (0x2620, 0x2621):
+            continue
+        q, fmt, v = _n_midi(d, c)
+        if v > n_q:
+            reemplazos.append((q, q + struct.calcsize(fmt), struct.pack(fmt, v - 1, 1, v - 1)))

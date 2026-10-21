@@ -280,6 +280,16 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
   Las regiones y archivos de la pista quedan en la lista de clips. Pro Tools también borra las
   definiciones de fundidos `0x2630` que dejan de usarse; trarin las deja, y Pro Tools abre la
   sesión igual.
+- **Quitar una pista MIDI** [verificado del mismo modo en Pro Tools 12]: lo mismo en `0x2519`,
+  el canal (`0x2620`), los `0x2015`, los grupos `0x202A`, las tiras y el índice (lista de
+  `0x1058` en vez de `0x1015`/`0x1054`); `0x202C` no cambia. Además:
+  - su playlist `0x1057` sale de `0x1058` (u32 cantidad);
+  - su salida `0x2005` sale de `0x2004` si ningún otro canal la usa, y los u32 en +14 de los
+    `0x2036` de los demás canales MIDI e instrumento que apuntan más allá bajan en 1;
+  - los canales `0x2620`/`0x2621` siguientes bajan su número n: en `0x2620`,
+    `u32 n | u32 1 | u32 n | u8 1` tras el `0x102D`; en `0x2621` (instrumento),
+    `u32 n | u16 1 | u32 n | u8 1` justo antes de su `0x2010`.
+  Sus regiones MIDI quedan en la lista de clips.
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 
