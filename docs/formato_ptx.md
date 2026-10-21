@@ -95,6 +95,11 @@ La transformación es simétrica: la misma operación cifra y descifra.
   un nombre de otro largo cambia el tamaño y se reconstruye la sesión. El comentario está dos veces
   dentro del bloque: u32 largo + texto en E+80 y 4 bytes después del último hijo (en sesiones de otras
   versiones E+80 no es el comentario; ahí trarin no lo escribe).
+  Agregar y borrar [verificado en Pro Tools 12]: cada lista `0x2030` lleva u32 cantidad en +2, los
+  `0x2077` y 4 bytes en cero al final. Un marcador nuevo se copia de otro marcador común de la sesión
+  (o de uno de Pro Tools 12.5 si no hay), con número = mayor + 1 y un UUID nuevo en los últimos 16
+  bytes, y se inserta antes de esos 4 bytes en ambas listas. El índice `0x0002` no apunta a los
+  marcadores, así que solo se corrigen tamaños y posiciones.
 
 ## 5. Archivos y regiones de audio
 
