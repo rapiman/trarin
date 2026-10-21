@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+# nunca subir sesiones ni audio
+*.ptx
+*.ptf
+*.wav
+*.aif
+*.mp3
+muestras/

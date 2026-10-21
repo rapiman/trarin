@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trarin"
+version = "0.1.0"
+description = "Representación en texto de sesiones de DAW para armar shows"
+requires-python = ">=3.9"
+dependencies = ["pyyaml>=6"]
+
+[project.scripts]
+trarin = "trarin.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["trarin*"]
