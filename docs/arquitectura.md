@@ -47,5 +47,5 @@ python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nue
 
 ## Pendiente
 
-- Escritura de Pro Tools: crear selecciones, agregar o quitar tempos, notas MIDI, puntos de automatización.
+- Escritura de Pro Tools: crear selecciones, notas MIDI, puntos de automatización.
 - Servidor MCP.
