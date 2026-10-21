@@ -138,6 +138,16 @@ registro × cantidad:
 Un solo nodo es una ganancia fija. Hay curvas de 2 nodos en el corpus (pt_api solo acepta 1, 3 o 4).
 En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
 
+**Archivos y regiones nuevos** [verificado importando un archivo en Pro Tools 12 y repitiéndolo con
+trarin]: la lista de rutas `0x103A` lleva u32 cantidad y entradas `tipo u8 | u32 índice del padre |
+u32 largo + nombre | 4 bytes` (tipo 0 volumen con su serie y padre FFFFFFFF, 1 carpeta, 2 archivo con
+su tipo `EVAW`/`FFIA`); cada archivo nuevo suma su cadena de carpetas hasta el volumen. El `0x1004`
+lleva la cantidad de archivos y un `0x1003` por archivo (u32 número; `0x1001` con el largo u64 en +8
+y los bits en +7; `0x1033`; `0x2106` con metadatos BWF y un identificador de 16 bytes). Cada región
+es un `0x2629` con su `0x2628` (nombre, anchos en nibbles, desplazamiento y largo, `FF FF 04 00 04 00`
+y el índice de clip gain) seguido del índice de archivo. Las regiones nuevas de trarin son idénticas
+byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
+
 ## 6. Pistas, playlists y colocaciones
 
 - **Lista de pistas**: `0x2519` con hijos `0x251A`: u16 tipo en +2 (0 audio, 1 MIDI, 2 auxiliar;
