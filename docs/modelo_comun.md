@@ -52,6 +52,6 @@ es idéntico (FL Studio) o equivalente (Ableton) al original.
 
 | DAW | Notas |
 |---|---|
-| Pro Tools | `base_tiempo` = muestras: el audio se ubica por `muestra`. Pistas estéreo: un clip por región del primer canal, con `canales: 2`. Escritura desde el modelo común: en desarrollo. |
+| Pro Tools | `base_tiempo` = muestras: el audio se ubica por `muestra`. Pistas estéreo: un clip por región del primer canal, con `canales: 2`. Escritura desde el modelo común: volumen, paneo y mute de pistas (sin automatización en ese parámetro), y posición (`muestra`, o `tick` si solo cambió ese) y mute de regiones de audio; los fundidos de entrada y salida se mueven con la región. Mover una región con fundido cruzado y cualquier otro cambio dan error. |
 | Ableton | Clips del Arrangement; los de Session van en `nativo.clips_session`. |
 | FL Studio | Cada **canal** es una pista. Cada aparición de un patrón en la playlist genera un clip en las pistas de los canales que suenan en él (`id` = `arreglo:item:canal`, `patron` = número). Los clips de una misma aparición se mueven juntos. Las notas de un patrón se comparten: editar las de un clip cambia el patrón en todas sus apariciones. Los inserts del mezclador son pistas propias: `id` = `insert:N`, tipo `master` (insert 0) o `retorno`, con `volumen_db` y `paneo` editables (sin clips). Cada canal indica su insert en `mezcla.insert` (editable) y, solo de lectura, en `mezcla.salida`. El volumen propio de cada canal aún no se modela. |

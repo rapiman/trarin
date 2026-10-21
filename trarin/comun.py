@@ -279,7 +279,7 @@ def aplicar(comun, plantilla, salida):
     original = a_comun(nativo)
     daw = nativo["origen"]["daw"]
     if daw == "protools":
-        raise ErrorComun("la escritura de Pro Tools desde el modelo común está en desarrollo")
+        return _a_protools(comun, original, nativo, plantilla, salida)
     if comun["tempo"] != original["tempo"]:
         nativo["tempo"] = [dict(t, pulso_ticks=T.TICKS_NEGRA) for t in comun["tempo"]]
     if comun["compases"] != original["compases"]:
@@ -371,3 +371,61 @@ def _a_flstudio(comun, original, nativo):
     clave = lambda ms: [(m["nombre"], m["tick"]) for m in ms]
     if clave(comun["marcadores"]) != clave(original["marcadores"]):
         raise ErrorComun("FL Studio: la escritura de marcadores aún no está soportada")
+
+
+_SOLO_LECTURA = {"posicion", "segundos"}
+
+
+def _a_protools(comun, original, nativo, plantilla, salida):
+    """Pro Tools: por ahora volumen, paneo y mute de pistas, y posición y mute
+    de regiones de audio. Cualquier otro cambio da un error."""
+    from .protools.escritura import escribir_cambios
+    _verificar_mismas_entidades(comun, original)
+    for k in ("tempo", "compases", "marcadores"):
+        if comun[k] != original[k] and [_sin(x) for x in comun[k]] != [_sin(x) for x in original[k]]:
+            raise ErrorComun(f"Pro Tools: cambiar {k} aún no está soportado")
+    fs = nativo["origen"].get("frecuencia_muestreo") or 48000
+    indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
+    orig = _por_id(original["pistas"])
+    mezcla, regiones = {}, {}
+    for p in comun["pistas"]:
+        o = orig[p["id"]]
+        for k in set(p) | set(o):
+            if k not in ("mezcla", "clips") and p.get(k) != o.get(k):
+                raise ErrorComun(f"Pro Tools: cambiar '{k}' de la pista {p['id']!r} aún no está soportado")
+        cambio = {}
+        for k in set(p["mezcla"]) | set(o["mezcla"]):
+            if p["mezcla"].get(k) == o["mezcla"].get(k):
+                continue
+            if k not in ("volumen_db", "paneo", "mute"):
+                raise ErrorComun(f"Pro Tools: cambiar mezcla.{k} de {p['id']!r} aún no está soportado")
+            cambio[k] = p["mezcla"][k]
+        if cambio:
+            mezcla[indices[p["id"]]] = (p["id"], cambio)
+        oc = _por_id(o["clips"])
+        for c in p["clips"]:
+            x = oc[c["id"]]
+            if c["tipo"] != "audio":
+                if _sin(c) != _sin(x):
+                    raise ErrorComun(f"Pro Tools: editar clips MIDI aún no está soportado ({c['id']})")
+                continue
+            cambio = {}
+            if c["muestra"] != x["muestra"]:
+                cambio["muestra"] = c["muestra"]
+            elif c["tick"] != x["tick"]:
+                cambio["muestra"] = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
+            if bool(c.get("mute")) != bool(x.get("mute")):
+                cambio["mute"] = bool(c.get("mute"))
+            libres = _SOLO_LECTURA | {"muestra", "tick", "mute", "largo_ticks", "fundidos"}
+            fun = lambda y: [{k: v for k, v in f.items() if k != "muestra"} for f in y.get("fundidos", [])]
+            if ({k: v for k, v in c.items() if k not in libres} != {k: v for k, v in x.items() if k not in libres}
+                    or fun(c) != fun(x)):
+                raise ErrorComun(f"Pro Tools: en {c['id']} solo se puede cambiar la posición y el mute")
+            if cambio:
+                j = int(c["id"].rsplit("#", 1)[1])
+                regiones.setdefault(p["id"], {})[j] = cambio
+    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones)
+
+
+def _sin(x):
+    return {k: v for k, v in x.items() if k not in _SOLO_LECTURA} if isinstance(x, dict) else x
