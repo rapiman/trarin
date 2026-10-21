@@ -400,8 +400,9 @@ def _insertar_en_grupos(e, lugar, pos):
     e.grupos.insert(1 + lugar, Grupo([pos]))
 
 
-def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
-    """Agrega al índice las posiciones de los bloques nuevos (los últimos de cada lista)."""
+def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1, playlists=True):
+    """Agrega al índice las posiciones de los bloques nuevos (los últimos de cada
+    lista). playlists=False para un auxiliar (sin 0x1014 ni 0x1052)."""
     bloques = arbol(d)
     final = bloques[-1]
     entradas, resto = leer_indice(d[final.inicio:final.fin])
@@ -411,8 +412,8 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
     lista_pl = _primero(bloques, 0x1015)
     mapa = _primero(bloques, 0x1054)
     raiz = _primero(bloques, 0x2624)
-    nuevo_pl = [h for h in lista_pl.hijos if h.tipo_contenido == 0x1014][i_pl]
-    e1052 = [h for h in mapa.hijos if h.tipo_contenido == 0x1052]
+    nuevo_pl = [h for h in lista_pl.hijos if h.tipo_contenido == 0x1014][i_pl] if playlists else None
+    e1052 = [h for h in mapa.hijos if h.tipo_contenido == 0x1052] if playlists else []
     canal = raiz.hijos[-1]
     sb = next(h for h in canal.hijos if h.tipo_contenido == 0x261B)
     ins = next((h for h in sb.hijos if h.tipo_contenido == 0x2627), None)
@@ -420,7 +421,8 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
     for e in entradas:
         c = e.camino
         tipos = [s.tipo for s in c]
-        if len(c) == 1 and c[0].marca == 1 and c[0].numero == 0 and tipos[0] in (0x1015, 0x1054, 0x2624):
+        if (len(c) == 1 and c[0].marca == 1 and c[0].numero == 0
+                and tipos[0] in ((0x1015, 0x1054, 0x2624) if playlists else (0x2624,))):
             if tipos[0] == 0x1054:
                 for i in range(canales):
                     _insertar_en_grupos(e, i_map + i, e1052[i_map + i].pos)
@@ -438,7 +440,8 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
         elif tipos == [0x2519, 0x2716] and c[0].numero == n_pistas:
             c[0].numero = n_pistas + 1
             hechos.add("2716")
-    faltan = {0x1015, 0x1054, 0x2624, "2519 lista", "2519 mitad", "2716"} - hechos
+    faltan = ({0x1015, 0x1054} if playlists else set()) | {0x2624, "2519 lista", "2519 mitad", "2716"}
+    faltan -= hechos
     if faltan:
         raise ErrorPista(f"índice no reconocido (faltan entradas: {faltan})")
     raiz_pos = 0xFFFFFFFF
@@ -450,13 +453,132 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
         ult = max(i for i, e in enumerate(entradas) if [s.tipo for s in e.camino][:2] == [0x2624, 0x261C]
                   or [s.tipo for s in e.camino][:2] == [0x2624, 0x261E])
         entradas.insert(ult + 1, Entrada([Paso(0x2624, raiz_pos, 1, n_canales + 1),
-                                          Paso(0x261C, raiz.pos, 0, 0),
+                                          Paso(canal.tipo_contenido, raiz.pos, 0, 0),
                                           Paso(0x261B, canal.pos, 0, 0),
                                           Paso(0x2627, sb.pos, 0, 0)], [Grupo([ins.pos])]))
     nuevo = escribir_indice(entradas, resto)
     out = bytearray(d[:final.inicio]) + nuevo
     struct.pack_into("<I", out, final.pos + 3, len(nuevo))
     return bytes(out)
+
+
+# -------------------------------------------------------- pistas auxiliares
+
+def agregar_auxiliares(d, nombres, plantilla=None):
+    """Agrega pistas auxiliares al final, cada una como texto (estéreo) o como
+    (nombre, canales). Son copia de un auxiliar de la sesión con la misma
+    cantidad de canales (plantilla: su nombre), con el mismo ruteo."""
+    for x in nombres:
+        nombre, canales = (x, 2) if isinstance(x, str) else x
+        d = _agregar_aux(d, nombre, plantilla, canales)
+    return d
+
+
+def _agregar_aux(d, nombre, plantilla, canales):
+    """Verificado creando un auxiliar estéreo y uno mono al final en Pro Tools 12
+    y comparando: entrada de tipo 2 en 0x2519 y un 0x251A en cada mitad, un
+    canal 0x261E al final de 0x2624, el grupo <ALL>, una tira 0x2589 y el
+    índice (listas de 0x2519 y 0x2624, la entrada del 0x2627 del canal). No
+    tiene playlists y 0x202C no cambia. El canal nuevo es copia del de la
+    plantilla con nombre (también en 0x102D → 0x2619), uuid, identificadores
+    propios y el número siguiente del 0x2015."""
+    bloques = arbol(d)
+    L = _primero(bloques, 0x2519)
+    entradas, fin_lista, pos_cantidad = _lista_2519(d, L)
+    if any(e[3] == nombre for e in entradas):
+        raise ErrorPista(f"ya existe una pista llamada {nombre!r}")
+    hijos = [h for h in L.hijos if h.tipo_contenido == 0x251A]
+    mitad = len(hijos) // 2
+    raiz = _primero(bloques, 0x2624)
+    if raiz is None or len(raiz.hijos) != len(entradas) or len(hijos) != 2 * len(entradas):
+        raise ErrorPista("los canales de mezcla no corresponden con las pistas")
+    canales_mezcla = raiz.hijos
+    cands = [i for i, e in enumerate(entradas) if e[2] == 2 and e[4] == canales - 1
+             and canales_mezcla[i].tipo_contenido == 0x261E]
+    if plantilla:
+        cands = [i for i in cands if entradas[i][3] == plantilla]
+    if not cands:
+        raise ErrorPista(f"no hay un auxiliar {'estéreo' if canales == 2 else 'mono'} que sirva de plantilla")
+    i_t = cands[0]
+    t = entradas[i_t]
+    uuid_t, uuid = t[5], os.urandom(16)
+    n_pistas = len(entradas)
+    reemplazos = []
+    # 1) 0x2519
+    reemplazos.append((pos_cantidad, pos_cantidad + 4, struct.pack("<I", n_pistas + 1)))
+    entrada = (struct.pack("<H", 2) + _str(nombre) + struct.pack("<H", canales - 1) + uuid
+               + struct.pack("<HB", n_pistas + 1, 0))
+    reemplazos.append((fin_lista, fin_lista, entrada, L.pos))
+    q = d.find(b"\x2a\0\0\0", hijos[i_t].inicio, hijos[i_t].fin)
+    id_t = d[q + 4:q + 12]
+    id_n = _id_nuevo(d, id_t)
+
+    def nuevo_251a(h):
+        b = bytearray(d[h.pos:h.fin].replace(id_t, id_n))
+        _, q = _cadena(b, 11)
+        cola = bytearray(b[q:])
+        cola[-16:] = uuid
+        struct.pack_into("<I", cola, len(cola) - 16 - 6, n_pistas + 1)
+        cont = b[7:9] + b[9:11] + _str(nombre) + bytes(cola)
+        return b"\x5a" + b[1:3] + struct.pack("<I", len(cont)) + cont
+
+    m = hijos[mitad - 1].fin
+    if struct.unpack_from("<I", d, m)[0] != n_pistas or hijos[mitad].pos != m + 4:
+        raise ErrorPista("lista de pistas no reconocida (cantidad entre mitades)")
+    reemplazos.append((m, m + 4, nuevo_251a(hijos[i_t]) + struct.pack("<I", n_pistas + 1), L.pos))
+    reemplazos.append((hijos[-1].fin, hijos[-1].fin, nuevo_251a(hijos[mitad + i_t]), L.pos))
+    # 2) canal 0x261E
+    canal_t = canales_mezcla[i_t]
+    ids = []
+    for c in canales_mezcla:
+        sb = next((h for h in c.hijos if h.tipo_contenido == 0x261B), None)
+        if sb is None:
+            continue
+        try:
+            ids += _ids_canal(d, sb)[1]
+        except ErrorPista:
+            pass
+    sb = next(h for h in canal_t.hijos if h.tipo_contenido == 0x261B)
+    k, lista = _ids_canal(d, sb)
+    nuevo_id = max(ids) + 1
+    fijos = [(k + 2, struct.pack(f"<{len(lista)}I", *range(nuevo_id, nuevo_id + len(lista))))]
+    q = d.find(b"\xff\x7f", k, sb.fin)
+    if q > 0:
+        fijos.append((q + 4, os.urandom(16 * struct.unpack_from("<H", d, q + 2)[0])))
+    nums = [struct.unpack_from("<I", d, b.fin - 4)[0] for b in buscar(bloques, 0x2015)]
+    for b in buscar([canal_t], 0x2015):
+        fijos.append((b.fin - 4, struct.pack("<I", max(nums) + 1)))
+    cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+    nb = cab.hijos[0]
+    viejo = _str(_cadena(d, nb.inicio + 2)[0])
+    variables = [(nb.inicio + 2, nb.inicio + 2 + len(viejo), _str(nombre))]
+    c = _rehacer(d, canal_t, fijos, variables).replace(uuid_t, uuid).replace(id_t, id_n)
+    reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(canales_mezcla) + 1)))
+    reemplazos.append((canales_mezcla[-1].fin, canales_mezcla[-1].fin, bytes(c), raiz.pos))
+    # 3) grupo <ALL> (0x202C no cambia)
+    for grp in buscar(bloques, 0x202A):
+        nom, p = _cadena(d, grp.inicio + 2)
+        if nom != "<ALL>":
+            continue
+        cnt = struct.unpack_from("<I", d, p + 7)[0]
+        fin_l = p + 11 + 2 * cnt
+        reemplazos.append((p + 7, p + 11, struct.pack("<I", cnt + 1)))
+        reemplazos.append((fin_l, fin_l, struct.pack("<H", n_pistas)))
+    # 4) tira de la ventana, copia de la de la plantilla
+    for v in buscar(bloques, 0x258A):
+        tiras = [h for h in v.hijos if h.tipo_contenido == 0x2589]
+        if not tiras:
+            continue
+        propia = next((h for h in tiras if struct.unpack_from("<H", d, h.inicio + 2)[0] == i_t), None)
+        if propia is None:
+            raise ErrorPista("tira del auxiliar de plantilla no encontrada")
+        b = bytearray(d[propia.pos:propia.fin])
+        struct.pack_into("<H", b, 9, n_pistas)
+        q = tiras[0].pos - 4
+        reemplazos.append((q, q + 4, struct.pack("<I", len(tiras) + 1)))
+        reemplazos.append((tiras[-1].fin, tiras[-1].fin, bytes(b), v.pos))
+    nuevo = reconstruir(d, reemplazos)
+    return _actualizar_indice(nuevo, n_pistas, len(canales_mezcla), None, None, playlists=False)
 
 
 # ------------------------------------------------------------- pistas MIDI

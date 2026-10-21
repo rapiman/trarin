@@ -261,6 +261,17 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     bytes después (+101 y +129); el segundo `0x260C` del `0x260D`, vacío en mono, lleva una copia
     de la lista de paneo del primero, con valor −100 en la primera y +100 en la segunda (int16 en
     +28 del `0x260A`).
+- **Crear una pista auxiliar** [verificado en Pro Tools 12, comparando con un auxiliar estéreo y uno
+  mono creados al final en Pro Tools]: entrada de tipo 2 en `0x2519` (u16 estéreo según los canales)
+  y un `0x251A` en cada mitad; un canal `0x261E` al final de `0x2624` (con `0x261B` y `0x200D`, sin
+  datos de playlist tras el `0x261B`); grupo `<ALL>`, una tira `0x2589` y en el índice las listas
+  de `0x2519` y `0x2624`, la entrada `(0x2519, 1, n+1) + 0x251A`, el número de `0x2716` y la entrada
+  del `0x2627` del canal (con el tipo `0x261E` en su camino). No tiene playlists `0x1014`/`0x1052`, y
+  `0x202C` no cambia. trarin copia un auxiliar de la sesión con la misma cantidad de canales:
+  nombre (también en `0x102D → 0x2619`), uuid, identificador de 8 bytes, identificadores de
+  parámetros, uuids tras `FF 7F` y el número siguiente del `0x2015`; conserva su entrada y su salida
+  (Pro Tools deja sin entrada al auxiliar que crea). Si la sesión no tiene un auxiliar del mismo
+  ancho, da error.
 - **Quitar una pista de audio** [verificado en Pro Tools 12: comparado con una pista borrada en Pro
   Tools sobre la misma sesión guardada de nuevo sin cambios, y abriendo, guardando de nuevo y
   cerrando las sesiones de trarin]. Es lo inverso de crearla:
@@ -280,6 +291,9 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
   Las regiones y archivos de la pista quedan en la lista de clips. Pro Tools también borra las
   definiciones de fundidos `0x2630` que dejan de usarse; trarin las deja, y Pro Tools abre la
   sesión igual.
+- **Quitar una pista auxiliar** [verificado en Pro Tools 12; quitar el auxiliar creado por Pro Tools
+  deja la misma estructura que antes de crearlo]: como una pista de audio, sin playlists y sin
+  cambiar `0x202C`. Las pistas que envían a su bus siguen enviando al bus.
 - **Quitar una pista MIDI** [verificado del mismo modo en Pro Tools 12]: lo mismo en `0x2519`,
   el canal (`0x2620`), los `0x2015`, los grupos `0x202A`, las tiras y el índice (lista de
   `0x1058` en vez de `0x1015`/`0x1054`); `0x202C` no cambia. Además:

@@ -477,7 +477,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
 
 
 def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
-    """Quita primero las pistas que faltan en el modelo (de audio o MIDI) en una
+    """Quita primero las pistas que faltan en el modelo (de audio, MIDI o auxiliares) en una
     copia temporal y después aplica sobre esa copia el resto de los cambios."""
     import os
     import tempfile
@@ -486,8 +486,8 @@ def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
     from .protools.pistas_quitar import quitar_pistas
     from .protools.reconstruccion import cifrar
     for p in quitadas:
-        if p["tipo"] not in ("audio", "midi"):
-            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio o MIDI ({p['id']!r})")
+        if p["tipo"] not in ("audio", "midi", "retorno"):
+            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio, MIDI o auxiliares ({p['id']!r})")
     d = quitar_pistas(leer_descifrado(plantilla), [p["id"] for p in quitadas])
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
@@ -501,14 +501,15 @@ def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
 
 def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
     """Crea primero las pistas nuevas (audio mono o estéreo según 'canales', a
-    partir de una pista mono existente, o MIDI con tipo 'midi'; vacías) en una copia temporal y después aplica sobre
+    partir de una pista mono existente; MIDI con tipo 'midi'; auxiliares con tipo
+    'retorno', copia de un auxiliar de la sesión; vacías) en una copia temporal y después aplica sobre
     esa copia el resto de los cambios, incluidos los clips y la mezcla de las
     pistas nuevas."""
     import os
     import tempfile
     from .protools import leer
     from .protools.descifrado import leer_descifrado
-    from .protools.pistas_nuevas import agregar_pistas, agregar_pistas_midi
+    from .protools.pistas_nuevas import agregar_auxiliares, agregar_pistas, agregar_pistas_midi
     from .protools.reconstruccion import cifrar
     usados = {p["nombre"] for p in original["pistas"]}
     nombres = []
@@ -517,14 +518,22 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         if not nombre or nombre in usados:
             raise ErrorComun(f"Pro Tools: una pista nueva necesita un nombre no repetido ({nombre!r})")
         tipo = p.get("tipo", "audio")
-        if not (tipo == "midi" or (tipo == "audio" and p.get("canales", 1) in (1, 2))):
-            raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio mono o estéreo, o MIDI")
+        canales = p.get("canales", 2 if tipo == "retorno" else 1)
+        if not (tipo == "midi" or (tipo in ("audio", "retorno") and canales in (1, 2))):
+            raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio o auxiliares "
+                             "(mono o estéreo), o MIDI")
+        if tipo == "retorno" and p.get("clips"):
+            raise ErrorComun(f"Pro Tools: un auxiliar no lleva clips ({nombre!r})")
         usados.add(nombre)
-        nombres.append((tipo, nombre, p.get("canales", 1)))
+        nombres.append((tipo, nombre, canales))
     d = leer_descifrado(plantilla)
     for tipo, nombre, canales in nombres:
-        d = (agregar_pistas_midi(d, [nombre]) if tipo == "midi"
-             else agregar_pistas(d, [(nombre, canales)]))
+        if tipo == "midi":
+            d = agregar_pistas_midi(d, [nombre])
+        elif tipo == "retorno":
+            d = agregar_auxiliares(d, [(nombre, canales)])
+        else:
+            d = agregar_pistas(d, [(nombre, canales)])
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
         with os.fdopen(fd, "wb") as f:
@@ -539,7 +548,8 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
                 if p.get("tipo") == "midi":
                     mezcla = dict(b["mezcla"])
                 else:
-                    paneo = [-1.0, 1.0] if p.get("canales", 1) == 2 else 0.0
+                    canales = p.get("canales", 2 if p.get("tipo") == "retorno" else 1)
+                    paneo = [-1.0, 1.0] if canales == 2 else 0.0
                     mezcla = dict(b["mezcla"], volumen_db=0.0, paneo=paneo, mute=False)
                 mezcla.update({k: v for k, v in (p.get("mezcla") or {}).items() if v is not None})
                 p = dict(b, mezcla=mezcla, clips=p.get("clips", []))
