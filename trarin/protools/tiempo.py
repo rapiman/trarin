@@ -118,3 +118,15 @@ def compas_tiempo(tick, compases):
     compas = vigente["compas"] + resto // t_compas
     resto %= t_compas
     return f"{compas}|{resto // t_tiempo + 1}|{(resto % t_tiempo) * 960 // TICKS_NEGRA:03d}"
+
+
+def tick_de_segundos(seg, tempo):
+    """Inversa de segundos(): el tick que cae en 'seg' (búsqueda binaria)."""
+    bajo, alto = -10 ** 11, 10 ** 13
+    while alto - bajo > 1:
+        medio = (bajo + alto) // 2
+        if segundos(medio, tempo) < seg:
+            bajo = medio
+        else:
+            alto = medio
+    return alto
