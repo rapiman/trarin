@@ -160,6 +160,21 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="")
     avisos = []
     reemplazos = []
 
+    # buses estéreo que usa la pista de origen y no existen en d: se crean
+    nuevos_buses = []
+    for ident, nom in _referencias(d_origen, sb_o):
+        if tabla_o.clase(ident) != 2 or tabla.buscar(2, nom) is not None:
+            continue
+        par = _par_estereo(d_origen, bo, nom)
+        if par and par not in nuevos_buses and tabla.buscar(2, par) is None:
+            nuevos_buses.append(par)
+    if nuevos_buses:
+        for n in nuevos_buses:
+            d = crear_bus(d, n)
+            avisos.append(f"{pista}: se creó el bus «{n}»")
+        b = arbol(d)
+        sb, tabla = _canal(d, b, pista), _Tabla(d, b)
+
     # entrada
     ei, ef = _entrada(d, sb)
     oi, of = _entrada(d_origen, sb_o)
@@ -175,6 +190,17 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="")
             campo[p - oi + 8:p - oi + 16] = nuevo
     if campo is not None and bytes(campo) != bytes(d[ei:ef]):
         reemplazos.append((ei, ef, bytes(campo)))
+        # tras el 0x102D del canal: u8 (1 = entrada de dos canales), u16 número
+        # global de la ruta de entrada (FFFF = ninguna) y u8 1
+        cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+        cab_o = next(h for h in sb_o.hijos if h.tipo_contenido == 0x102D)
+        ancho, num = d_origen[cab_o.fin], struct.unpack_from("<H", d_origen, cab_o.fin + 1)[0]
+        nid = bytes(campo[p - oi + 8:p - oi + 16]) if campo[p - oi + 4:p - oi + 8] == b"\x2a\x00\x00\x00" else None
+        if nid is not None and num != 0xFFFF:
+            num = _numero_ruta(d, b, nid)
+            if num is None:
+                raise ErrorPista(f"{pista}: no se reconoce la numeración de la entrada «{nombre}»")
+        reemplazos.append((cab.fin, cab.fin + 3, bytes([ancho]) + struct.pack("<H", num)))
 
     # faders: el del canal y los envíos
     fs_o, ti, tf, _ = _faders(d_origen, sb_o)
@@ -217,6 +243,53 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="")
     reemplazos.append((di, df, bytes(tramo), sb.pos))
     d = reconstruir(d, reemplazos)
     return (_correr(d, pista, desplazamiento) if desplazamiento else d), avisos
+
+
+def _numero_ruta(d, bloques, ident):
+    """Número global de una ruta: el de su entrada en 0x1022 para las entradas
+    (clase 00), y para salidas y buses el de su entrada en 0x2603 más la
+    diferencia que usan las mitades (b) de esa lista. None si no se reconoce."""
+    L1, L2 = _primero(bloques, 0x1022), _primero(bloques, 0x2603)
+    e1 = [h for h in (L1.hijos if L1 else []) if h.tipo_contenido == 0x1021]
+    e2 = [h for h in (L2.hijos if L2 else []) if h.tipo_contenido == 0x2602]
+    i = next((k for k, h in enumerate(e1) if _id_de(d, h) == ident), None)
+    if i is not None and d[e1[i].inicio + 2] == 0:
+        return i
+    j = next((k for k, h in enumerate(e2) if _id_de(d, h) == ident), None)
+    difs = {_campos(d, e2[k + 1])[4] - k for k, h in enumerate(e2[:-1])
+            if d[h.inicio + 3] == 1 and d[e2[k + 1].inicio + 3] == 0}
+    if j is None or len(difs) != 1:
+        return None
+    return difs.pop() + j
+
+
+def _referencias(d, sb):
+    """[(identificador, nombre)] de las rutas que usa un canal: su entrada y los
+    destinos de sus faders (salida y envíos)."""
+    out = []
+    oi, _ = _entrada(d, sb)
+    nombre, p = _cadena(d, oi)
+    if d[p + 4:p + 8] == b"\x2a\x00\x00\x00":
+        out.append((bytes(d[p + 8:p + 16]), nombre))
+    for f in _faders(d, sb)[0]:
+        e = next((h for h in f.hijos if h.tipo_contenido == 0x260E), None)
+        if e is not None:
+            _, ident, nom = _destino_260e(d, e)
+            if ident is not None:
+                out.append((ident, nom))
+    return out
+
+
+def _par_estereo(d, bloques, nombre):
+    """Nombre del bus estéreo (par de 0x1022) al que pertenece la ruta
+    'nombre' (él mismo o su mitad .L/.R), o None si es mono o no se reconoce."""
+    L = _primero(bloques, 0x1022)
+    e = {(_campos(d, h)[0], d[h.inicio + 3]): _campos(d, h)[2]
+         for h in (L.hijos if L else []) if h.tipo_contenido == 0x1021 and d[h.inicio + 2] == 2}
+    for n in (nombre, nombre.rsplit(".", 1)[0]):
+        if e.get((n, 1)) == 2 and (n + ".L", 0) in e and (n + ".R", 0) in e:
+            return n
+    return None
 
 
 def _corrida(puntos, desde):
@@ -286,3 +359,188 @@ def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion=""):
             if nuevos != pa:
                 reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
     return (reconstruir(d, reemplazos) if reemplazos else d), avisos
+
+
+def _canal_bloque(d, bloques, nombre):
+    entradas = _lista_2519(d, _primero(bloques, 0x2519))[0]
+    i = next((k for k, e in enumerate(entradas) if e[3] == nombre), None)
+    if i is None:
+        raise ErrorPista(f"no existe la pista {nombre!r}")
+    raiz = _primero(bloques, 0x2624)
+    if raiz is None or len(raiz.hijos) != len(entradas):
+        raise ErrorPista("los canales de mezcla no corresponden con las pistas")
+    return raiz.hijos[i]
+
+
+def copiar_midi(d, pista, d_origen, pista_origen, desplazamiento=0, cancion=""):
+    """Devuelve (d, avisos): d con el canal MIDI (0x2611: valores 0x2036 y
+    automatización) de 'pista' reemplazado por el de 'pista_origen' de
+    d_origen, y la salida MIDI de la pista de origen.
+
+    La salida MIDI es el u32 en +14 del 0x2036: número (desde 1; 0 = ninguna)
+    de una entrada 0x2005 de la lista 0x2004 (u32 cantidad), con el puerto y el
+    canal. Cada pista tiene la suya (si dos la comparten, Pro Tools se cae al
+    cerrar la sesión): la entrada de 'pista' pasa a ser una copia de la de
+    origen; si el origen no tiene salida, se quita y bajan los números
+    mayores de los demás canales."""
+    b, bo = arbol(d), arbol(d_origen)
+    c, c_o = _canal_bloque(d, b, pista), _canal_bloque(d_origen, bo, pista_origen)
+    m = next((h for h in c.hijos if h.tipo_contenido == 0x2611), None)
+    m_o = next((h for h in c_o.hijos if h.tipo_contenido == 0x2611), None)
+    if m is None or m_o is None:
+        raise ErrorPista(f"{pista}: canal MIDI sin 0x2611")
+    p = next((h for h in m.hijos if h.tipo_contenido == 0x2036), None)
+    p_o = next((h for h in m_o.hijos if h.tipo_contenido == 0x2036), None)
+    if p is None or p_o is None:
+        raise ErrorPista(f"{pista}: canal MIDI sin 0x2036")
+    nuevo = bytearray(d_origen[m_o.pos:m_o.fin])
+    avisos, reemplazos = [], []
+    k_o = struct.unpack_from("<I", d_origen, p_o.inicio + 14)[0]
+    k = struct.unpack_from("<I", d, p.inicio + 14)[0]
+    L = _primero(b, 0x2004)
+    ld = [h for h in (L.hijos if L else []) if h.tipo_contenido == 0x2005]
+    lo = [h for h in (_primero(bo, 0x2004) or _Vacio).hijos if h.tipo_contenido == 0x2005]
+    if k_o > len(lo) or k > len(ld):
+        raise ErrorPista(f"{pista}: salida MIDI no reconocida")
+    if k_o and k:                                   # la entrada propia pasa a ser la de origen
+        reemplazos.append((ld[k - 1].pos, ld[k - 1].fin, bytes(d_origen[lo[k_o - 1].pos:lo[k_o - 1].fin]), L.pos))
+        struct.pack_into("<I", nuevo, p_o.inicio + 14 - m_o.pos, k)
+    elif k_o:                                       # la pista no tenía: se agrega al final
+        cant = struct.unpack_from("<I", d, L.inicio + 2)[0]
+        if cant != len(ld):
+            raise ErrorPista("lista de salidas MIDI (0x2004) no reconocida")
+        punto = ld[-1].fin if ld else L.inicio + 6
+        reemplazos.append((L.inicio + 2, L.inicio + 6, struct.pack("<I", cant + 1)))
+        reemplazos.append((punto, punto, bytes(d_origen[lo[k_o - 1].pos:lo[k_o - 1].fin]), L.pos))
+        struct.pack_into("<I", nuevo, p_o.inicio + 14 - m_o.pos, len(ld) + 1)
+    elif k:                                         # el origen no tiene salida: se quita la propia
+        refs = [x for ch in _primero(b, 0x2624).hijos if ch.tipo_contenido in (0x2620, 0x2621)
+                for x in buscar([ch], 0x2036)]          # solo los de canales MIDI
+        if any(struct.unpack_from("<I", d, x.inicio + 14)[0] == k for x in refs if x.pos != p.pos):
+            raise ErrorPista(f"{pista}: su salida MIDI la usa otro canal")
+        cant = struct.unpack_from("<I", d, L.inicio + 2)[0]
+        reemplazos.append((L.inicio + 2, L.inicio + 6, struct.pack("<I", cant - 1)))
+        reemplazos.append((ld[k - 1].pos, ld[k - 1].fin, b"", L.pos))
+        for x in refs:
+            v = struct.unpack_from("<I", d, x.inicio + 14)[0]
+            if x.pos != p.pos and v > k:
+                reemplazos.append((x.inicio + 14, x.inicio + 18, struct.pack("<I", v - 1)))
+    reemplazos.append((m.pos, m.fin, bytes(nuevo), c.pos))
+    d = reconstruir(d, reemplazos)
+    if desplazamiento:
+        b = arbol(d)
+        m = next(h for h in _canal_bloque(d, b, pista).hijos if h.tipo_contenido == 0x2611)
+        r = []
+        for a in buscar([m], 0x260A):
+            _, pts = _puntos(d, a)
+            nuevos = _corrida(pts, desplazamiento)
+            if nuevos != pts:
+                r.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
+        if r:
+            d = reconstruir(d, r)
+    return d, avisos
+
+
+class _Vacio:
+    hijos = []
+
+
+def _campos(d, h):
+    """(nombre, posición de u32 canales, canales, a, b) de una entrada 0x1021/0x2602."""
+    nombre, p = _cadena(d, h.inicio + 4)
+    nch = struct.unpack_from("<I", d, p)[0]
+    a, b = struct.unpack_from("<HH", d, p + 4)
+    return nombre, p, nch, a, b
+
+
+def _id_de(d, h):
+    q = d.find(b"\x2a\x00\x00\x00", _campos(d, h)[1], h.fin)
+    return bytes(d[q + 4:q + 12])
+
+
+def _entrada_nueva(d, h, nombre, a, b, ids):
+    """Bytes de una copia de la entrada h (bloque entero) con otro nombre (y el
+    nombre corto del final, si lo tiene), canales a y b, y los identificadores
+    cambiados según 'ids' {viejo: nuevo}."""
+    viejo, p, _, _, _ = _campos(d, h)
+    x = bytearray(d[h.pos:h.fin])
+    off = h.pos
+    cola = bytearray(x[p - off:])
+    struct.pack_into("<HH", cola, 4, a, b)
+    for v, n in ids.items():
+        cola = cola.replace(b"\x2a\x00\x00\x00" + v, b"\x2a\x00\x00\x00" + n)
+    vb, nb = viejo.encode("utf-8"), nombre.encode("utf-8")
+    k = cola.rfind(struct.pack("<I", len(vb)) + vb)
+    if k > 0:                                     # nombre corto al final (0x1021)
+        cola = cola[:k] + struct.pack("<I", len(nb)) + nb + cola[k + 4 + len(vb):]
+    cuerpo = bytes(x[:h.inicio + 4 - off]) + struct.pack("<I", len(nb)) + nb + bytes(cola)
+    cuerpo = bytearray(cuerpo)
+    struct.pack_into("<I", cuerpo, 3, struct.unpack_from("<I", cuerpo, 3)[0] + len(cuerpo) - len(x))
+    return bytes(cuerpo)
+
+
+def crear_bus(d, nombre):
+    """Devuelve d con un bus estéreo nuevo 'nombre' (con sus mitades
+    'nombre.L' y 'nombre.R'), como lo crea Pro Tools 12 (v5_plugin → v6_envio):
+
+    * tres entradas en 0x1022 (par y mitades) tras el último bus, y en las
+      mitades de los inserts (que van después) el u16 b, que es el número de
+      su par en la lista, sube en 3;
+    * tres entradas al final de 0x2603;
+    * a y b del par: los canales (siguientes al mayor usado en 0x2603); b de
+      las mitades: el número del par en 0x2603 más la diferencia que tienen
+      las demás mitades de buses y salidas;
+    * identificadores nuevos; el índice 0x0002 no cambia.
+    La plantilla es el último bus estéreo de la sesión."""
+    from .pistas_nuevas import _id_nuevo
+    bl = arbol(d)
+    L1, L2 = _primero(bl, 0x1022), _primero(bl, 0x2603)
+    if L1 is None or L2 is None:
+        raise ErrorPista("la sesión no tiene las listas de rutas (0x1022/0x2603)")
+    e1 = [h for h in L1.hijos if h.tipo_contenido == 0x1021]
+    e2 = [h for h in L2.hijos if h.tipo_contenido == 0x2602]
+    if any(_campos(d, h)[0] == nombre for h in e1 + e2):
+        raise ErrorPista(f"ya existe la ruta {nombre!r}")
+    for L, e in ((L1, e1), (L2, e2)):
+        if struct.unpack_from("<I", d, L.inicio + 2)[0] != len(e):
+            raise ErrorPista(f"lista de rutas 0x{L.tipo_contenido:04x} no reconocida")
+    # plantilla: último par de bus (clase 02, 2 canales) seguido de sus dos mitades
+    k = max((i for i, h in enumerate(e1[:-2]) if d[h.inicio + 2] == 2 and d[h.inicio + 3] == 1
+             and _campos(d, h)[2] == 2 and d[e1[i + 1].inicio + 2] == 2 and d[e1[i + 2].inicio + 2] == 2),
+            default=None)
+    if k is None:
+        raise ErrorPista("la sesión no tiene un bus estéreo que sirva de plantilla")
+    t1 = e1[k:k + 3]
+    ids_t = [_id_de(d, h) for h in t1]
+    k2 = next((i for i, h in enumerate(e2[:-2]) if _id_de(d, h) == ids_t[0]), None)
+    if k2 is None:
+        raise ErrorPista("el bus de plantilla no está en 0x2603")
+    t2 = e2[k2:k2 + 3]
+    # diferencia entre b de una mitad y el número de su par en 0x2603
+    difs = {_campos(d, e2[i + 1])[4] - i for i, h in enumerate(e2[:-1])
+            if d[h.inicio + 3] == 1 and d[e2[i + 1].inicio + 3] == 0}
+    if len(difs) != 1:
+        raise ErrorPista("numeración de la lista 0x2603 no reconocida")
+    dif = difs.pop()
+    a1 = max(_campos(d, h)[3] for h in e2) + 1
+    b_mitad = dif + len(e2)
+    par = _id_nuevo(d, ids_t[0])
+    izq = _id_nuevo(d, ids_t[1], (par,))
+    der = _id_nuevo(d, ids_t[2], (par, izq))
+    ids = {ids_t[0]: par, ids_t[1]: izq, ids_t[2]: der}
+    nombres = [nombre, nombre + ".L", nombre + ".R"]
+    ab = [(a1, a1 + 1), (a1, b_mitad), (a1 + 1, b_mitad)]
+    nuevos1 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t1, nombres, ab))
+    nuevos2 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t2, nombres, ab))
+    # tras el último bus de 0x1022
+    ultimo = max(i for i, h in enumerate(e1) if d[h.inicio + 2] == 2)
+    reemplazos = [(L1.inicio + 2, L1.inicio + 6, struct.pack("<I", len(e1) + 3)),
+                  (e1[ultimo].fin, e1[ultimo].fin, nuevos1, L1.pos),
+                  (L2.inicio + 2, L2.inicio + 6, struct.pack("<I", len(e2) + 3)),
+                  (e2[-1].fin, e2[-1].fin, nuevos2, L2.pos)]
+    for h in e1[ultimo + 1:]:
+        if d[h.inicio + 3] == 0:                     # mitad: b es el número de su par
+            _, p, _, _, b = _campos(d, h)
+            if b > ultimo:
+                reemplazos.append((p + 6, p + 8, struct.pack("<H", b + 3)))
+    return reconstruir(d, reemplazos)

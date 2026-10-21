@@ -310,7 +310,8 @@ def armar(show, salida=None):
     from .comun import leer_comun, aplicar
     from .protools.descifrado import leer_descifrado
     from .protools.inserts import copiar_inserts, plugins_de
-    from .protools.ruteo import copiar_ruteo, juntar_automatizacion
+    from .protools.pistas_nuevas import agregar_auxiliares
+    from .protools.ruteo import copiar_midi, copiar_ruteo, juntar_automatizacion
     from .protools.reconstruccion import cifrar
     salida = Path(salida or show.get("salida") or "")
     if not str(salida) or salida.suffix.lower() != ".ptx":
@@ -334,6 +335,7 @@ def armar(show, salida=None):
             comun["marcadores"].append(dict(m))
     pistas_show = comun["pistas"]
     anchos_aux = {_canales(q) for q in pistas_show if q["tipo"] == "retorno"}
+    externos = {}                   # auxiliares copiados de la canción (sin plantilla en la base): canales
     copias = []     # (nueva?, nombre en el show, sesión, pista de origen, tipo, muestra de inicio, canción)
     for i in range(desde, len(canciones)):
         tema = plan["_temas"][i]
@@ -349,14 +351,15 @@ def armar(show, salida=None):
                 continue
             dest = _destino(p, cancion, None, pistas_show, show.get("match"))
             if dest is None:
-                if p["tipo"] == "retorno" and _canales(p) not in anchos_aux:
-                    avisos.append(f"{cancion}: el auxiliar {p['nombre']!r} no se copia (la base no tiene un "
-                                  f"auxiliar {'estéreo' if _canales(p) == 2 else 'mono'} que sirva de plantilla)")
-                    continue
                 nombre = p["nombre"]
-                usados = {q["nombre"] for q in pistas_show}
+                usados = {q["nombre"] for q in pistas_show} | set(externos)
                 if nombre in usados:
                     nombre = f"{p['nombre']} ({cancion})"
+                if p["tipo"] == "retorno" and _canales(p) not in anchos_aux:
+                    # la base no tiene un auxiliar de ese ancho: se copia el de la canción
+                    externos[nombre] = _canales(p)
+                    copias.append((True, nombre, sesion, p["nombre"], "retorno_externo", ini_m, cancion))
+                    continue
                 m = p.get("mezcla") or {}
                 q = {"nombre": nombre, "tipo": p["tipo"], "canales": _canales(p), "clips": [],
                      "mezcla": {k: m.get(k) for k in ("volumen_db", "paneo", "mute") if m.get(k) is not None}}
@@ -375,13 +378,23 @@ def armar(show, salida=None):
         d = leer_descifrado(str(intermedia))
         origenes = {}
         for nueva, nombre, sesion, pista, tipo, ini_m, cancion in copias:
-            if tipo == "midi":
-                if nueva:
-                    avisos.append(f"{nombre}: pista MIDI: todavía no se copian sus plugins, ruteo ni automatización")
-                continue
             if sesion not in origenes:
                 origenes[sesion] = leer_descifrado(sesion)
             o = origenes[sesion]
+            if tipo == "midi":
+                if nueva:                               # salida MIDI, valores y automatización
+                    try:
+                        d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion)
+                        avisos += av
+                    except Exception as e:
+                        avisos.append(f"{nombre}: no se copió la salida MIDI ni la automatización ({e})")
+                continue
+            if tipo == "retorno_externo":
+                try:
+                    d = agregar_auxiliares(d, [(nombre, externos[nombre])], externa=(o, pista))
+                except Exception as e:
+                    avisos.append(f"{cancion}: el auxiliar {pista!r} no se copia ({e})")
+                    continue
             if not nueva:
                 try:
                     d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion)

@@ -439,6 +439,19 @@ corpus de 145 sesiones]:
   último fader: la lista de identificadores se busca desde el último `0x260D`.
 - Copiar el ruteo de un canal a otro es traducir los identificadores por clase y nombre de la ruta
   y reemplazar la entrada y el tramo de faders; el índice no cambia.
+- Número global de una ruta: en las entradas (clase 00), su lugar en `0x1022`; en salidas y buses,
+  su lugar en `0x2603` más una diferencia fija (las mitades de un par llevan en b ese número del
+  par; en las mitades de entradas e inserts, b es el lugar del par en `0x1022`). Tras el `0x102D` de
+  cada `0x261B` van u8 (1 = entrada de dos canales), u16 número global de la ruta de entrada
+  (FFFF = ninguna) y u8 1 [963 de 963 canales del corpus; Pro Tools lo recalcula al guardar].
+- Bus nuevo (Pro Tools 12, v5_plugin → v6_envio): par y mitades (`Aux 1`, `Aux 1.L`, `Aux 1.R`) tras
+  el último bus de `0x1022` y al final de `0x2603`; a y b del par son sus canales (los siguientes
+  al mayor de `0x2603`); b de las mitades, el número global del par; en las mitades de los
+  inserts, que quedan después, b sube en 3. `ruteo.crear_bus` reproduce esas listas byte a byte
+  (salvo los identificadores nuevos).
+- Salida MIDI: u32 en +14 del `0x2036` del canal MIDI (`0x2611`), número desde 1 de una entrada
+  `0x2005` de `0x2004` (0 = ninguna). Cada canal tiene la suya: si dos la comparten, Pro Tools se
+  cae al cerrar la sesión.
 
 ## 11. Otros bloques identificados, sin decodificar
 
