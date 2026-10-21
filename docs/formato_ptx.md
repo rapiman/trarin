@@ -142,6 +142,10 @@ En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
   a un fundido, `0` = a una región [verificado]. En PT 12.5 ese byte cierra el `0x1050`; en
   12.8, 2019 y 2026 le sigue otro byte (`01`).
 
+  **Escritura** [verificado en Pro Tools 12]: mover una región cambia la muestra del ancla en cada canal
+  y la de sus fundidos de entrada y salida; silenciarla cambia el byte de mute. Ambos son de tamaño
+  fijo, así que no hace falta reconstruir la sesión.
+
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 
 Lista con u32 cantidad. Cada geometría:
@@ -184,6 +188,9 @@ muestra Pro Tools].
 - Entrada: primera cadena propia del `0x261B`.
 - Faders `0x260D`: el primero es el principal (volumen int32/10 en +3, mute en +7, paneo en +15 y +43,
   salida = última cadena del `0x260E`); los siguientes son envíos.
+- Escritura de volumen, mute y paneo [verificado en Pro Tools 12]: además del valor en `0x1029`, Pro Tools
+  repite el valor fijo como único punto de la lista de automatización del parámetro; trarin actualiza
+  ese punto. Si la lista tiene más de un punto, el parámetro está automatizado y trarin no lo cambia.
 - Automatización `0x260A`: u32 cantidad en +12, ancho u16 en +16, puntos desde +24
   (u32 muestra + valor con signo). Orden directo: volumen (déci-dB), mute, desconocido; dentro de
   `0x260C`: paneo izquierdo y derecho [verificado]. pt_api describe el mismo bloque con marca
