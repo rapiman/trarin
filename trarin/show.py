@@ -47,7 +47,7 @@ class ErrorShow(Exception):
 
 
 def cargar(ruta):
-    texto = Path(ruta).read_text(encoding="utf-8")
+    texto = Path(ruta).read_text(encoding="utf-8-sig")   # acepta el BOM de Windows
     if str(ruta).lower().endswith((".yaml", ".yml")):
         try:
             import yaml
@@ -301,12 +301,16 @@ def armar(show, salida=None):
     tempo, los compases y los marcadores del show). Cada pista de las demás
     canciones va a la pista del show que indique el match (por defecto, la del
     mismo nombre, tipo y canales); si no hay, se crea una pista nueva con la
-    mezcla y los plugins de la pista de la canción."""
+    mezcla, los plugins, el ruteo (entrada, salida y envíos, buscados por
+    nombre en la base) y la automatización de la pista de la canción. En las
+    pistas que ya existen, la automatización de la canción reemplaza a la de
+    la pista desde el comienzo de la canción."""
     import os
     import tempfile
     from .comun import leer_comun, aplicar
     from .protools.descifrado import leer_descifrado
     from .protools.inserts import copiar_inserts, plugins_de
+    from .protools.ruteo import copiar_ruteo, juntar_automatizacion
     from .protools.reconstruccion import cifrar
     salida = Path(salida or show.get("salida") or "")
     if not str(salida) or salida.suffix.lower() != ".ptx":
@@ -329,7 +333,8 @@ def armar(show, salida=None):
         if (m["nombre"], m["tick"]) not in existentes:
             comun["marcadores"].append(dict(m))
     pistas_show = comun["pistas"]
-    nuevas = []                     # (nombre en el show, sesión de origen, pista de origen)
+    anchos_aux = {_canales(q) for q in pistas_show if q["tipo"] == "retorno"}
+    copias = []     # (nueva?, nombre en el show, sesión, pista de origen, tipo, muestra de inicio, canción)
     for i in range(desde, len(canciones)):
         tema = plan["_temas"][i]
         cs, sesion = tema["comun"], canciones[i]["sesion"]
@@ -344,6 +349,10 @@ def armar(show, salida=None):
                 continue
             dest = _destino(p, cancion, None, pistas_show, show.get("match"))
             if dest is None:
+                if p["tipo"] == "retorno" and _canales(p) not in anchos_aux:
+                    avisos.append(f"{cancion}: el auxiliar {p['nombre']!r} no se copia (la base no tiene un "
+                                  f"auxiliar {'estéreo' if _canales(p) == 2 else 'mono'} que sirva de plantilla)")
+                    continue
                 nombre = p["nombre"]
                 usados = {q["nombre"] for q in pistas_show}
                 if nombre in usados:
@@ -352,11 +361,12 @@ def armar(show, salida=None):
                 q = {"nombre": nombre, "tipo": p["tipo"], "canales": _canales(p), "clips": [],
                      "mezcla": {k: m.get(k) for k in ("volumen_db", "paneo", "mute") if m.get(k) is not None}}
                 pistas_show.append(q)
-                nuevas.append((nombre, sesion, p["nombre"], p["tipo"]))
+                copias.append((True, nombre, sesion, p["nombre"], p["tipo"], ini_m, cancion))
             else:
                 q = next((x for x in pistas_show if x["nombre"] == dest), None)
                 if q is None:
                     raise ErrorShow(f"match de {cancion}: no existe la pista del show {dest!r}")
+                copias.append((False, dest, sesion, p["nombre"], p["tipo"], ini_m, cancion))
             for c in p["clips"]:
                 q["clips"].append(_clip_al_show(c, i, plan, ini_m, archivos, sesion, comun))
     with tempfile.TemporaryDirectory(dir=str(salida.parent)) as tmp:
@@ -364,16 +374,31 @@ def armar(show, salida=None):
         aplicar(comun, base, str(intermedia))
         d = leer_descifrado(str(intermedia))
         origenes = {}
-        for nombre, sesion, pista, tipo in nuevas:
+        for nueva, nombre, sesion, pista, tipo, ini_m, cancion in copias:
             if tipo == "midi":
+                if nueva:
+                    avisos.append(f"{nombre}: pista MIDI: todavía no se copian sus plugins, ruteo ni automatización")
                 continue
             if sesion not in origenes:
                 origenes[sesion] = leer_descifrado(sesion)
+            o = origenes[sesion]
+            if not nueva:
+                try:
+                    d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion)
+                    avisos += av
+                except Exception as e:
+                    avisos.append(f"{nombre}: no se copió la automatización de {cancion} ({e})")
+                continue
             try:
-                if plugins_de(origenes[sesion], pista):
-                    d = copiar_inserts(d, nombre, origenes[sesion], pista)
+                if plugins_de(o, pista):
+                    d = copiar_inserts(d, nombre, o, pista)
             except Exception as e:                      # se avisa y se sigue sin esos plugins
                 avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
+            try:
+                d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion)
+                avisos += av
+            except Exception as e:                      # se avisa y se sigue con el de la plantilla
+                avisos.append(f"{nombre}: no se copió el ruteo ni la automatización ({e})")
         salida.write_bytes(cifrar(d))
     return salida, avisos
 

@@ -36,7 +36,11 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   positiva, la primera mitad lleva el tempo de la canción que termina y la segunda el de la que
   empieza, con el cambio de tempo una blanca antes del inicio (configurable); con separación negativa
   el tempo cambia en la mitad de la zona encimada.
-- Mezcla de pistas juntadas: por ahora gana la de la primera canción; después, automatización.
+- Mezcla de pistas juntadas: los valores fijos son los de la primera canción; la automatización de
+  cada canción reemplaza a la de la pista desde el comienzo de esa canción.
+- Ruteo: las pistas nuevas llevan la entrada, la salida y los envíos de su pista de origen,
+  buscados por nombre en la base (`protools/ruteo.py`); un bus con el mismo nombre en dos canciones
+  queda como un solo bus. Lo que no existe en la base no se copia (se avisa).
 - Plugins: se copian los inserts de cada pista de la canción a su pista del show
   (`protools/inserts.py`, con el estado de cada plugin); la consulta avisa qué plugins faltan.
 - Plan de tiempo (`show.py`, `trarin show plan`): inicio de cada canción, mapa de tempo, compases y
@@ -47,13 +51,15 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   compases y los marcadores del plan; cada pista de las demás canciones va a la pista del show que
   indique `match` (`{canción: {pista: pista del show o null}}`) o, por defecto, a la del mismo nombre,
   tipo y canales (o nombre parecido, si hay una sola); si no hay, se crea una pista nueva (audio,
-  MIDI o auxiliar) con la mezcla y los plugins de la pista de la canción. Los clips de audio apuntan
+  MIDI o auxiliar) con la mezcla, los plugins, el ruteo y la automatización (corrida al inicio de la
+  canción) de la pista de la canción. Los clips de audio apuntan
   a los archivos originales de cada canción (carpeta «Audio Files»), con sus fundidos; los clips MIDI
   llevan sus notas. Las sesiones originales no se tocan. Hay que correrlo en el computador donde
   están los archivos de audio (Pro Tools necesita sus identificadores). Verificado en Pro Tools 12
-  juntando dos canciones (35 pistas): abre, guarda de nuevo sin perder nada y cierra. Aún no:
-  pistas de instrumento, envíos y ruteo de las pistas nuevas (usan el de la plantilla), y la
-  automatización de las canciones que no son la base.
+  juntando dos canciones (35 pistas): abre, guarda de nuevo sin perder nada y cierra; con el ruteo
+  y la automatización copiados, Pro Tools guarda de nuevo las mismas entradas, salidas y puntos. Aún no:
+  pistas de instrumento, plugins, ruteo y automatización de las pistas MIDI, buses que no están
+  en la base y auxiliares sin un auxiliar de la base del mismo ancho que sirva de plantilla.
 - Los fundidos de los clips son obligatorios.
 
 ## Principios
