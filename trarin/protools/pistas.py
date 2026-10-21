@@ -103,9 +103,37 @@ def leer_regiones_audio(d, bloques):
     return regiones
 
 
-def leer_pistas_audio(d, bloques, regiones):
-    """Pistas de audio con sus canales y las regiones colocadas en cada canal."""
-    pistas, canales = [], []
+def leer_lista_pistas(d, bloques):
+    """Todas las pistas de la sesión en orden (bloque 0x2519): nombre y tipo.
+
+    El nombre de una pista es el de su playlist activa. La lista aparece dos
+    veces seguidas; se toma la primera mitad."""
+    lista = _primero(bloques, 0x2519)
+    if not lista:
+        return []
+    tipos = {0: "audio", 1: "midi", 2: "auxiliar"}
+    pistas = []
+    for c in lista.hijos:
+        if c.tipo_contenido != 0x251A:
+            continue
+        tipo = struct.unpack_from("<H", d, c.inicio + 2)[0]
+        nombre, _ = _cadena(d, c.inicio + 4)
+        pistas.append({"nombre": nombre, "tipo": tipos.get(tipo, f"0x{tipo:04x}")})
+    mitad = len(pistas) // 2
+    if mitad and pistas[:mitad] == pistas[mitad:]:
+        pistas = pistas[:mitad]
+    return pistas
+
+
+def leer_pistas_audio(d, bloques, regiones, activas=None):
+    """Playlists de audio (bloque 0x1014) con sus canales y regiones colocadas.
+
+    Cada playlist trae los números de sus canales; cada número es la posición
+    de su lista de colocaciones en el mapa 0x1054. 'activas' son los nombres de
+    las pistas actuales (leer_lista_pistas): las playlists con otro nombre son
+    alternativas guardadas y se devuelven aparte.
+    Devuelve (pistas, playlists_inactivas)."""
+    playlists = []
     lista = _primero(bloques, 0x1015)
     if lista:
         for c in lista.hijos:
@@ -115,30 +143,56 @@ def leer_pistas_audio(d, bloques, regiones):
             j += 1
             n = struct.unpack_from("<I", d, j)[0]
             ids = list(struct.unpack_from(f"<{n}H", d, j + 4))
-            pista = {"nombre": nombre, "canales": []}
-            pistas.append(pista)
-            for _ in ids:
-                canal = {"canal": len(pista["canales"]) + 1, "regiones": []}
-                pista["canales"].append(canal)
-                canales.append(canal)
+            playlists.append({"nombre": nombre, "ids": ids})
 
     mapa = _primero(bloques, 0x1054)
-    if mapa:
-        entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052]
-        for canal, c in zip(canales, entradas):
-            for e in c.hijos:
-                if e.tipo_contenido != 0x1050 or d[e.fin - 1] == 1:   # 1 = fade / crossfade
+    entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
+
+    def colocadas(c):
+        out = []
+        for e in c.hijos:
+            if e.tipo_contenido != 0x1050 or d[e.fin - 1] == 1:   # 1 = fade / crossfade
+                continue
+            for f in e.hijos:
+                if f.tipo_contenido != 0x104F:
                     continue
-                for f in e.hijos:
-                    if f.tipo_contenido != 0x104F:
-                        continue
-                    ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
-                    muestra = _entero(d, f.inicio + 9, 5)
-                    if ri < len(regiones):
-                        canal["regiones"].append({"region": regiones[ri]["nombre"], "indice_region": ri,
-                                                  "muestra": muestra})
-            canal["regiones"].sort(key=lambda r: r["muestra"])
-    return pistas
+                ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
+                muestra = _entero(d, f.inicio + 9, 5)
+                if ri < len(regiones):
+                    out.append({"region": regiones[ri]["nombre"], "indice_region": ri, "muestra": muestra})
+        return sorted(out, key=lambda r: r["muestra"])
+
+    pistas, inactivas = [], []
+    for pl in playlists:
+        canales = []
+        for k, i in enumerate(pl["ids"]):
+            regs = colocadas(entradas[i]) if i < len(entradas) else []
+            canales.append({"canal": k + 1, "regiones": regs})
+        item = {"nombre": pl["nombre"], "canales": canales}
+        if activas is None or pl["nombre"] in activas:
+            pistas.append(item)
+        else:
+            inactivas.append(item)
+    return pistas, inactivas
+
+
+def leer_grupos(d, bloques):
+    """Grupos de pistas (bloque 0x202A): nombre e índices de sus pistas en la
+    lista de leer_lista_pistas. <ALL> es el grupo de todas las pistas."""
+    raiz = _primero(bloques, 0x202B)
+    if not raiz:
+        return []
+    grupos = []
+    for g in raiz.hijos:
+        if g.tipo_contenido != 0x202A:
+            continue
+        nombre, p = _cadena(d, g.inicio + 2)
+        n = struct.unpack_from("<I", d, p + 7)[0]
+        miembros = list(struct.unpack_from(f"<{n}H", d, p + 11)) if n < 4096 else []
+        grupo = {"nombre": nombre, "pistas": miembros}
+        if grupo not in grupos:          # la lista aparece repetida
+            grupos.append(grupo)
+    return grupos
 
 
 # ------------------------------------------------------------------- MIDI

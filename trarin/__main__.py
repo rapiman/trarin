@@ -20,6 +20,11 @@ def _resumen(s):
     for p in s["pistas_audio"]:
         n = sum(len(c["regiones"]) for c in p["canales"])
         print(f"  pista audio {p['nombre']!r}: {len(p['canales'])} canal(es), {n} regiones colocadas")
+    for p in s.get("playlists_inactivas", []):
+        print(f"  playlist inactiva {p['nombre']!r}")
+    for g in s.get("grupos", []):
+        if g["nombre"] != "<ALL>":
+            print(f"  grupo {g['nombre']!r}: {', '.join(map(str, g['pistas']))}")
     for p in s["pistas_midi"]:
         print(f"  pista MIDI  {p['nombre']!r}: {len(p['regiones'])} regiones colocadas")
     for c in s.get("mezcla", []):
@@ -28,6 +33,7 @@ def _resumen(s):
         if c.get("solo"): extra.append("solo")
         extra += [i["plugin"] for i in c.get("inserts", [])]
         extra += ["envío a " + str(e["destino"]) for e in c.get("envios", [])]
+        if c.get("color") is not None: extra.append(f"color {c['color']}")
         print(f"  mezcla {c.get('nombre')!r} ({c['tipo']}): {c.get('volumen_db')} dB, paneo {c.get('paneo')} {' · '.join(extra)}")
     for m in s["marcadores"]:
         print(f"  marcador #{m['numero']:<3} {m['posicion']:>12}  {m['nombre']}")

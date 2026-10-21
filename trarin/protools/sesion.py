@@ -57,12 +57,17 @@ def leer(ruta) -> dict:
 
     archivos = P.leer_archivos_audio(d, bloques)
     regiones = P.leer_regiones_audio(d, bloques)
-    pistas_audio = P.leer_pistas_audio(d, bloques, regiones)
+    lista_pistas = P.leer_lista_pistas(d, bloques)
+    nombres = [p["nombre"] for p in lista_pistas]
+    pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None)
+    grupos = P.leer_grupos(d, bloques)
+    for g in grupos:
+        g["pistas"] = [nombres[i] if i < len(nombres) else i for i in g["pistas"]]
     regiones_midi = P.leer_regiones_midi(d, bloques)
     pistas_midi = P.leer_pistas_midi(d, bloques, regiones_midi)
-    mezcla = leer_mezcla(d, bloques, [p["nombre"] for p in pistas_audio])
+    mezcla = leer_mezcla(d, bloques, nombres)
 
-    for p in pistas_audio:
+    for p in pistas_audio + playlists_inactivas:
         for c in p["canales"]:
             for r in c["regiones"]:
                 if fs:
@@ -87,9 +92,12 @@ def leer(ruta) -> dict:
         "compases": [ubicar(e) for e in compases],
         "marcadores": [ubicar(e) for e in marcadores],
         "audio": {"archivos": archivos, "regiones": regiones},
+        "pistas": lista_pistas,
         "pistas_audio": pistas_audio,
+        "playlists_inactivas": playlists_inactivas,
+        "grupos": grupos,
         "midi": {"regiones": regiones_midi},
         "pistas_midi": pistas_midi,
         "mezcla": mezcla,
-        "pendiente": ["puntos de automatización", "ajustes internos de plugins", "ruteo de entradas y salidas", "colores, grupos, playlists alternativas"],
+        "pendiente": ["significado de parámetros en el estado propio de cada plugin", "colores de regiones", "playlists MIDI alternativas"],
     }
