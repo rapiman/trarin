@@ -388,7 +388,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         tempo = [{"tick": t["tick"], "bpm": t["bpm"]} for t in comun["tempo"]]
         if tempo[0]["tick"] != original["tempo"][0]["tick"]:
             raise ErrorComun("Pro Tools: el primer evento de tempo no se puede mover")
-    marcadores = _cambios_marcadores_pt(comun["marcadores"], original["marcadores"])
+    marcadores, altas, bajas = _cambios_marcadores_pt(comun["marcadores"], original["marcadores"])
     fs = nativo["origen"].get("frecuencia_muestreo") or 48000
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
@@ -432,24 +432,35 @@ def _a_protools(comun, original, nativo, plantilla, salida):
             if cambio:
                 j = int(c["id"].rsplit("#", 1)[1])
                 regiones.setdefault(p["id"], {})[j] = cambio
-    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi)
+    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
+                            marcadores_nuevos=altas, marcadores_borrados=bajas)
 
 
 def _cambios_marcadores_pt(nuevos, originales):
-    """Nombre, inicio y fin de marcadores existentes (se identifican por 'id')."""
+    """Cambios en marcadores existentes (por 'id'), marcadores nuevos (sin 'id'
+    o con un 'id' que no existía) y marcadores borrados (los que faltan)."""
     orig = {m["id"]: m for m in originales}
-    if set(orig) != {m["id"] for m in nuevos} or len(nuevos) != len(originales):
-        raise ErrorComun("Pro Tools: agregar o quitar marcadores aún no está soportado")
-    cambios = {}
+    cambios, altas = {}, []
+    vistos = set()
     for m in nuevos:
-        o = orig[m["id"]]
+        o = orig.get(m.get("id"))
+        if o is None or m.get("id") in vistos:
+            if m.get("fin_tick") is not None:
+                raise ErrorComun("Pro Tools: crear selecciones (marcadores con fin) aún no está soportado")
+            if not m.get("nombre") or m.get("tick") is None or m["tick"] < 0:
+                raise ErrorComun("Pro Tools: un marcador nuevo necesita 'nombre' y 'tick'")
+            altas.append({"nombre": m["nombre"], "tick": m["tick"], "comentario": m.get("comentario")})
+            continue
+        vistos.add(m["id"])
         cambio = {k: m.get(k) for k in ("nombre", "tick", "fin_tick", "comentario") if m.get(k) != o.get(k)}
         if "fin_tick" in cambio and "fin_tick" not in o:
             raise ErrorComun(f"Pro Tools: el marcador {m['id']} no es una selección; no tiene fin")
         if cambio:
             cambios[m["id"]] = cambio
-    return cambios
-
+    bajas = [i for i in orig if i not in vistos]
+    if any(not isinstance(i, int) for i in bajas):
+        raise ErrorComun("Pro Tools: no se puede identificar un marcador a borrar")
+    return cambios, altas, bajas
 
 def _sin(x):
     return {k: v for k, v in x.items() if k not in _SOLO_LECTURA} if isinstance(x, dict) else x

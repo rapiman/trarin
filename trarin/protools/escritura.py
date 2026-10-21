@@ -16,10 +16,11 @@ sin mover bloques (los cambios de tamaño pasan por reconstruccion.py):
   valor fijo): se desplaza toda la curva lo mismo que cambió el valor.
 """
 
+import os
 from pathlib import Path
 import struct
 
-from .bloques import arbol, buscar
+from .bloques import _parsear, arbol, buscar
 from .descifrado import leer_descifrado
 from .reconstruccion import cifrar, reconstruir
 from .tiempo import CERO, _EV_TEMPO
@@ -271,6 +272,97 @@ def _cambios_marcadores(d, bloques, cambios):
     return reemplazos
 
 
+# Marcador de Pro Tools 12.5 (sesión e11 de las pruebas), para sesiones sin
+# marcadores que sirvan de plantilla.
+_PLANTILLA_MARCADOR_12 = bytes.fromhex(
+    "5a0c0025010000772001000101000004000000436f726f00a8dfd4e800004000a8dfd4e800004000"
+    "0000000000f0bfffffffffffffffffffffffffffbfffffffffffffffbf0000000000000040000000"
+    "0000000040ffffffff040000000000000002000000000014000000636f6d656e746172696f206465"
+    "20707275656261ffffffff00000000ffffffff000000000000000000000000ffffffff0000000000"
+    "00000000000000feff040000005a03000a0000000625ffffffff000000005a03000a0000000625ff"
+    "ffffff000000005a03000a0000000625ffffffff000000005a03000a0000000625ffffffff000000"
+    "000000000014000000636f6d656e746172696f206465207072756562610000000000000000000000"
+    "0000ffff17f61820b440bf4385f83568bb7fadc7")
+
+
+def _estructura_marcador(tb):
+    """Offsets dentro de los bytes de un bloque 0x2077 completo (cabecera incluida):
+    (E, n1, q, n2) o None si el comentario no está en las dos copias esperadas."""
+    p = 9
+    largo = struct.unpack_from("<I", tb, p + 6)[0]
+    e = p + 10 + largo
+    b = _parsear(tb, 0, len(tb))
+    if b is None or not b.hijos or e + 84 > len(tb):
+        return None
+    n1 = struct.unpack_from("<I", tb, e + 80)[0]
+    q = b.hijos[-1].fin + 4
+    if q + 4 > len(tb):
+        return None
+    n2 = struct.unpack_from("<I", tb, q)[0]
+    if n1 != n2 or tb[e + 84:e + 84 + n1] != tb[q + 4:q + 4 + n2]:
+        return None
+    return e, n1, q, n2
+
+
+def _marcador_nuevo(tb, numero, nombre, tick, comentario):
+    """Bloque 0x2077 nuevo a partir de la plantilla tb (un marcador común)."""
+    e, n1, q, n2 = _estructura_marcador(tb)
+    p = 9
+    nombre = nombre.encode("utf-8")
+    texto = (comentario or "").encode("utf-8")
+    com = struct.pack("<I", len(texto)) + texto
+    pos = (tick + CERO).to_bytes(5, "little")
+    medio = bytearray(tb[e:e + 80])
+    medio[0:5] = pos
+    medio[8:13] = pos
+    out = bytearray(tb[:p] + struct.pack("<H", numero) + tb[p + 2:p + 6]
+                    + struct.pack("<I", len(nombre)) + nombre + medio + com
+                    + tb[e + 84 + n1:q] + com + tb[q + 4 + n2:-16] + os.urandom(16))
+    struct.pack_into("<I", out, 3, len(out) - 7)
+    return bytes(out)
+
+
+def _altas_bajas_marcadores(d, bloques, nuevos, borrados):
+    """nuevos: [{"nombre", "tick", "comentario"?}]; borrados: [número].
+    Cada marcador va en las dos listas 0x2030 (u32 cantidad en +2, hijos 0x2077 y
+    4 bytes finales). Devuelve reemplazos para reconstruir()."""
+    listas = [b for b in buscar(bloques, 0x2030)
+              if b.tamano >= 10 and d[b.fin - 4:b.fin] == bytes(4)]
+    con_marcas = [b for b in buscar(bloques, 0x2030) if any(h.tipo_contenido == 0x2077 for h in b.hijos)]
+    if len(listas) != 2 or any(b not in listas for b in con_marcas):
+        raise ErrorEscritura("estructura de las listas de marcadores no reconocida en esta versión")
+    plantilla = None
+    for h in listas[0].hijos:
+        tb = d[h.pos:h.fin]
+        if h.tipo_contenido == 0x2077 and not d[h.inicio + 5] & 2 and _estructura_marcador(tb):
+            plantilla = tb
+            break
+    if plantilla is None and nuevos:
+        if not any(h.tipo_contenido == 0x2077 for h in listas[0].hijos):
+            plantilla = _PLANTILLA_MARCADOR_12
+        else:
+            raise ErrorEscritura("no hay un marcador que sirva de plantilla en esta sesión")
+    numeros = [struct.unpack_from("<H", d, h.inicio + 2)[0] for L in listas for h in L.hijos
+               if h.tipo_contenido == 0x2077]
+    siguiente = max(numeros, default=0) + 1
+    bloques_nuevos = b""
+    for m in nuevos:
+        bloques_nuevos += _marcador_nuevo(plantilla, siguiente, m["nombre"], m["tick"], m.get("comentario"))
+        m["numero"] = siguiente
+        siguiente += 1
+    reemplazos = []
+    for L in listas:
+        hijos = [h for h in L.hijos if h.tipo_contenido == 0x2077]
+        quitar = [h for h in hijos if struct.unpack_from("<H", d, h.inicio + 2)[0] in borrados]
+        for h in quitar:
+            reemplazos.append((h.pos, h.fin, b"", L.pos))
+        cantidad = struct.unpack_from("<I", d, L.inicio + 2)[0]
+        reemplazos.append((L.inicio + 2, L.inicio + 6, struct.pack("<I", cantidad - len(quitar) + len(nuevos))))
+        if bloques_nuevos:
+            reemplazos.append((L.fin - 4, L.fin - 4, bloques_nuevos, L.pos))
+    return reemplazos
+
+
 # ------------------------------------------------------------------- tempo
 
 def _cambios_tempo(d, bloques, tempo, out):
@@ -292,7 +384,8 @@ def _cambios_tempo(d, bloques, tempo, out):
 
 # ------------------------------------------------------------------ entrada
 
-def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None):
+def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
+                     marcadores_nuevos=None, marcadores_borrados=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -315,6 +408,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b
     reemplazos = _cambios_marcadores(d, bloques, marcadores) if marcadores else []
+    if marcadores_nuevos or marcadores_borrados:
+        reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
     salida.write_bytes(cifrar(nuevo))
     return salida
