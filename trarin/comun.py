@@ -385,8 +385,10 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     de regiones de audio. Cualquier otro cambio da un error."""
     from .protools.escritura import escribir_cambios
     ids_orig = set(_por_id(original["pistas"]))
-    if ids_orig - set(_por_id(comun["pistas"])):
-        raise ErrorComun("Pro Tools: quitar pistas aún no está soportado")
+    ids_nuevos = {p.get("id") for p in comun["pistas"]}
+    quitadas = [p for p in original["pistas"] if p["id"] not in ids_nuevos]
+    if quitadas:
+        return _pistas_quitadas_pt(comun, quitadas, plantilla, salida)
     nuevas = [p for p in comun["pistas"] if p.get("id") not in ids_orig]
     if nuevas:
         return _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida)
@@ -472,6 +474,29 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                             compases=compases, notas=notas, clips_nuevos=clips_nuevos,
                             clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
                             regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos)
+
+
+def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
+    """Quita primero las pistas que faltan en el modelo (solo de audio) en una
+    copia temporal y después aplica sobre esa copia el resto de los cambios."""
+    import os
+    import tempfile
+    from .protools import leer
+    from .protools.descifrado import leer_descifrado
+    from .protools.pistas_quitar import quitar_pistas
+    from .protools.reconstruccion import cifrar
+    for p in quitadas:
+        if p["tipo"] != "audio":
+            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio ({p['id']!r})")
+    d = quitar_pistas(leer_descifrado(plantilla), [p["id"] for p in quitadas])
+    fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(cifrar(d))
+        nativo2 = leer(tmp)
+        return _a_protools(comun, a_comun(nativo2), nativo2, tmp, salida)
+    finally:
+        os.unlink(tmp)
 
 
 def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
