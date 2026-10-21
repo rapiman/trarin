@@ -180,16 +180,17 @@ def _nivel(d, b):
     }
 
 
-def leer_mezcla(d, bloques, nombres_audio=()):
-    """'nombres_audio': nombres actuales de las pistas de audio, en orden. El nombre
-    guardado en 0x102D es el que tenía el canal al crearse y no cambia al renombrar."""
+def leer_mezcla(d, bloques, nombres=()):
+    """'nombres': nombres actuales de todas las pistas en orden (0x2519); hay un
+    hijo de 0x2624 por pista. El nombre guardado en 0x102D es el que tenía el
+    canal al crearse y no cambia al renombrar."""
     raiz = buscar(bloques, 0x2624)
     if not raiz:
         return []
     plugins = _plugins_sesion(d, bloques)
     canales = []
-    nombres = list(nombres_audio)
-    for canal in raiz[0].hijos:
+    nombres = list(nombres)
+    for indice, canal in enumerate(raiz[0].hijos):
         sb = next((h for h in canal.hijos if h.tipo_contenido == 0x261B), None)
         if not sb:
             continue
@@ -200,11 +201,15 @@ def leer_mezcla(d, bloques, nombres_audio=()):
             nombre_b = cab.hijos[0]
             info["nombre"], _ = _cadena(d, nombre_b.inicio + 2)
             info["solo"] = d[nombre_b.fin] == 1
-        if info["tipo"] == "audio" and nombres:
-            actual = nombres.pop(0)
+        if indice < len(nombres):
+            actual = nombres[indice]
             if actual != info.get("nombre"):
                 info["nombre_al_crear"] = info.get("nombre")
             info["nombre"] = actual
+        vista = buscar([canal], 0x2015)
+        if vista:
+            color = struct.unpack_from("<h", _propios(d, vista[0]), 25)[0]
+            info["color"] = None if color < 0 else color
         entrada = _cadenas(_propios(d, sb))
         if entrada:
             info["entrada"] = entrada[0]

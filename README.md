@@ -27,7 +27,8 @@ Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
 | Entrada y salida de cada canal      | listo     |
 | Estado de plugins: controles genéricos, preset, valores FabFilter | listo |
 | Estado propio de otros plugins      | solo tamaño |
-| Colores, grupos, playlists alternativas | pendiente |
+| Colores de pista, grupos, playlists alternativas | listo |
+| Significado de cada parámetro en el estado propio de un plugin | no está en el archivo |
 
 Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
 
@@ -65,13 +66,18 @@ Ver `trarin/protools/tiempo.py`. Resumen:
   nombre UTF-8, posición (40 bits).
 - Tempo, compases y marcadores aparecen dos veces con el mismo contenido.
 
-- Pistas de audio: lista `0x1015`/`0x1014` (nombre y canales) y mapa `0x1054`;
+- Lista de pistas: `0x2519`/`0x251A` (nombre de la playlist activa y tipo).
+- Playlists de audio: lista `0x1015`/`0x1014` (nombre y canales) y mapa `0x1054`;
+  una playlist cuyo nombre no está en la lista de pistas es una alternativa
+  guardada.
   cada canal es una entrada `0x1052` y cada colocación un `0x1050` con hijo
   `0x104F` (índice de región en `+4`, muestra de inicio en `+9`, 5 bytes).
   Si el último byte del `0x1050` vale 1, la entrada es un fade o crossfade.
 - MIDI: notas en `0x2000` (bloques `MdNLB`, eventos de 35 bytes), regiones en
   `0x2634` (ventana sobre un bloque de notas) y pistas en `0x1058`/`0x1057`.
 
+- Grupos: `0x202B`/`0x202A`: nombre, tipo, identificador, cantidad e índices
+  de pistas.
 - Mezcla: bloque `0x2624`, un hijo por canal (ver `trarin/protools/mezcla.py`).
   Volumen en décimas de dB, paneo de -100 a 100. Descifrado con sesiones de
   prueba hechas en Pro Tools, cada una con un solo cambio respecto de la
