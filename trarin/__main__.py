@@ -22,6 +22,13 @@ def _resumen(s):
         print(f"  pista audio {p['nombre']!r}: {len(p['canales'])} canal(es), {n} regiones colocadas")
     for p in s["pistas_midi"]:
         print(f"  pista MIDI  {p['nombre']!r}: {len(p['regiones'])} regiones colocadas")
+    for c in s.get("mezcla", []):
+        extra = []
+        if c.get("mute"): extra.append("mute")
+        if c.get("solo"): extra.append("solo")
+        extra += [i["plugin"] for i in c.get("inserts", [])]
+        extra += ["envío a " + str(e["destino"]) for e in c.get("envios", [])]
+        print(f"  mezcla {c.get('nombre')!r} ({c['tipo']}): {c.get('volumen_db')} dB, paneo {c.get('paneo')} {' · '.join(extra)}")
     for m in s["marcadores"]:
         print(f"  marcador #{m['numero']:<3} {m['posicion']:>12}  {m['nombre']}")
 
