@@ -22,6 +22,7 @@ import struct
 
 from .bloques import _parsear, arbol, buscar
 from .descifrado import leer_descifrado
+from .pistas_nuevas import _id_nuevo, _rehacer
 from .reconstruccion import cifrar, reconstruir
 from .tiempo import CERO, _EV_TEMPO
 from . import pistas as P
@@ -380,6 +381,54 @@ def info_wav(ruta):
     return largo_datos // bloque, bits, canales, frecuencia
 
 
+def ids_wav(ruta):
+    """Datos de un WAV que Pro Tools guarda en la sesión: {'umid': id de 8 bytes
+    del chunk 'umid' (tras 00000000 2A000000), 'minf': FILETIME de 8 bytes del
+    chunk 'minf', 'inicio_datos': posición del audio en el archivo, 'referencia':
+    TimeReference del chunk 'bext' (muestras)}. umid y minf son None si el WAV no
+    los tiene (los WAV que crea Pro Tools sí: la sesión debe usar los mismos o
+    Pro Tools no la abre)."""
+    datos = Path(ruta).read_bytes()
+    out = {"umid": None, "minf": None, "inicio_datos": None, "referencia": 0}
+    p = 12
+    while p + 8 <= len(datos):
+        cid, tam = datos[p:p + 4], struct.unpack_from("<I", datos, p + 4)[0]
+        c = datos[p + 8:p + 8 + tam]
+        if cid == b"umid" and len(c) >= 16 and c[4:8] == b"\x2a\0\0\0":
+            out["umid"] = c[8:16]
+        elif cid == b"minf" and len(c) >= 8:
+            out["minf"] = c[:8]
+        elif cid == b"bext" and len(c) >= 346:
+            out["referencia"] = struct.unpack_from("<Q", c, 338)[0]
+        elif cid == b"data":
+            out["inicio_datos"] = p + 8
+        p += 8 + tam + (tam & 1)
+    return out
+
+
+def _datos_2106(d, h, arch, variables):
+    """Cambios en el 0x2106 (metadatos BWF) de un archivo nuevo: FILETIME en +31
+    (el del chunk 'minf'), u32 posición del audio en el WAV en +41, y tras el
+    texto 'Pro Tools' y 33 ceros: 01, un byte con (largo − 1) en el nibble alto,
+    3 bytes, la referencia de tiempo (largo bytes) y otro FILETIME."""
+    fijos = []
+    if arch.get("minf") and d[h.inicio + 38] in (0x01, 0x02):
+        fijos.append((h.inicio + 31, arch["minf"]))
+    if arch.get("inicio_datos"):
+        fijos.append((h.inicio + 41, struct.pack("<I", arch["inicio_datos"])))
+    n = struct.unpack_from("<I", d, h.inicio + 51)[0]
+    s = h.inicio + 55 + n
+    if d[s:s + 33] == bytes(33) and d[s + 33] == 1:
+        largo = (d[s + 34] >> 4) + 1
+        ref = int(arch.get("referencia") or 0)
+        nuevo_largo = max(1, (ref.bit_length() + 7) // 8)
+        nuevo = bytes([(nuevo_largo - 1) << 4]) + d[s + 35:s + 38] + ref.to_bytes(nuevo_largo, "little")
+        variables.append((s + 34, s + 38 + largo, nuevo))
+        if arch.get("minf"):
+            fijos.append((s + 38 + largo, arch["minf"]))
+    return fijos
+
+
 def _lista_rutas(d, a):
     """Entradas del 0x103A: (tipo, padre, nombre, extra). Tipo 0 = volumen,
     1 = carpeta, 2 = archivo; 'padre' es el índice de la entrada padre
@@ -400,14 +449,14 @@ def _lista_rutas(d, a):
 
 
 def _altas_archivos_regiones(d, bloques, archivos, regiones):
-    """archivos: [{"ruta", "muestras", "bits"}] (rutas absolutas de Windows);
+    """archivos: [{"ruta", "muestras", "bits", "frecuencia"}] (rutas absolutas de Windows);
     regiones: [{"nombre", "archivo" (índice en la sesión, o −(k+1) para el
     archivo nuevo k), "desde", "largo"}].
 
     Verificado importando un archivo en Pro Tools 12: el archivo suma una
     cadena de entradas al 0x103A (carpeta, archivo, volumen y carpetas hasta la
     raíz; cada entrada apunta a su padre por índice) y un 0x1003 (copia de otro,
-    con número, largo y bits nuevos) al 0x1004, que lleva la cantidad en +2. Cada
+    con número, frecuencia, largo y bits nuevos) al 0x1004, que lleva la cantidad en +2. Cada
     región es un 0x2629 (con su 0x2628: nombre, desplazamiento y largo) al final
     del 0x262A, que también lleva la cantidad. El índice 0x0002 no apunta a
     estos bloques."""
@@ -430,7 +479,7 @@ def _altas_archivos_regiones(d, bloques, archivos, regiones):
         if not h1003:
             raise ErrorEscritura("no hay un archivo de audio que sirva de plantilla en esta sesión")
         plantilla = h1003[0]
-        numero = max(struct.unpack_from("<I", d, h.inicio + 2)[0] for h in h1003)
+        usados = set()
         for arch in archivos:
             partes = arch["ruta"].replace("/", "\\").split("\\")
             if len(partes) < 3 or not partes[0].endswith(":"):
@@ -448,18 +497,24 @@ def _altas_archivos_regiones(d, bloques, archivos, regiones):
             for j, c in enumerate(carpetas[:-1]):
                 nuevas += tipo_de(1, i_vol + j, c.encode("utf-8"), bytes(4))
             k = i_vol + 1 + len(carpetas[:-1])
-            numero += 1
-            b = bytearray(d[plantilla.pos:plantilla.fin])
-            struct.pack_into("<I", b, 9, numero)
+            numero = i_carpeta + 1          # el número del 0x1003 es la entrada del archivo en el 0x103A
+            fijos, variables = [(plantilla.inicio + 2, struct.pack("<I", numero))], []
             for h in plantilla.hijos:
-                o = h.pos - plantilla.pos
                 if h.tipo_contenido == 0x1001:
-                    struct.pack_into("<Q", b, o + 7 + 8, int(arch["muestras"]))
+                    fijos.append((h.inicio + 8, struct.pack("<Q", int(arch["muestras"]))))
                     if arch.get("bits") in (16, 24, 32):
-                        b[o + 7 + 7] = arch["bits"]
+                        fijos.append((h.inicio + 7, bytes([arch["bits"]])))
+                    if arch.get("frecuencia"):            # u32 frecuencia de muestreo en +2
+                        fijos.append((h.inicio + 2, struct.pack("<I", int(arch["frecuencia"]))))
+                    q = d.find(b"\x2a\0\0\0", h.inicio, h.fin)    # identificador propio del archivo
+                    if q > 0 and q + 12 <= h.fin:
+                        nuevo_id = arch.get("umid") or _id_nuevo(d, d[q + 4:q + 12], usados)
+                        usados.add(nuevo_id)
+                        fijos.append((q + 4, nuevo_id))
                 elif h.tipo_contenido == 0x2106 and h.hijos:
-                    q = h.hijos[0].pos - plantilla.pos
-                    b[q - 16:q] = os.urandom(16)
+                    fijos.append((h.hijos[0].pos - 16, os.urandom(16)))
+                    fijos += _datos_2106(d, h, arch, variables)
+            b = _rehacer(d, plantilla, fijos, variables)
             bloques_1003 += bytes(b)
         total = len(entradas) + sum(len(x["ruta"].replace("/", "\\").split("\\")) for x in archivos)
         reemplazos.append((a.inicio + 2, a.inicio + 6, struct.pack("<I", total)))

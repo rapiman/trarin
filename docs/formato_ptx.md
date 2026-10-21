@@ -137,6 +137,19 @@ La transformación es simétrica: la misma operación cifra y descifra.
     después de la última marca `FF FF 04 00 04 00` del `0x2628` [verificado en 45 833 bloques de
     PT 12.5, 12.8, 2019 y 2026]. En PT 12 coincide con los últimos 4 bytes; en 2026 el bloque
     sigue con `00 00` y un UUID de 16 bytes.
+- **Archivos nuevos** [verificado importando en Pro Tools 12]: cada archivo suma una cadena de
+  entradas al `0x103A` (carpeta, archivo, volumen, carpetas hasta la raíz) y un `0x1003`. Su u32 en
+  +2 es **el número de la entrada del archivo en el `0x103A`** (se cumple en 3 472 de 3 478 archivos
+  del corpus). En el `0x1001`: u32 frecuencia de muestreo en +2, u8 bits en +7, u64 largo en +8 y un
+  identificador de 8 bytes tras `2A 00 00 00`. En el `0x2106` (metadatos BWF): FILETIME en +31,
+  u32 posición del audio dentro del WAV en +41, y tras el texto `Pro Tools` y 33 ceros: `01`, un
+  byte con (largo − 1) en el nibble alto, 3 bytes, la referencia de tiempo BWF (largo bytes) y otro
+  FILETIME. Los WAV que crea Pro Tools llevan su identificador en el chunk `umid` (tras
+  `00000000 2A000000`) y el FILETIME en `minf`; la sesión debe usar esos mismos valores, o Pro Tools
+  no la abre ("Assertion in FF_AudioFile.cpp").
+- **Región estéreo** [verificado importando un WAV estéreo en Pro Tools 12]: Pro Tools lo convierte
+  en dos archivos mono (`.L` y `.R`) y crea dos regiones mono (`nombre.L` y `nombre.R`), una
+  colocación en el `0x1052` de cada canal de la pista. No hay otro bloque que las una.
 - pt_api documenta además un segmento de 48 bytes con UUID por región, un enlace de 104 bytes con
   el índice de archivo en +96 y un perfil de "sync point" (`00 30 22 44 08`) [externo].
 
