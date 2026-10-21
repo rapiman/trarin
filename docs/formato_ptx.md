@@ -91,6 +91,10 @@ La transformación es simétrica: la misma operación cifra y descifra.
   anterior de trarin buscaba un patrón de bytes que fallaba cuando el bloque medía más de 255
   bytes: perdía los marcadores de 16 de las 51 sesiones. pt_api describe además las reglas de
   marcadores múltiples de PT2024 (`0x2519 → 0x251B → 0x251C`) [externo].
+  Escritura [verificado en Pro Tools 12]: nombre, inicio y fin se cambian en las dos copias del bloque;
+  un nombre de otro largo cambia el tamaño y se reconstruye la sesión. El comentario está dos veces
+  dentro del bloque: u32 largo + texto en E+80 y 4 bytes después del último hijo (en sesiones de otras
+  versiones E+80 no es el comentario; ahí trarin no lo escribe).
 
 ## 5. Archivos y regiones de audio
 
@@ -190,7 +194,9 @@ muestra Pro Tools].
   salida = última cadena del `0x260E`); los siguientes son envíos.
 - Escritura de volumen, mute y paneo [verificado en Pro Tools 12]: además del valor en `0x1029`, Pro Tools
   repite el valor fijo como único punto de la lista de automatización del parámetro; trarin actualiza
-  ese punto. Si la lista tiene más de un punto, el parámetro está automatizado y trarin no lo cambia.
+  ese punto. Si la lista tiene más de un punto, el parámetro está automatizado: Pro Tools sigue la
+  curva e ignora el valor fijo, así que trarin desplaza toda la curva lo mismo que cambió el valor
+  (volumen hasta +12 dB, sin mover los puntos en silencio de −144 dB; paneo entre −100 y 100).
 - Automatización `0x260A`: u32 cantidad en +12, ancho u16 en +16, puntos desde +24
   (u32 muestra + valor con signo). Orden directo: volumen (déci-dB), mute, desconocido; dentro de
   `0x260C`: paneo izquierdo y derecho [verificado]. pt_api describe el mismo bloque con marca

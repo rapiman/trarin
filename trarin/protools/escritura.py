@@ -4,14 +4,16 @@ Todo lo que se escribe aquí tiene tamaño fijo, así que se edita en el lugar
 sin mover bloques (los cambios de tamaño pasan por reconstruccion.py):
 
 * Colocación de una región (0x1050 → 0x104F): desde el inicio del bloque
-  (tipo de contenido incluido), +2 mute (byte) y +9 muestra del ancla (5 bytes). En pistas estéreo se cambian todos los canales, y los
+  (tipo de contenido incluido), +2 mute (byte) y +9 muestra del ancla (5
+  bytes). En pistas estéreo se cambian todos los canales, y los
   fundidos de entrada y salida de la región se mueven con ella.
 * Fader principal de un canal (0x2624 → canal → 0x261B → 0x260D → 0x1029):
   +3 volumen (int32, décimas de dB), +7 mute, +15 y +43 paneo (int32,
   −100..100). Pro Tools repite el valor fijo como único punto de la lista de
   automatización del parámetro (0x260A: volumen y mute directos, paneo dentro
   de 0x260C); ese punto se actualiza también. Si la lista tiene más de un
-  punto, el parámetro está automatizado y no se toca.
+  punto, el parámetro está automatizado (Pro Tools sigue la curva e ignora el
+  valor fijo): se desplaza toda la curva lo mismo que cambió el valor.
 """
 
 from pathlib import Path
@@ -19,7 +21,8 @@ import struct
 
 from .bloques import arbol, buscar
 from .descifrado import leer_descifrado
-from .reconstruccion import cifrar
+from .reconstruccion import cifrar, reconstruir
+from .tiempo import CERO, _EV_TEMPO
 from . import pistas as P
 
 
@@ -77,32 +80,67 @@ def _colocaciones(d, bloques, nombre_playlist):
 
 
 def _cambios_regiones(d, bloques, pista, cambios, out):
-    """cambios: {índice del clip: {"muestra"?: int, "mute"?: bool}}."""
+    """cambios: {índice del clip: {"muestra"?: int, "mute"?: bool}}.
+
+    Un fundido se mueve con las regiones que toca si todas se mueven lo mismo;
+    un fundido cruzado entre una región que se mueve y otra que no (o que se
+    mueve distinto) da error: habría que recalcularlo."""
     canales = _colocaciones(d, bloques, pista)
     base = canales[0][0]
-    for j, cambio in cambios.items():
+    for j in cambios:
         if j >= len(base):
             raise ErrorEscritura(f"{pista}: no existe el clip {j}")
-        ref = base[j]
-        delta = cambio["muestra"] - ref["muestra"] if "muestra" in cambio else 0
-        if ref["muestra"] + delta < 0:
-            raise ErrorEscritura(f"{pista}#{j}: posición negativa")
-        for regs, fun in canales:
+    for regs, fun in canales:
+        deltas = []                                   # (región, delta) por región del canal
+        for j, ref in enumerate(base):
             r = next((x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"]), None)
             if r is None:
-                raise ErrorEscritura(f"{pista}#{j}: los canales de la pista no coinciden")
+                if j in cambios:
+                    raise ErrorEscritura(f"{pista}#{j}: los canales de la pista no coinciden")
+                continue
+            cambio = cambios.get(j, {})
+            delta = cambio["muestra"] - ref["muestra"] if "muestra" in cambio else 0
+            if r["muestra"] + delta < 0:
+                raise ErrorEscritura(f"{pista}#{j}: posición negativa")
             if delta:
                 out[r["pos"] + 9] = (r["muestra"] + delta).to_bytes(5, "little")
-                ini, fin = r["muestra"], r["muestra"] + r["largo"]
-                for f in fun:
-                    if f["fin"] <= ini or f["inicio"] >= fin:
-                        continue
-                    if f["tipo"] == "cruzado" or f["inicio"] < ini or f["fin"] > fin:
-                        raise ErrorEscritura(f"{pista}#{j}: la región tiene un fundido cruzado; "
-                                             "moverla aún no está soportado")
-                    out[f["pos"] + 9] = (f["ancla"] + delta).to_bytes(5, "little")
             if "mute" in cambio:
                 out[r["pos"] + 2] = bytes([1 if cambio["mute"] else 0])
+            deltas.append((r, delta, j))
+        for f in fun:
+            toca = [(delta, j) for r, delta, j in deltas
+                    if f["inicio"] < r["muestra"] + r["largo"] and r["muestra"] < f["fin"]]
+            movs = {delta for delta, _ in toca}
+            if len(movs) > 1:
+                raise ErrorEscritura(f"{pista}: el fundido cruzado entre los clips {sorted(j for _, j in toca)} "
+                                     "quedaría desarmado; mover ambos clips lo mismo o quitar el fundido en Pro Tools")
+            if movs and movs != {0}:
+                out[f["pos"] + 9] = (f["ancla"] + movs.pop()).to_bytes(5, "little")
+
+
+def _cambios_midi(d, bloques, pista, cambios, out):
+    """Mueve clips MIDI. cambios: {índice del clip: tick}. Colocación MIDI:
+    0x1058 → 0x1057 (nombre) → 0x1056 → 0x104F con el tick (+10**12) en +9."""
+    mapa = _primero(bloques, 0x1058)
+    pl = next((c for c in (mapa.hijos if mapa else []) if c.tipo_contenido == 0x1057
+               and P._cadena(d, c.inicio + 2)[0] == pista), None)
+    if pl is None:
+        raise ErrorEscritura(f"no se encontró la pista MIDI {pista!r}")
+    n_reg = len(P.leer_regiones_midi(d, bloques))
+    col = []
+    for e in pl.hijos:
+        if e.tipo_contenido != 0x1056:
+            continue
+        for f in e.hijos:
+            if f.tipo_contenido == 0x104F and struct.unpack_from("<I", d, f.inicio + 4)[0] < n_reg:
+                col.append((P._sin_cero(P._entero(d, f.inicio + 9, 5)), f.inicio))
+    col.sort(key=lambda x: x[0])
+    for j, tick in cambios.items():
+        if j >= len(col):
+            raise ErrorEscritura(f"{pista}: no existe el clip MIDI {j}")
+        if tick < 0:
+            raise ErrorEscritura(f"{pista}#m{j}: posición negativa")
+        out[col[j][1] + 9] = (tick + CERO).to_bytes(5, "little")
 
 
 # ------------------------------------------------------------------- mezcla
@@ -119,17 +157,37 @@ def _canal_mezcla(d, bloques, indice):
     return fader, nivel
 
 
-def _punto_unico(d, lista, valor, nombre, out):
-    """Actualiza la lista de automatización si tiene un solo punto."""
+SILENCIO = -1440          # décimas de dB: -144 dB, el mínimo que usa Pro Tools en la automatización
+
+
+def _automatizacion(d, lista, nuevo, viejo, nombre, out, minimo=None, maximo=None):
+    """Actualiza la lista de automatización del parámetro.
+
+    Un solo punto: es la copia del valor fijo y toma el valor nuevo. Varios
+    puntos: el parámetro está automatizado (Pro Tools ignora el valor fijo) y
+    se desplaza toda la curva lo que cambió el valor, dentro de [minimo,
+    maximo]; los puntos en silencio (volumen ≤ −144 dB) no se mueven. Sin
+    rango (mute) la curva no se puede desplazar y da error."""
     if lista is None:
         return
     p = lista.inicio
     n = struct.unpack_from("<I", d, p + 12)[0]
     ancho = struct.unpack_from("<H", d, p + 16)[0]
     if n == 1:
-        out[p + 28] = int(valor).to_bytes(ancho, "little", signed=True)
-    elif n > 1:
-        raise ErrorEscritura(f"{nombre} tiene automatización; cambiar su valor fijo aún no está soportado")
+        out[p + 28] = int(nuevo).to_bytes(ancho, "little", signed=True)
+        return
+    if n == 0:
+        return
+    if minimo is None:
+        raise ErrorEscritura(f"{nombre} tiene automatización; cambiarlo aún no está soportado")
+    delta = nuevo - viejo
+    q = p + 24
+    for _ in range(n):
+        v = int.from_bytes(d[q + 4:q + 4 + ancho], "little", signed=True)
+        if not (minimo == SILENCIO and v <= SILENCIO):
+            v = max(minimo, min(maximo, v + delta))
+            out[q + 4] = v.to_bytes(ancho, "little", signed=True)
+        q += 4 + ancho
 
 
 def _cambios_mezcla(d, bloques, indice, nombre, cambio, out):
@@ -137,29 +195,107 @@ def _cambios_mezcla(d, bloques, indice, nombre, cambio, out):
     directas = [h for h in fader.hijos if h.tipo_contenido == 0x260A]
     paneos = [k for h in fader.hijos if h.tipo_contenido == 0x260C
               for k in h.hijos if k.tipo_contenido == 0x260A]
+    i32 = lambda off: struct.unpack_from("<i", d, nivel.inicio + off)[0]
     if "volumen_db" in cambio:
         v = round(cambio["volumen_db"] * 10)
+        if not SILENCIO <= v <= 120:
+            raise ErrorEscritura(f"{nombre}: volumen fuera de rango (−144 a +12 dB)")
         out[nivel.inicio + 3] = struct.pack("<i", v)
-        _punto_unico(d, directas[0] if directas else None, v, f"{nombre}: volumen", out)
+        _automatizacion(d, directas[0] if directas else None, v, i32(3), f"{nombre}: volumen", out,
+                        SILENCIO, 120)
     if "mute" in cambio:
         v = 1 if cambio["mute"] else 0
         out[nivel.inicio + 7] = bytes([v])
-        _punto_unico(d, directas[1] if len(directas) > 1 else None, v, f"{nombre}: mute", out)
+        _automatizacion(d, directas[1] if len(directas) > 1 else None, v, d[nivel.inicio + 7],
+                        f"{nombre}: mute", out)
     if "paneo" in cambio:
         lados = cambio["paneo"] if isinstance(cambio["paneo"], list) else [cambio["paneo"]]
         for k, (off, valor) in enumerate(zip((15, 43), lados)):
             v = round(valor * 100)
             if not -100 <= v <= 100:
                 raise ErrorEscritura(f"{nombre}: paneo fuera de rango")
+            if v == i32(off):
+                continue
             out[nivel.inicio + off] = struct.pack("<i", v)
-            _punto_unico(d, paneos[k] if k < len(paneos) else None, v, f"{nombre}: paneo", out)
+            _automatizacion(d, paneos[k] if k < len(paneos) else None, v, i32(off), f"{nombre}: paneo", out,
+                            -100, 100)
+
+
+# --------------------------------------------------------------- marcadores
+
+def _cambios_marcadores(d, bloques, cambios):
+    """cambios: {número: {"nombre"?, "tick"?, "fin_tick"?, "comentario"?}}. Cada marcador está
+    en las dos listas 0x2030 de la sesión; se cambian ambas copias. El nombre
+    cambia el tamaño del bloque, por eso devuelve reemplazos para reconstruir().
+
+    Carga del 0x2077: u16 número, +3 banderas (bit 1 = selección), u32 largo en
+    +6 y nombre desde +10; al final del nombre (E): inicio en E y fin en E+8
+    (5 bytes de tick + 10**12 cada uno)."""
+    reemplazos, vistos = [], {}
+    for b in buscar(bloques, 0x2077):
+        p = b.inicio + 2
+        numero = struct.unpack_from("<H", d, p)[0]
+        if numero not in cambios:
+            continue
+        vistos[numero] = vistos.get(numero, 0) + 1
+        cambio = cambios[numero]
+        seleccion = d[p + 3] & 2
+        largo = struct.unpack_from("<I", d, p + 6)[0]
+        e = p + 10 + largo
+        if "nombre" in cambio:
+            nombre = cambio["nombre"].encode("utf-8")
+            reemplazos.append((p + 6, e, struct.pack("<I", len(nombre)) + nombre))
+        if "comentario" in cambio:
+            # El comentario va dos veces: u32 largo + texto en E+80 y 4 bytes
+            # después del último hijo. Solo se escribe si ambas copias coinciden
+            # (en otras versiones E+80 no es el comentario).
+            n1 = struct.unpack_from("<I", d, e + 80)[0] if e + 84 <= b.fin else -1
+            q = b.hijos[-1].fin + 4 if b.hijos else b.fin
+            n2 = struct.unpack_from("<I", d, q)[0] if q + 4 <= b.fin else -2
+            if n1 != n2 or d[e + 84:e + 84 + n1] != d[q + 4:q + 4 + n2]:
+                raise ErrorEscritura(f"marcador {numero}: formato de comentario no reconocido en esta versión")
+            texto = (cambio["comentario"] or "").encode("utf-8")
+            nuevo = struct.pack("<I", len(texto)) + texto
+            reemplazos.append((e + 80, e + 84 + n1, nuevo))
+            reemplazos.append((q, q + 4 + n2, nuevo))
+        if "tick" in cambio or "fin_tick" in cambio:
+            ini = cambio.get("tick", int.from_bytes(d[e:e + 5], "little") - CERO)
+            fin = cambio.get("fin_tick", int.from_bytes(d[e + 8:e + 13], "little") - CERO) if seleccion else ini
+            if ini < 0 or fin < ini:
+                raise ErrorEscritura(f"marcador {numero}: posición inválida")
+            reemplazos.append((e, e + 5, (ini + CERO).to_bytes(5, "little")))
+            reemplazos.append((e + 8, e + 13, (fin + CERO).to_bytes(5, "little")))
+    faltan = set(cambios) - set(vistos)
+    if faltan:
+        raise ErrorEscritura(f"no se encontraron los marcadores {sorted(faltan)}")
+    return reemplazos
+
+
+# ------------------------------------------------------------------- tempo
+
+def _cambios_tempo(d, bloques, tempo, out):
+    """Cambia BPM y posición de los eventos de tempo existentes (mismo número de
+    eventos) en las dos copias del bloque 0x2028. Evento 'TMS': tick (int64,
+    +10**12) en +19, BPM (double) en +29."""
+    copias = buscar(bloques, 0x2028)
+    for b in copias:
+        evs = [b.pos + m.end() - 3 for m in _EV_TEMPO.finditer(d[b.pos:b.fin])]
+        evs.sort(key=lambda p: struct.unpack_from("<q", d, p + 19)[0])
+        if len(evs) != len(tempo):
+            raise ErrorEscritura("agregar o quitar cambios de tempo aún no está soportado")
+        for p, t in zip(evs, tempo):
+            if not 5 <= t["bpm"] <= 999:
+                raise ErrorEscritura(f"BPM fuera de rango: {t['bpm']}")
+            out[p + 19] = struct.pack("<q", t["tick"] + CERO)
+            out[p + 29] = struct.pack("<d", float(t["bpm"]))
 
 
 # ------------------------------------------------------------------ entrada
 
-def escribir_cambios(plantilla, salida, mezcla=None, regiones=None):
+def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
+    marcadores: {número: {"nombre", "tick", "fin_tick"}}.
     Escribe una copia cifrada en 'salida' (que no debe existir)."""
     salida = Path(salida)
     if salida.exists():
@@ -169,10 +305,16 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None):
     out = {}
     for pista, cambios in (regiones or {}).items():
         _cambios_regiones(d, bloques, pista, cambios, out)
+    for pista, cambios in (midi or {}).items():
+        _cambios_midi(d, bloques, pista, cambios, out)
     for indice, (nombre, cambio) in (mezcla or {}).items():
         _cambios_mezcla(d, bloques, indice, nombre, cambio, out)
+    if tempo is not None:
+        _cambios_tempo(d, bloques, tempo, out)
     nuevo = bytearray(d)
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b
-    salida.write_bytes(cifrar(bytes(nuevo)))
+    reemplazos = _cambios_marcadores(d, bloques, marcadores) if marcadores else []
+    nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
+    salida.write_bytes(cifrar(nuevo))
     return salida
