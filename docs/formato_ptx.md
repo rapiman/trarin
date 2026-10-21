@@ -231,6 +231,20 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     `0x258A` (u32 cantidad justo antes de las tiras; u16 número de pista en +2);
   - en el índice: las posiciones nuevas en las listas, una entrada `(0x2519, 1, n+1) + 0x251A` antes
     de la de `0x2716` (cuyo número pasa a n+1) y una entrada para el canal.
+- **Crear una pista MIDI** [comparado con una pista MIDI creada en Pro Tools 12]: entrada en `0x2519`
+  y `0x251A` en cada mitad con tipo 1; una playlist `0x1057` vacía al final de `0x1058` (nombre,
+  u32 cantidad de colocaciones en 0 y sus hijos sin `0x1056`); un canal `0x2620` (sin `0x261B` ni
+  identificadores de parámetros: nombre e identificador de 8 bytes en `0x102D → 0x2619`, UUID de
+  la pista y el número correlativo del `0x2015`); grupo `<ALL>` y una tira `0x2589`. `0x202C` no
+  cambia. En el índice: posiciones en las listas de `0x1058`, `0x2519` y `0x2624`, la entrada
+  `(0x2519, 1, n+1) + 0x251A` y el número de la de `0x2716` (el `0x2620` no tiene `0x2627`).
+  `0x2004` es la lista de salidas MIDI (u32 cantidad; cada `0x2005` lleva dispositivo y canal):
+  cada canal MIDI apunta a la suya con un u32 (1 = la primera) en +14 de su `0x2036`, y el
+  `0x2620` lleva tras su `0x102D` `u32 n | u32 1 | u32 n | u8 1`, con n = número del canal entre
+  los `0x2620`/`0x2621` (desde 0). Si la pista nueva comparte la salida o el número con otra,
+  Pro Tools abre la sesión pero se cae al cerrarla [verificado]; trarin le da una salida propia
+  (copia de la de la plantilla, al final de la lista) y el número siguiente. Si la sesión no tiene
+  pistas MIDI, trarin usa los bloques de la pista creada en Pro Tools 12 (`plantillas_midi.py`).
 - **Crear una pista de audio estéreo** [verificado en Pro Tools 12, comparando con una pista estéreo
   creada en Pro Tools]: igual que la mono, con estas diferencias:
   - u16 estéreo = 1 en la entrada de `0x2519` y tras el nombre en los dos `0x251A`;
