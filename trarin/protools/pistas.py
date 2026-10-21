@@ -1,0 +1,213 @@
+"""Archivos de audio, regiones, pistas y MIDI de una sesión Pro Tools 10-12.
+
+Implementación propia. Los tipos de bloque se identificaron con ayuda de
+libptformat; dos diferencias respecto de esa librería, verificadas contra
+Pro Tools 12 HD:
+
+* Fades y crossfades también aparecen como colocaciones en la lista de una
+  pista (bloque 0x1050). Se distinguen por el último byte del bloque 0x1050,
+  que vale 1. Su índice no apunta a la lista de regiones de audio, así que se
+  descartan; si no, aparecen regiones que no existen en la sesión.
+* Una región MIDI es una ventana [inicio, inicio+largo) sobre un bloque de
+  notas que pueden compartir varias regiones. Las notas se toman de esa
+  ventana y se ubican respecto de su inicio, sin correrlas a la primera nota.
+
+Unidades: audio en muestras (a la frecuencia de la sesión), MIDI en ticks
+(960.000 por negra).
+"""
+
+import struct
+
+from .bloques import buscar
+from .tiempo import CERO
+
+
+def _cadena(d, p):
+    n = struct.unpack_from("<I", d, p)[0]
+    return d[p + 4:p + 4 + n].decode("utf-8", "replace"), p + 4 + n
+
+
+def _entero(d, p, n):
+    return int.from_bytes(d[p:p + n], "little")
+
+
+def _tres_puntos(d, j):
+    """Inicio, desplazamiento y largo con ancho variable (nibbles en j+1..j+3)."""
+    b_off = (d[j + 1] & 0xF0) >> 4
+    b_len = (d[j + 2] & 0xF0) >> 4
+    b_ini = (d[j + 3] & 0xF0) >> 4
+    p = j + 5
+    desplazamiento = _entero(d, p, b_off); p += b_off
+    largo = _entero(d, p, b_len); p += b_len
+    inicio = _entero(d, p, b_ini)
+    return inicio, desplazamiento, largo
+
+
+def _sin_cero(v):
+    return v - CERO if v >= CERO else v
+
+
+def _primero(bloques, tipo):
+    b = buscar(bloques, tipo)
+    return b[0] if b else None
+
+
+# ------------------------------------------------------------------ audio
+
+_TIPOS_AUDIO = ("WAVE", "EVAW", "AIFF", "FFIA", "fFXM", "MXFf")
+
+
+def leer_archivos_audio(d, bloques):
+    lista = _primero(bloques, 0x1004)
+    if not lista:
+        return []
+    archivos = []
+    for c in lista.hijos:
+        if c.tipo_contenido != 0x103A:
+            continue
+        p = c.inicio + 11
+        while p < c.fin:
+            nombre, p = _cadena(d, p)
+            tipo = d[p:p + 4].decode("latin-1")
+            p += 9
+            if ".grp" in nombre or "Audio Files" in nombre or "Fade Files" in nombre:
+                continue
+            if tipo[0] != "\0":
+                if not any(t in tipo for t in _TIPOS_AUDIO):
+                    continue
+            elif not any(e in nombre.lower() for e in (".wav", ".aif", ".mxf")):
+                continue
+            archivos.append({"indice": len(archivos), "nombre": nombre})
+    largos = [_entero(d, x.inicio + 8, 8) for c in lista.hijos if c.tipo_contenido == 0x1003
+              for x in c.hijos if x.tipo_contenido == 0x1001]
+    for a, n in zip(archivos, largos):
+        a["muestras"] = n
+    return archivos
+
+
+def leer_regiones_audio(d, bloques):
+    lista = _primero(bloques, 0x262A) or _primero(bloques, 0x100B)
+    if not lista:
+        return []
+    regiones = []
+    for c in lista.hijos:
+        if c.tipo_contenido not in (0x2629, 0x1008):
+            continue
+        nombre, j = _cadena(d, c.inicio + 11)
+        inicio, desplazamiento, largo = _tres_puntos(d, j)
+        grupo = c.hijos[0] if c.hijos else None
+        archivo = struct.unpack_from("<I", d, grupo.fin)[0] if grupo else None
+        regiones.append({"indice": len(regiones), "nombre": nombre, "archivo": archivo,
+                         "desde_muestra": desplazamiento, "muestras": largo,
+                         "inicio_original": inicio})
+    return regiones
+
+
+def leer_pistas_audio(d, bloques, regiones):
+    """Pistas de audio con sus canales y las regiones colocadas en cada canal."""
+    pistas, canales = [], []
+    lista = _primero(bloques, 0x1015)
+    if lista:
+        for c in lista.hijos:
+            if c.tipo_contenido != 0x1014:
+                continue
+            nombre, j = _cadena(d, c.inicio + 2)
+            j += 1
+            n = struct.unpack_from("<I", d, j)[0]
+            ids = list(struct.unpack_from(f"<{n}H", d, j + 4))
+            pista = {"nombre": nombre, "canales": []}
+            pistas.append(pista)
+            for _ in ids:
+                canal = {"canal": len(pista["canales"]) + 1, "regiones": []}
+                pista["canales"].append(canal)
+                canales.append(canal)
+
+    mapa = _primero(bloques, 0x1054)
+    if mapa:
+        entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052]
+        for canal, c in zip(canales, entradas):
+            for e in c.hijos:
+                if e.tipo_contenido != 0x1050 or d[e.fin - 1] == 1:   # 1 = fade / crossfade
+                    continue
+                for f in e.hijos:
+                    if f.tipo_contenido != 0x104F:
+                        continue
+                    ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
+                    muestra = _entero(d, f.inicio + 9, 5)
+                    if ri < len(regiones):
+                        canal["regiones"].append({"region": regiones[ri]["nombre"], "indice_region": ri,
+                                                  "muestra": muestra})
+            canal["regiones"].sort(key=lambda r: r["muestra"])
+    return pistas
+
+
+# ------------------------------------------------------------------- MIDI
+
+def _bloques_notas(d, bloques):
+    b = _primero(bloques, 0x2000)
+    if not b:
+        return []
+    bloques_n, k = [], b.pos
+    while True:
+        k = d.find(b"MdNLB", k, b.fin)
+        if k < 0:
+            break
+        n = struct.unpack_from("<I", d, k + 11)[0]
+        p, notas = k + 15, []
+        for i in range(n):
+            q = p + i * 35
+            notas.append({"tick": _sin_cero(_entero(d, q, 5)), "nota": d[q + 8],
+                          "ticks": _entero(d, q + 9, 5), "velocidad": d[q + 17]})
+        bloques_n.append(notas)
+        k = p + n * 35
+    return bloques_n
+
+
+def leer_regiones_midi(d, bloques):
+    fuentes = _bloques_notas(d, bloques)
+    lista = _primero(bloques, 0x2634) or _primero(bloques, 0x2002)
+    if not lista:
+        return []
+    regiones = []
+    for c in lista.hijos:
+        if c.tipo_contenido not in (0x2633, 0x2001):
+            continue
+        g = next((x for x in c.hijos if x.tipo_contenido in (0x2628, 0x1007)), None)
+        if not g:
+            continue
+        nombre, j = _cadena(d, g.inicio + 2)
+        _, desplazamiento, largo = _tres_puntos(d, j)
+        desplazamiento = _sin_cero(desplazamiento)
+        fuente = struct.unpack_from("<I", d, g.fin)[0]
+        notas = []
+        if fuente < len(fuentes):
+            for n in fuentes[fuente]:
+                if desplazamiento <= n["tick"] < desplazamiento + largo:
+                    notas.append({**n, "tick": n["tick"] - desplazamiento})
+        regiones.append({"indice": len(regiones), "nombre": nombre, "ticks": largo, "notas": notas})
+    return regiones
+
+
+def leer_pistas_midi(d, bloques, regiones):
+    mapa = _primero(bloques, 0x1058)
+    if not mapa:
+        return []
+    pistas = []
+    for c in mapa.hijos:
+        if c.tipo_contenido != 0x1057:
+            continue
+        nombre, _ = _cadena(d, c.inicio + 2)
+        colocadas = []
+        for e in c.hijos:
+            if e.tipo_contenido != 0x1056:
+                continue
+            for f in e.hijos:
+                if f.tipo_contenido != 0x104F:
+                    continue
+                ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
+                tick = _sin_cero(_entero(d, f.inicio + 9, 5))
+                if ri < len(regiones):
+                    colocadas.append({"region": regiones[ri]["nombre"], "indice_region": ri, "tick": tick})
+        colocadas.sort(key=lambda r: r["tick"])
+        pistas.append({"nombre": nombre, "regiones": colocadas})
+    return pistas

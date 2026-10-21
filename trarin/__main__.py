@@ -16,6 +16,12 @@ def _resumen(s):
         print(f"  tempo: {len(t)} eventos, {min(bpms):g} a {max(bpms):g} BPM, inicial {t[0]['bpm']:g} en {t[0]['posicion']}")
     for c in s["compases"]:
         print(f"  compás {c['posicion']:>12}  {c['numerador']}/{c['denominador']}")
+    print(f"  audio: {len(s['audio']['archivos'])} archivos, {len(s['audio']['regiones'])} regiones")
+    for p in s["pistas_audio"]:
+        n = sum(len(c["regiones"]) for c in p["canales"])
+        print(f"  pista audio {p['nombre']!r}: {len(p['canales'])} canal(es), {n} regiones colocadas")
+    for p in s["pistas_midi"]:
+        print(f"  pista MIDI  {p['nombre']!r}: {len(p['regiones'])} regiones colocadas")
     for m in s["marcadores"]:
         print(f"  marcador #{m['numero']:<3} {m['posicion']:>12}  {m['nombre']}")
 

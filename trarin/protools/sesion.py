@@ -6,6 +6,7 @@ import struct
 from .bloques import arbol, buscar
 from .descifrado import leer_descifrado
 from . import tiempo
+from . import pistas as P
 
 FORMATO = "trarin/0"
 
@@ -53,6 +54,23 @@ def leer(ruta) -> dict:
             ev["muestra"] = round(s * fs)
         return ev
 
+    archivos = P.leer_archivos_audio(d, bloques)
+    regiones = P.leer_regiones_audio(d, bloques)
+    pistas_audio = P.leer_pistas_audio(d, bloques, regiones)
+    regiones_midi = P.leer_regiones_midi(d, bloques)
+    pistas_midi = P.leer_pistas_midi(d, bloques, regiones_midi)
+
+    for p in pistas_audio:
+        for c in p["canales"]:
+            for r in c["regiones"]:
+                if fs:
+                    s = r["muestra"] / fs
+                    r["segundos"] = round(s, 6)
+                    r["posicion"] = tiempo.compas_tiempo(tiempo.tick_de_segundos(s, tempo), compases)
+    for p in pistas_midi:
+        for r in p["regiones"]:
+            ubicar(r)
+
     return {
         "formato": FORMATO,
         "origen": {
@@ -66,5 +84,9 @@ def leer(ruta) -> dict:
         "tempo": [ubicar(e) for e in tempo],
         "compases": [ubicar(e) for e in compases],
         "marcadores": [ubicar(e) for e in marcadores],
-        "pendiente": ["pistas", "regiones", "archivos de audio", "MIDI"],
+        "audio": {"archivos": archivos, "regiones": regiones},
+        "pistas_audio": pistas_audio,
+        "midi": {"regiones": regiones_midi},
+        "pistas_midi": pistas_midi,
+        "pendiente": ["volumen, paneo, mute, solo", "automatización", "plugins", "envíos y buses"],
     }

@@ -17,9 +17,11 @@ Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
 | Mapa de tempo (incluidas curvas)    | listo     |
 | Compases (cambios de métrica)       | listo     |
 | Marcadores                          | listo     |
-| Pistas, regiones, archivos de audio | pendiente |
-| MIDI                                | pendiente |
-| Plugins, envíos, automatización     | no previsto aún |
+| Archivos de audio y regiones        | listo     |
+| Pistas de audio (canales, colocaciones, sin fades) | listo |
+| MIDI (regiones, notas, pistas)      | listo     |
+| Volumen, paneo, mute, solo          | pendiente |
+| Automatización, plugins, envíos     | pendiente |
 
 Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
 
@@ -56,6 +58,13 @@ Ver `trarin/protools/tiempo.py`. Resumen:
 - Bloque `0x2077` (dentro de `0x271A` "Markers"): número (u16), largo (u32),
   nombre UTF-8, posición (40 bits).
 - Tempo, compases y marcadores aparecen dos veces con el mismo contenido.
+
+- Pistas de audio: lista `0x1015`/`0x1014` (nombre y canales) y mapa `0x1054`;
+  cada canal es una entrada `0x1052` y cada colocación un `0x1050` con hijo
+  `0x104F` (índice de región en `+4`, muestra de inicio en `+9`, 5 bytes).
+  Si el último byte del `0x1050` vale 1, la entrada es un fade o crossfade.
+- MIDI: notas en `0x2000` (bloques `MdNLB`, eventos de 35 bytes), regiones en
+  `0x2634` (ventana sobre un bloque de notas) y pistas en `0x1058`/`0x1057`.
 
 ## Preguntas abiertas
 
