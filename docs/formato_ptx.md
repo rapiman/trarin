@@ -413,6 +413,33 @@ que empieza dentro de él.
 puertos físicos), `0x2033` (nombres de salida), `0x230A/0x230B` (`Custom 1..48`).
 pt_api describe la reasignación de salidas en `0x2603 → 0x2602` y `0x260E` [externo].
 
+Lo que usa `protools/ruteo.py` [verificado comparando un envío agregado en Pro Tools 12 y en el
+corpus de 145 sesiones]:
+
+- Rutas: `0x1022` (u32 cantidad) → `0x1021`: `2110`, u8 clase (00 entrada, 02 bus, 03 insert),
+  u8, u32 largo y nombre, …, `2A000000` e identificador de 8 bytes. Salidas y buses: `0x2603` →
+  `0x2602`: `0226`, u8 clase, u8, u32 largo y nombre, …, `2A000000` e identificador (las mitades
+  de un par llevan después el del par). Un bus nuevo agrega 3 entradas en cada lista (par, .L, .R);
+  el índice no cambia.
+- Entrada del canal: en los bytes del `0x261B` tras sus hijos, después de la lista de
+  identificadores del canal (u16 n, n u32) y 9 bytes: u32 largo y nombre, u32 0, `2A000000` (o 0),
+  identificador de la ruta (o 0) y 7 bytes (`00 02 …` si es un bus); luego `FFFFFFFF`. Sin entrada:
+  largo 0 y ceros.
+- Faders: el primer `0x260D` del `0x261B` es el del canal; le siguen u16 cantidad de envíos y, por
+  envío, u16 lugar (0 = A) y su `0x260D`. Cada fader: `0x1029` (valores), `0x260E` (destino: u16
+  clase 0x13 salida, 0x43 bus, FFFF ninguno; `01 01`, u32 0, `2A000000` e identificador; ceros;
+  u32 largo, nombre y `01`) y listas de automatización `0x260A` (el paneo, dentro de `0x260C`).
+- `0x260A`: `0A26 01 4601 00`, u32 largo desde +12, `0000`, u32 cantidad de puntos (+12), u16 ancho
+  del valor (+16; 2 en todo el corpus), u32 cantidad − 1 (+18), `0000`; desde +24 los puntos (u32
+  muestra y valor) y 2 bytes al final. Las muestras son de la línea de tiempo de la sesión. El
+  primer punto va en la muestra 0: una lista que empieza después Pro Tools la descarta al abrir y
+  deja solo su primer valor [verificado en Pro Tools 12 con un show: corrida y con el primer valor
+  en 0, la automatización sobrevive a guardar de nuevo].
+- Si un identificador del canal termina en `0x5A`, el árbol de bloques ve un hijo falso tras el
+  último fader: la lista de identificadores se busca desde el último `0x260D`.
+- Copiar el ruteo de un canal a otro es traducir los identificadores por clase y nombre de la ruta
+  y reemplazar la entrada y el tramo de faders; el índice no cambia.
+
 ## 11. Otros bloques identificados, sin decodificar
 
 `0x260F/0x260B` (nombres de parámetros automatizables de plugins), `0x203E`, `0x2006/0x2086/0x208C`

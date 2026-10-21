@@ -53,8 +53,12 @@ def _str(texto):
 
 def _ids_canal(d, sb):
     """Lista de identificadores del canal en los bytes del 0x261B que siguen a
-    sus hijos: u16 n y n u32 consecutivos. Devuelve (posición del u16, ids)."""
-    p = sb.hijos[-1].fin if sb.hijos else sb.inicio
+    sus hijos: u16 n y n u32 consecutivos. Devuelve (posición del u16, ids).
+
+    Se busca desde el último fader (0x260D): si un identificador termina en
+    0x5A, el árbol puede ver ahí un hijo falso."""
+    faders = [h for h in sb.hijos if h.tipo_contenido == 0x260D]
+    p = faders[-1].fin if faders else (sb.hijos[-1].fin if sb.hijos else sb.inicio)
     for k in range(p, sb.fin - 6):
         n = struct.unpack_from("<H", d, k)[0]
         if 2 <= n <= 64 and k + 2 + 4 * n <= sb.fin:
