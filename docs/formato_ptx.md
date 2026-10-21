@@ -336,8 +336,9 @@ cruce = modo, pendiente, 10 ceros, curva de salida, 4 ceros, curva de entrada. U
 igual a una existente se reutiliza; si no, va al final de `0x2630` (el índice solo apunta a la
 lista). Cada fundido se coloca como un `0x1050` en el `0x1052` de cada canal: índice de la
 geometría en +4 del `0x104F`, ancla (inicio + pre-roll) en +9, el byte que sigue al `0x104F` en
-1, y el byte +17 del `0x104F` en 1 (en el corpus, 1 en 18 828 de 18 872 fundidos y 3 en casi
-todas las regiones; con 3, Pro Tools descarta la entrada al guardar). En la misma posición, el
+1, y el byte +17 del `0x104F` en 1 (en el corpus, 1 en 18 828 de 18 872 fundidos y 3 en 22 715
+de 23 121 regiones). Hay que respetarlo en las dos: un fundido con 3, o una región con 1 junto a
+un fundido de salida que termina en ella, y Pro Tools descarta ese fundido al guardar. En la misma posición, el
 fundido va antes que la región. El pre-roll de un cruce es la distancia hasta el inicio del clip
 que empieza dentro de él.
 

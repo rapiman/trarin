@@ -547,6 +547,8 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
             col[18] = 0
             struct.pack_into("<I", col, 20, indices[k])
             col[25:30] = int(muestra).to_bytes(5, "little")
+            col[16 + 17] = 3      # +17 del 0x104F: 3 en las regiones (22 715 de 23 121 en el corpus); con
+                                  # 1, Pro Tools descarta al guardar el fundido de salida que termina en ella
             nuevos_col.append((int(muestra), bytes(col)))
         for indice, ancla in fundidos:
             col = bytearray(plantilla)
