@@ -392,12 +392,16 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     fs = nativo["origen"].get("frecuencia_muestreo") or 48000
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
-    mezcla, regiones, midi = {}, {}, {}
+    mezcla, regiones, midi, nombres = {}, {}, {}, {}
     for p in comun["pistas"]:
         o = orig[p["id"]]
         for k in set(p) | set(o):
-            if k not in ("mezcla", "clips") and p.get(k) != o.get(k):
+            if k not in ("mezcla", "clips", "nombre") and p.get(k) != o.get(k):
                 raise ErrorComun(f"Pro Tools: cambiar '{k}' de la pista {p['id']!r} aún no está soportado")
+        if p["nombre"] != o["nombre"]:
+            if not p["nombre"] or p["nombre"] in {x["nombre"] for x in comun["pistas"] if x is not p}:
+                raise ErrorComun(f"Pro Tools: nombre de pista vacío o repetido: {p['nombre']!r}")
+            nombres[o["nombre"]] = p["nombre"]
         cambio = {}
         for k in set(p["mezcla"]) | set(o["mezcla"]):
             if p["mezcla"].get(k) == o["mezcla"].get(k):
@@ -433,7 +437,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                 j = int(c["id"].rsplit("#", 1)[1])
                 regiones.setdefault(p["id"], {})[j] = cambio
     return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
-                            marcadores_nuevos=altas, marcadores_borrados=bajas)
+                            marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres)
 
 
 def _cambios_marcadores_pt(nuevos, originales):

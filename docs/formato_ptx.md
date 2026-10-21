@@ -155,6 +155,11 @@ En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
   y la de sus fundidos de entrada y salida; silenciarla cambia el byte de mute. Ambos son de tamaño
   fijo, así que no hace falta reconstruir la sesión.
 
+- **Renombrar una pista** [verificado renombrando en Pro Tools 12]: el nombre (u32 largo + texto)
+  está en los bytes propios de `0x2519`, en los dos `0x251A`, en la playlist activa `0x1014` y en
+  las entradas `0x1052` de sus canales (audio), en `0x1057` (MIDI), y en el nombre del canal
+  `0x102D → 0x2619` solo para auxiliares y master (en audio ese nombre es el de creación).
+
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 
 Lista con u32 cantidad. Cada geometría:
