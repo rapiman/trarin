@@ -102,7 +102,7 @@ def leer_regiones_audio(d, bloques, ganancias=None):
                   "inicio_original": inicio}
         nombre_b = next((h for h in c.hijos if h.tipo_contenido == 0x2628), None)
         if nombre_b and ganancias:
-            i = struct.unpack_from("<i", d, nombre_b.fin - 4)[0]
+            i = _indice_clip_gain(d, nombre_b)
             if 0 <= i < len(ganancias):
                 nodos = ganancias[i]
                 if len(nodos) == 1:
@@ -113,14 +113,25 @@ def leer_regiones_audio(d, bloques, ganancias=None):
     return regiones
 
 
+def _indice_clip_gain(d, b):
+    """Índice de clip gain (int32, -1 = ninguno) de un bloque 0x2628.
+
+    Va 27 bytes después de la última marca FF FF 04 00 04 00. En PT 12 eso
+    coincide con los últimos 4 bytes; Pro Tools 2026 agrega después 00 00 y un
+    UUID de 16 bytes."""
+    k = d.rfind(b"\xff\xff\x04\x00\x04\x00", b.inicio, b.fin)
+    if k < 0 or k + 31 > b.fin:
+        return -1
+    return struct.unpack_from("<i", d, k + 27)[0]
+
+
 def leer_clip_gain(d, bloques):
     """Diccionario de clip gain (bloque 0x2637).
 
     u32 cantidad de registros; cada registro: 01 46 01 00, u32 tamaño (el
     registro mide 8 + tamaño), u32 cantidad de nodos en +10 y, desde +22,
     pares [u32 posición en muestras, float32 dB]. Un solo nodo = ganancia fija.
-    Cada región (0x2628) guarda en sus últimos 4 bytes el índice (int32,
-    -1 = sin clip gain)."""
+    Cada región (0x2628) guarda el índice (ver _indice_clip_gain)."""
     b = _primero(bloques, 0x2637)
     if not b:
         return []
@@ -143,17 +154,23 @@ def leer_clip_gain(d, bloques):
 
 
 _MODO_FUNDIDO = {1: "cruzado", 2: "salida", 3: "entrada"}
-_FORMA_FUNDIDO = {1: "potencia", 2: "lineal"}
+_PENDIENTE = {1: "potencia", 2: "ganancia"}      # Equal Power / Equal Gain
+_CURVA = {0: "estandar", 1: "s", 2: "preset"}
+# Posición de cada curva dentro de la cola que empieza en el byte de modo.
+_CURVAS = {3: [("curva", 6)], 2: [("curva", 12)],
+           1: [("curva_salida", 12), ("curva_entrada", 19)]}
 
 
 def leer_fundidos(d, bloques):
-    """Geometrías de fundido (bloque 0x2630 con hijos 0x262f).
+    """Geometrías de fundido (bloque 0x2630 con hijos 0x262F).
 
     Byte +5: anchos en nibbles (bajo = ancho del pre-roll, alto = ancho de la
-    duración); desde +8 el pre-roll y la duración en muestras; luego el modo
-    (1 cruzado, 2 salida, 3 entrada) y la forma. El pre-roll es la parte del
-    fundido antes del ancla del evento: 0 en una entrada, igual a la duración
-    en una salida."""
+    duración); desde +8 el pre-roll y la duración en muestras. Sigue la cola:
+    modo (1 cruzado, 2 salida, 3 entrada), pendiente (1 Equal Power,
+    2 Equal Gain) y las curvas [tipo u8, preset i16] (tipo 0 estándar, 1 S,
+    2 preset; el preset se cuenta desde la curva lineal). El pre-roll es la
+    parte del fundido antes del ancla del evento: 0 en una entrada, igual a la
+    duración en una salida."""
     lista = _primero(bloques, 0x2630)
     if not lista:
         return []
@@ -166,9 +183,18 @@ def leer_fundidos(d, bloques):
         wp, wt = anchos & 15, anchos >> 4
         pre = _entero(d, p + 8, wp) if wp else 0
         dur = _entero(d, p + 8 + wp, wt) if wt else 0
-        modo, forma = d[p + 8 + wp + wt], d[p + 9 + wp + wt]
-        out.append({"tipo": _MODO_FUNDIDO.get(modo, modo), "pre_roll": pre, "muestras": dur,
-                    "forma": _FORMA_FUNDIDO.get(forma, forma)})
+        m = p + 8 + wp + wt
+        modo = d[m]
+        item = {"tipo": _MODO_FUNDIDO.get(modo, modo), "pre_roll": pre, "muestras": dur,
+                "pendiente": _PENDIENTE.get(d[m + 1], d[m + 1])}
+        for clave, k in _CURVAS.get(modo, []):
+            if m + k + 3 <= g.fin:
+                tipo = d[m + k]
+                curva = {"forma": _CURVA.get(tipo, tipo)}
+                if tipo == 2:
+                    curva["preset"] = struct.unpack_from("<h", d, m + k + 1)[0]
+                item[clave] = curva
+        out.append(item)
     return out
 
 
@@ -221,7 +247,8 @@ def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
 
     def colocadas(c):
         # Evento 0x1050 -> 0x104F: +2 mute, +4 índice, +9 muestra (ancla).
-        # El último byte del 0x1050 vale 1 si el índice apunta a un fundido.
+        # El primer byte después del 0x104F vale 1 si el índice apunta a un
+        # fundido (PT 12.5 deja 1 byte ahí; sesiones más antiguas, 2).
         out, fun = [], []
         for e in c.hijos:
             if e.tipo_contenido != 0x1050:
@@ -231,11 +258,12 @@ def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
                     continue
                 ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
                 muestra = _entero(d, f.inicio + 9, 5)
-                if d[e.fin - 1] == 1:
+                if d[f.fin] == 1:           # primer byte tras el 0x104F: 1 = fundido
                     if ri < len(fundidos):
                         g = fundidos[ri]
-                        fun.append({"tipo": g["tipo"], "muestra": muestra - g["pre_roll"],
-                                    "muestras": g["muestras"], "forma": g["forma"]})
+                        f_ = {k: v for k, v in g.items() if k != "pre_roll"}
+                        f_["muestra"] = muestra - g["pre_roll"]
+                        fun.append(f_)
                 elif ri < len(regiones):
                     item = {"region": regiones[ri]["nombre"], "indice_region": ri, "muestra": muestra}
                     if d[f.inicio + 2] == 1:

@@ -9,19 +9,19 @@ show, sin desfases de audio, MIDI ni mapa de tempo.
 
 ## Estado
 
-Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
+Versión 0.1. Solo lectura. Pro Tools `.ptx`: probado con 12.5 (Windows), 12.8, 2019 y 2026 (Mac).
 
 | Dato de la sesión                   | Estado    |
 |-------------------------------------|-----------|
 | Producto, versión, frecuencia       | listo     |
 | Mapa de tempo (incluidas curvas)    | listo     |
 | Compases (cambios de métrica)       | listo     |
-| Marcadores                          | listo     |
+| Marcadores y selecciones, con comentario | listo |
 | Archivos de audio y regiones        | listo     |
 | Pistas de audio (canales, colocaciones, mute de región) | listo |
-| Fundidos (entrada, salida, cruzados) | listo |
+| Fundidos (entrada, salida, cruzados, pendiente y curva) | listo |
 | Clip gain (fijo y curvas)           | listo     |
-| Cadencia de timecode                | listo (solo visto 30 fps) |
+| Timecode: cadencia, inicio y duración de sesión | listo |
 | MIDI (regiones, notas, pistas)      | listo     |
 | Volumen, paneo, mute, solo          | listo     |
 | Envíos (destino y nivel)            | listo     |
