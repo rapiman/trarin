@@ -158,6 +158,9 @@ En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
   a un fundido, `0` = a una región [verificado]. En PT 12.5 ese byte cierra el `0x1050`; en
   12.8, 2019 y 2026 le sigue otro byte (`01`).
 
+  Agregar o quitar colocaciones [verificado en Pro Tools 12]: el `0x1052` de cada canal lleva el
+  nombre, u32 cantidad de colocaciones y los `0x1050`; una colocación nueva es una copia de otra con
+  índice de región y muestra nuevos. El índice `0x0002` no apunta a los `0x1050`.
   **Escritura** [verificado en Pro Tools 12]: mover una región cambia la muestra del ancla en cada canal
   y la de sus fundidos de entrada y salida; silenciarla cambia el byte de mute. Ambos son de tamaño
   fijo, así que no hace falta reconstruir la sesión.
