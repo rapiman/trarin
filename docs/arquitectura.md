@@ -38,10 +38,15 @@ python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nue
 | PyFLP | GPL-3.0 | no se usa (licencia incompatible, sin mantenimiento, no funciona en Python ≥ 3.11) |
 | DawVert | GPL-3.0 | no se usa; su repositorio pide no ser analizado por agentes de IA |
 
-## Decisiones abiertas
+## Decisiones
 
-- ¿Unificar los tres JSON en un modelo común (pistas → clips → notas/audio, mezcla, automatización)
-  para poder pasar una sesión de un DAW a otro, o mantener un JSON por DAW?
-- ¿Exportar e importar DAWproject como puente?
-- Escritura de Pro Tools: requiere reubicar la tabla de punteros; pt_api documenta el procedimiento.
-- Servidor MCP: exponer `leer`, `escribir` y operaciones puntuales (cambiar tempo, mover clip…).
+- Modelo común `trarin/1` para editar los tres DAW con el mismo JSON (ver `modelo_comun.md`).
+  Pasar sesiones de un DAW a otro queda para después (requiere crear pistas y clips).
+- FL Studio: cada canal es una pista del modelo común.
+- Solo Pro Tools, Ableton y FL Studio; DAWproject descartado.
+
+## Pendiente
+
+- Escritura de Pro Tools desde el modelo común (la reconstrucción de la sesión ya está verificada).
+- Medir la curva del fader de FL Studio para expresar su volumen en dB.
+- Servidor MCP.

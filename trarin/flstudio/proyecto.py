@@ -221,7 +221,7 @@ def leer(ruta):
         for it in a["items"]:
             it["pista_nombre"] = next((p["nombre"] for p in a["pistas"] if p["numero"] == it["pista"]), None)
         a["pistas"] = [p for p in a["pistas"] if p["nombre"] or any(it["pista"] == p["numero"] for it in a["items"])]
-        a["items"].sort(key=lambda it: (it["tick"], it["pista"]))
+        # Se conserva el orden del archivo: el escritor empareja cada item con su registro.
         a["marcadores"] = [m for m in a["marcadores"] if m.get("tipo") != "compas" or m.get("nombre")]
 
     for c in canales:
