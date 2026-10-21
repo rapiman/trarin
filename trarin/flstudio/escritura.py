@@ -14,7 +14,7 @@ cambios, el resultado es idéntico byte a byte). Se modifican:
 from pathlib import Path
 import struct
 
-from .proyecto import (leer, tamano_item, leer_eventos, escribir_eventos, _version_tupla, _texto,
+from .proyecto import (db_a_fader, leer, tamano_item, leer_eventos, escribir_eventos, _version_tupla, _texto,
                        E_TEMPO, E_TIEMPO_NUM, E_TIEMPO_DEN, E_CANAL, E_CANAL_INSERT, E_PATRON,
                        E_PATRON_NOMBRE, E_NOTAS, E_ARREGLO, E_PLAYLIST, E_PISTA, E_INSERT,
                        E_NOMBRE, E_MEZCLA_PARAMS, E_VERSION, TICKS)
@@ -152,7 +152,9 @@ def _mezcla(datos, inserts, inserts_orig):
     pedidos = {}
     for m in inserts:
         o = orig.get(m["numero"], {})
-        if m.get("volumen_fader") is not None and m["volumen_fader"] != o.get("volumen_fader"):
+        if "volumen_db" in m and m["volumen_db"] != o.get("volumen_db"):
+            pedidos[(m["numero"], 192)] = db_a_fader(m["volumen_db"])
+        elif m.get("volumen_fader") is not None and m["volumen_fader"] != o.get("volumen_fader"):
             pedidos[(m["numero"], 192)] = round(m["volumen_fader"] * 16000)
         if m.get("paneo") is not None and m["paneo"] != o.get("paneo"):
             pedidos[(m["numero"], 193)] = round(m["paneo"] * 6400)

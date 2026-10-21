@@ -12,6 +12,7 @@ mezclador 236) abre el contexto al que pertenecen los siguientes.
 """
 
 from pathlib import Path
+import math
 import struct
 
 from ..protools import tiempo
@@ -292,6 +293,24 @@ def _playlist(v, escala, pistas_max, tam_item):
     return out
 
 
+# Curva del fader del mezclador (medida en FL Studio 21 escribiendo valores en dB):
+# ganancia = (e^(3x) − 1) / (e^2,4 − 1), con x = valor / 16000. 0 dB es x = 0,8
+# (12800) y el máximo x = 1 da +5,6 dB. Error < 0,03 dB entre +3 y −48 dB.
+_K_FADER = math.expm1(2.4)
+
+
+def fader_a_db(valor):
+    x = valor / 16000
+    return None if x <= 0 else round(20 * math.log10(math.expm1(3 * x) / _K_FADER), 2)
+
+
+def db_a_fader(db):
+    """dB → valor almacenado (0..16000). None o −inf = silencio."""
+    if db is None or db == float("-inf"):
+        return 0
+    return max(0, min(16000, round(16000 * math.log1p(_K_FADER * 10 ** (db / 20)) / 3)))
+
+
 def _volumen_paneo(datos, inserts):
     """Registros de 12 bytes: [4] id del parámetro, [6:8] u16 con insert<<6|slot,
     [8:12] valor int32. 192 = volumen (12800 = posición por defecto), 193 = paneo."""
@@ -305,5 +324,6 @@ def _volumen_paneo(datos, inserts):
         if n < len(inserts):
             if pid == 192:
                 inserts[n]["volumen_fader"] = round(valor / 16000, 4)
+                inserts[n]["volumen_db"] = fader_a_db(valor)
             else:
                 inserts[n]["paneo"] = round(valor / 6400, 4)
