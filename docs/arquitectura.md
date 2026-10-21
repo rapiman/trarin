@@ -14,7 +14,30 @@ Uso:
 python -m trarin leer SESION.(ptx|als|flp) -o sesion.json
 # editar sesion.json (a mano o con una IA)
 python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nueva.(als|flp)
+python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ...   # consulta antes de armar un show
 ```
+
+## Show (juntar sesiones)
+
+Decisiones tomadas para el armador de shows (en desarrollo):
+
+- Antes de juntar, una **consulta de compatibilidad** (`compatibilidad.py`, solo lee): frecuencia
+  de muestreo (distinta = bloqueo), bits de los archivos, tempo y compás de cada canción, duración,
+  pistas que coinciden entre sesiones (primero por nombre exacto; las que quedan solas, por nombre
+  parecido, una por sesión; nunca dos pistas de la misma sesión) con sus diferencias de tipo,
+  canales, mezcla, inserts y ruteo, las pistas propias de cada sesión, el ruteo (entradas, salidas y
+  envíos, y en qué sesiones está cada uno) y los plugins que no están en todas. Con eso se decide el
+  **match**: qué pista de cada canción va a qué pista del show (por defecto, el que propone la
+  consulta; se puede corregir a mano).
+- Base: una sesión base indicada, o una copia de la primera canción.
+- Separación entre canciones configurable, también negativa (canciones encimadas). Con separación
+  positiva, la primera mitad lleva el tempo de la canción que termina y la segunda el de la que
+  empieza, con el cambio de tempo una blanca antes del inicio (configurable); con separación negativa
+  el tempo cambia en la mitad de la zona encimada.
+- Mezcla de pistas juntadas: por ahora gana la de la primera canción; después, automatización.
+- Plugins: la meta es copiarlos; mientras tanto mandan la base o la plantilla compatible y la consulta
+  avisa qué plugins faltan.
+- Los fundidos de los clips son obligatorios.
 
 ## Principios
 

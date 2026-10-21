@@ -2,6 +2,7 @@
   python -m trarin leer SESION.(ptx|als|flp) [-o salida.json] [--yaml] [--resumen]
   python -m trarin leer SESION --comun -o comun.json      (modelo común trarin/1)
   python -m trarin escribir EDITADO.json --plantilla ORIGINAL.(als|flp) -o NUEVO.(als|flp)
+  python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ... [--json] [-o informe]
 """
 
 import argparse
@@ -90,7 +91,25 @@ def main(argv=None):
     e.add_argument("json")
     e.add_argument("--plantilla", required=True, help="sesión original de la que se leyó el JSON")
     e.add_argument("-o", "--salida", required=True, help="archivo nuevo (nunca se sobrescribe la plantilla)")
+    k = sub.add_parser("compatibilidad", help="consulta qué tan compatibles son varias sesiones antes de juntarlas (solo lee)")
+    k.add_argument("sesiones", nargs="+", help="sesiones .ptx en el orden del show")
+    k.add_argument("--json", action="store_true", help="informe completo en JSON")
+    k.add_argument("-o", "--salida")
     a = p.parse_args(argv)
+    if a.orden == "compatibilidad":
+        from .compatibilidad import informe, texto as texto_informe, ErrorCompatibilidad
+        try:
+            inf = informe(a.sesiones)
+        except ErrorCompatibilidad as e:
+            p.error(str(e))
+        salida = json.dumps(inf, ensure_ascii=False, indent=2) + "\n" if a.json else texto_informe(inf)
+        if a.salida:
+            Path(a.salida).write_text(salida, encoding="utf-8")
+        else:
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+            sys.stdout.write(salida)
+        return
     if a.orden == "escribir":
         with open(a.json, encoding="utf-8") as f:
             datos = json.load(f)
