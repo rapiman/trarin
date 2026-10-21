@@ -21,6 +21,11 @@ que ya existe (la plantilla), con nombre, números e identificadores propios:
 * el índice 0x0002: posiciones en las entradas de lista de 0x1015, 0x1054,
   0x2519 y 0x2624, una entrada por el 0x251A nuevo de la segunda mitad, el
   número de la entrada de 0x2716 y una entrada para el 0x2627 del canal nuevo.
+
+Una pista estéreo parte de la misma plantilla mono: marcas de estéreo en 0x2519
+y 0x251A, dos entradas 0x1052, y en el canal la marca estéreo, la entrada
+estéreo de la sesión, el paneo −100/+100 y una segunda lista de paneo
+(verificado contra una pista estéreo creada en Pro Tools 12).
 """
 
 import os
@@ -52,7 +57,7 @@ def _ids_canal(d, sb):
     p = sb.hijos[-1].fin if sb.hijos else sb.inicio
     for k in range(p, sb.fin - 6):
         n = struct.unpack_from("<H", d, k)[0]
-        if 1 <= n <= 64 and k + 2 + 4 * n <= sb.fin:
+        if 2 <= n <= 64 and k + 2 + 4 * n <= sb.fin:
             v = struct.unpack_from(f"<{n}I", d, k + 2)
             if all(v[i + 1] == v[i] + 1 for i in range(n - 1)) and v[0] > 0:
                 return k, list(v)
@@ -110,15 +115,38 @@ def _lista_2519(d, L):
 
 
 def agregar_pistas(d, nombres, plantilla=None):
-    """d: sesión descifrada. nombres: nombres de las pistas mono nuevas (al
-    final). plantilla: nombre de una pista mono de audio existente (por defecto,
-    la primera que haya). Devuelve la sesión descifrada con las pistas nuevas."""
-    for nombre in nombres:
-        d = _agregar_una(d, nombre, plantilla)
+    """d: sesión descifrada. nombres: nombres de las pistas nuevas (al final),
+    cada uno como texto (mono) o como (nombre, canales) con canales 1 o 2.
+    plantilla: nombre de una pista mono de audio existente (por defecto, la
+    primera que sirva). Devuelve la sesión descifrada con las pistas nuevas."""
+    for x in nombres:
+        nombre, canales = (x, 1) if isinstance(x, str) else x
+        if canales not in (1, 2):
+            raise ErrorPista("solo se pueden crear pistas mono o estéreo")
+        d = _agregar_una(d, nombre, plantilla, canales)
     return d
 
 
-def _agregar_una(d, nombre, plantilla):
+def _rehacer(d, blq, fijos, variables):
+    """Bytes de un bloque copiado con cambios: 'fijos' (posición, bytes) del
+    mismo largo y 'variables' (inicio, fin, bytes) que cambian el tamaño; se
+    corrige el tamaño de cada bloque que los contiene. Posiciones de d."""
+    base = blq.pos
+    c = bytearray(d[blq.pos:blq.fin])
+    for p, b in fijos:
+        c[p - base:p - base + len(b)] = b
+    for b in blq.recorrer():
+        if any(i <= b.pos and b.fin <= f for i, f, _ in variables):
+            continue                                  # bloque reemplazado entero
+        delta = sum(len(n) - (f - i) for i, f, n in variables if i >= b.inicio and f <= b.fin)
+        if delta:
+            struct.pack_into("<I", c, b.pos - base + 3, b.tamano + delta)
+    for i, f, n in sorted(variables, key=lambda x: x[0], reverse=True):
+        c[i - base:f - base] = n
+    return bytes(c)
+
+
+def _agregar_una(d, nombre, plantilla, canales=1):
     bloques = arbol(d)
     L = _primero(bloques, 0x2519)
     entradas, fin_lista, pos_cantidad = _lista_2519(d, L)
@@ -160,7 +188,7 @@ def _agregar_una(d, nombre, plantilla):
 
     # 1) lista de pistas 0x2519: entrada propia + dos 0x251A
     reemplazos.append((pos_cantidad, pos_cantidad + 4, struct.pack("<I", n_pistas + 1)))
-    entrada = struct.pack("<H", 0) + _str(nombre) + struct.pack("<H", 0) + uuid + struct.pack("<HB", n_pistas + 1, 0)
+    entrada = struct.pack("<H", 0) + _str(nombre) + struct.pack("<H", canales - 1) + uuid + struct.pack("<HB", n_pistas + 1, 0)
     reemplazos.append((fin_lista, fin_lista, entrada, L.pos))
 
     # identificador de 8 bytes de la pista (251A y nombre del canal lo comparten)
@@ -172,6 +200,7 @@ def _agregar_una(d, nombre, plantilla):
         b = bytearray(d[h.pos:h.fin].replace(id_t, id_n))
         _, q = _cadena(b, 11)
         cola = bytearray(b[q:])
+        struct.pack_into("<H", cola, 0, canales - 1)          # estéreo
         cola[-16:] = uuid
         n_off = len(cola) - 16 - 6
         struct.pack_into("<I", cola, n_off, n_pistas + 1)
@@ -206,30 +235,33 @@ def _agregar_una(d, nombre, plantilla):
     for nom, q, lista in ids_pl:
         if any(x >= i_map for x in lista):
             reemplazos.append((q, q + 2 * len(lista),
-                               struct.pack(f"<{len(lista)}H", *[x + (x >= i_map) for x in lista])))
+                               struct.pack(f"<{len(lista)}H", *[x + canales * (x >= i_map) for x in lista])))
     b_pl, _ = playlists[t[3]]
     _, j = _cadena(d, b_pl.inicio + 2)
     cola = bytearray(d[j + 7:b_pl.fin])
     if cola[4:8] == b"\x2a\0\0\0":           # identificador propio de la playlist
         cola[8:16] = _id_nuevo(d, bytes(cola[8:16]))
-    cont = (b"\x14\x10" + _str(nombre) + d[j:j + 1] + struct.pack("<IH", 1, i_map) + bytes(cola))
+    struct.pack_into("<H", cola, len(cola) - 2, canales - 1)
+    cont = (b"\x14\x10" + _str(nombre) + bytes([canales - 1]) + struct.pack("<I", canales)
+            + struct.pack(f"<{canales}H", *range(i_map, i_map + canales)) + bytes(cola))
     reemplazos.append((lista_pl.inicio + 2, lista_pl.inicio + 6, struct.pack("<I", n_pl + 1)))
     donde = pls[i_pl].pos if i_pl < len(pls) else pls[-1].fin
     reemplazos.append((donde, donde, d[b_pl.pos:b_pl.pos + 3] + struct.pack("<I", len(cont)) + cont,
                        lista_pl.pos))
     cont = b"\x52\x10" + _str(nombre) + bytes(4) + b"\x01\x00"
-    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_map + 1)))
+    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_map + canales)))
     donde = e1052[i_map].pos if i_map < len(e1052) else e1052[-1].fin
-    reemplazos.append((donde, donde, b"\x5a\x03\x00" + struct.pack("<I", len(cont)) + cont, mapa.pos))
+    reemplazos.append((donde, donde, (b"\x5a\x03\x00" + struct.pack("<I", len(cont)) + cont) * canales,
+                       mapa.pos))
 
     # 3) canal de mezcla
-    canales = raiz.hijos
-    canal_t = canales[i_t]
+    canales_mezcla = raiz.hijos
+    canal_t = canales_mezcla[i_t]
     if canal_t.tipo_contenido != 0x261C:
         raise ErrorPista("el canal de la plantilla no es de audio")
-    n_audio = sum(1 for c in canales if c.tipo_contenido == 0x261C)
+    n_audio = sum(1 for c in canales_mezcla if c.tipo_contenido == 0x261C)
     ids = []
-    for c in canales:
+    for c in canales_mezcla:
         sb = next((h for h in c.hijos if h.tipo_contenido == 0x261B), None)
         if sb is None:
             continue
@@ -238,31 +270,34 @@ def _agregar_una(d, nombre, plantilla):
         except ErrorPista:
             pass
     nuevo_id = max(ids) + 1
-    c = bytearray(d[canal_t.pos:canal_t.fin])
-    base = canal_t.pos
     sb = next(h for h in canal_t.hijos if h.tipo_contenido == 0x261B)
+    fijos, variables = [], []
     k, lista = _ids_canal(d, sb)
-    for i in range(len(lista)):
-        struct.pack_into("<I", c, k + 2 + 4 * i - base, nuevo_id + i)
+    fijos.append((k + 2, struct.pack(f"<{len(lista)}I", *range(nuevo_id, nuevo_id + len(lista)))))
     # identificadores de 16 bytes de los parámetros del canal (tras FF 7F, u16 n)
     q = d.find(b"\xff\x7f", k, sb.fin)
     if q > 0:
         n16 = struct.unpack_from("<H", d, q + 2)[0]
-        for i in range(n16):
-            o = q + 4 + 16 * i - base
-            c[o:o + 16] = os.urandom(16)
+        fijos.append((q + 4, os.urandom(16 * n16)))
     # número de canal de audio y playlist (tras el 0x261B)
-    g = sb.fin - base
-    if struct.unpack_from("<H", c, g + 4)[0] != 1:
+    if struct.unpack_from("<H", d, sb.fin + 4)[0] != 1:
         raise ErrorPista("el canal de la plantilla tiene varias playlists")
-    struct.pack_into("<IHI", c, g, n_audio, 1, i_pl)
+    fijos.append((sb.fin, struct.pack("<IHI", n_audio, 1, i_pl)))
     # número correlativo del 0x2015 del canal (u32 final)
     nums = [struct.unpack_from("<I", d, b.fin - 4)[0] for b in buscar(bloques, 0x2015)]
     for b in buscar([canal_t], 0x2015):
-        struct.pack_into("<I", c, b.fin - 4 - base, max(nums) + 1)
-    c = bytes(c).replace(uuid_t, uuid).replace(id_t, id_n)
+        fijos.append((b.fin - 4, struct.pack("<I", max(nums) + 1)))
+    # nombre (0x102D → 0x2619, en +2)
+    cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+    nb = cab.hijos[0]
+    viejo = _str(_cadena(d, nb.inicio + 2)[0])
+    variables.append((nb.inicio + 2, nb.inicio + 2 + len(viejo), _str(nombre)))
+    if canales == 2:
+        _canal_estereo(d, canales_sesion=canales_mezcla, sb=sb, k=k, n_ids=len(lista),
+                       fijos=fijos, variables=variables)
+    c = _rehacer(d, canal_t, fijos, variables).replace(uuid_t, uuid).replace(id_t, id_n)
     # playlists de los demás canales que se corren
-    for ca in canales:
+    for ca in canales_mezcla:
         if ca.tipo_contenido != 0x261C:
             continue
         sbc = next(h for h in ca.hijos if h.tipo_contenido == 0x261B)
@@ -271,19 +306,8 @@ def _agregar_una(d, nombre, plantilla):
         if any(x >= i_pl for x in lista):
             reemplazos.append((sbc.fin + 6, sbc.fin + 6 + 4 * n,
                                struct.pack(f"<{n}I", *[x + (x >= i_pl) for x in lista])))
-    # nombre (0x102D → 0x2619, en +2): cambia el tamaño
-    cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
-    nb = cab.hijos[0]
-    viejo = _str(_cadena(d, nb.inicio + 2)[0])
-    a = nb.inicio + 2 - base
-    c = c[:a] + _str(nombre) + c[a + len(viejo):]
-    delta = len(_str(nombre)) - len(viejo)
-    c = bytearray(c)
-    for blq in (canal_t, sb, cab, nb):
-        o = blq.pos - base
-        struct.pack_into("<I", c, o + 3, blq.tamano + delta)
-    reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(canales) + 1)))
-    reemplazos.append((canales[-1].fin, canales[-1].fin, bytes(c), raiz.pos))
+    reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(canales_mezcla) + 1)))
+    reemplazos.append((canales_mezcla[-1].fin, canales_mezcla[-1].fin, bytes(c), raiz.pos))
 
     # 4) grupo <ALL>
     for grp in buscar(bloques, 0x202A):
@@ -312,7 +336,59 @@ def _agregar_una(d, nombre, plantilla):
         reemplazos.append((tiras[-1].fin, tiras[-1].fin, bytes(b), v.pos))
 
     nuevo = reconstruir(d, reemplazos)
-    return _actualizar_indice(nuevo, n_pistas, len(canales), i_pl, i_map)
+    return _actualizar_indice(nuevo, n_pistas, len(canales_mezcla), i_pl, i_map, canales)
+
+
+def _canal_estereo(d, canales_sesion, sb, k, n_ids, fijos, variables):
+    """Convierte la copia de un canal mono en estéreo, como lo hace Pro Tools 12
+    al crear una pista estéreo: marca de estéreo (u8 1, u8 0) tras el nombre 0x102D del 0x261B, entrada
+    estéreo, paneo izquierdo −100 y derecho +100 en el fader 0x1029 (+15/+43 y
+    su copia 86 bytes después) y una segunda lista de automatización de paneo."""
+    cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+    fijos.append((cab.fin, b"\x01\x00"))       # tras el nombre: u8 estéreo, u8 canal de entrada
+    # entrada: texto 9 bytes después de los identificadores
+    p = k + 2 + 4 * n_ids + 9
+    viejo, fin = _cadena(d, p)
+    if fin - p > 68:
+        raise ErrorPista("entrada del canal de la plantilla no reconocida")
+    nombre_e, id_e = _entrada_estereo(d, canales_sesion, viejo)
+    variables.append((p, fin, _str(nombre_e)))
+    # la entrada se identifica por los 8 bytes que siguen a 00000000 2A000000
+    if id_e is not None and d[fin:fin + 8] == b"\0\0\0\0\x2a\0\0\0":
+        fijos.append((fin + 8, id_e))
+    z = next(h for h in sb.hijos if h.tipo_contenido == 0x260D)
+    f = next(h for h in z.hijos if h.tipo_contenido == 0x1029)
+    for o, v in ((15, -100), (43, 100), (101, -100), (129, 100)):
+        if f.inicio + o + 4 <= f.fin:
+            fijos.append((f.inicio + o, struct.pack("<i", v)))
+    listas = [h for h in z.hijos if h.tipo_contenido == 0x260C]
+    if len(listas) < 2 or len(listas[0].hijos) != 1 or listas[1].hijos:
+        raise ErrorPista("automatización de paneo de la plantilla no reconocida")
+    pan = listas[0].hijos[0]
+    fijos.append((pan.inicio + 28, struct.pack("<h", -100)))
+    der = bytearray(d[listas[0].pos:listas[0].fin])
+    struct.pack_into("<h", der, pan.inicio + 28 - listas[0].pos, 100)
+    variables.append((listas[1].pos, listas[1].fin, bytes(der)))
+
+
+def _entrada_estereo(d, canales_sesion, mono):
+    """Nombre e identificador de la entrada estéreo: los de un canal de audio
+    estéreo de la sesión; si no hay, el nombre de la entrada mono sin su sufijo
+    .L/.R y sin identificador."""
+    for c in canales_sesion:
+        sb = next((h for h in c.hijos if h.tipo_contenido == 0x261B), None)
+        if (c.tipo_contenido != 0x261C or sb is None or not sb.hijos
+                or sb.hijos[0].tipo_contenido != 0x102D or d[sb.hijos[0].fin] != 1):
+            continue
+        try:
+            k, ids = _ids_canal(d, sb)
+            nombre, fin = _cadena(d, k + 2 + 4 * len(ids) + 9)
+        except (ErrorPista, struct.error):
+            continue
+        if d[fin:fin + 8] == b"\0\0\0\0\x2a\0\0\0":
+            return nombre, d[fin + 8:fin + 16]
+    base, _, suf = mono.rpartition(".")      # sin canal estéreo: Pro Tools la deja sin entrada
+    return (base if base and suf in ("L", "R") else mono), None
 
 
 def _insertar_en_grupos(e, lugar, pos):
@@ -323,7 +399,7 @@ def _insertar_en_grupos(e, lugar, pos):
     e.grupos.insert(1 + lugar, Grupo([pos]))
 
 
-def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map):
+def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1):
     """Agrega al índice las posiciones de los bloques nuevos (los últimos de cada lista)."""
     bloques = arbol(d)
     final = bloques[-1]
@@ -335,7 +411,7 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map):
     mapa = _primero(bloques, 0x1054)
     raiz = _primero(bloques, 0x2624)
     nuevo_pl = [h for h in lista_pl.hijos if h.tipo_contenido == 0x1014][i_pl]
-    nuevo_map = [h for h in mapa.hijos if h.tipo_contenido == 0x1052][i_map]
+    e1052 = [h for h in mapa.hijos if h.tipo_contenido == 0x1052]
     canal = raiz.hijos[-1]
     sb = next(h for h in canal.hijos if h.tipo_contenido == 0x261B)
     ins = next((h for h in sb.hijos if h.tipo_contenido == 0x2627), None)
@@ -344,9 +420,13 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map):
         c = e.camino
         tipos = [s.tipo for s in c]
         if len(c) == 1 and c[0].marca == 1 and c[0].numero == 0 and tipos[0] in (0x1015, 0x1054, 0x2624):
-            nuevo = {0x1015: nuevo_pl, 0x1054: nuevo_map, 0x2624: canal}[tipos[0]]
-            lugar = {0x1015: i_pl, 0x1054: i_map, 0x2624: n_canales}[tipos[0]]
-            _insertar_en_grupos(e, lugar, nuevo.pos)
+            if tipos[0] == 0x1054:
+                for i in range(canales):
+                    _insertar_en_grupos(e, i_map + i, e1052[i_map + i].pos)
+            else:
+                nuevo = {0x1015: nuevo_pl, 0x2624: canal}[tipos[0]]
+                lugar = {0x1015: i_pl, 0x2624: n_canales}[tipos[0]]
+                _insertar_en_grupos(e, lugar, nuevo.pos)
             hechos.add(tipos[0])
         elif len(c) == 1 and tipos[0] == 0x2519 and c[0].marca == 1 and c[0].numero == 0:
             e.grupos.append(Grupo([hijos[-1].pos]))

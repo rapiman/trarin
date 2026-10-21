@@ -218,6 +218,18 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     `0x258A` (u32 cantidad justo antes de las tiras; u16 número de pista en +2);
   - en el índice: las posiciones nuevas en las listas, una entrada `(0x2519, 1, n+1) + 0x251A` antes
     de la de `0x2716` (cuyo número pasa a n+1) y una entrada para el canal.
+- **Crear una pista de audio estéreo** [verificado en Pro Tools 12, comparando con una pista estéreo
+  creada en Pro Tools]: igual que la mono, con estas diferencias:
+  - u16 estéreo = 1 en la entrada de `0x2519` y tras el nombre en los dos `0x251A`;
+  - la playlist `0x1014` lleva el byte tras el nombre en 1, dos números de `0x1052` (dos entradas
+    vacías nuevas en `0x1054`, y en el índice) y su u16 final en 1;
+  - en el canal, tras el nombre `0x102D` del `0x261B`: `u8 estéreo | u8 canal de entrada` pasa de
+    `00 01` o `00 02` (L/R) a `01 00`; la entrada (u32 largo + texto, 9 bytes después de los
+    identificadores del canal) es la estéreo, y la identifican los 8 bytes que siguen a
+    `00000000 2A000000`; el fader `0x1029` lleva paneo −100 en +15 y +100 en +43, y lo mismo 86
+    bytes después (+101 y +129); el segundo `0x260C` del `0x260D`, vacío en mono, lleva una copia
+    de la lista de paneo del primero, con valor −100 en la primera y +100 en la segunda (int16 en
+    +28 del `0x260A`).
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 

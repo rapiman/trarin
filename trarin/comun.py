@@ -466,8 +466,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
 
 
 def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
-    """Crea primero las pistas nuevas (audio mono, vacías, con la mezcla de una
-    pista existente como plantilla) en una copia temporal y después aplica sobre
+    """Crea primero las pistas nuevas (audio mono o estéreo según 'canales',
+    vacías, a partir de una pista mono existente) en una copia temporal y después aplica sobre
     esa copia el resto de los cambios, incluidos los clips y la mezcla de las
     pistas nuevas."""
     import os
@@ -482,10 +482,10 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         nombre = p.get("nombre")
         if not nombre or nombre in usados:
             raise ErrorComun(f"Pro Tools: una pista nueva necesita un nombre no repetido ({nombre!r})")
-        if p.get("tipo", "audio") != "audio":
-            raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio mono")
+        if p.get("tipo", "audio") != "audio" or p.get("canales", 1) not in (1, 2):
+            raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio mono o estéreo")
         usados.add(nombre)
-        nombres.append(nombre)
+        nombres.append((nombre, p.get("canales", 1)))
     d = agregar_pistas(leer_descifrado(plantilla), nombres)
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
@@ -498,7 +498,8 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         for p in comun["pistas"]:
             if p in nuevas:
                 b = base[p["nombre"]]
-                mezcla = dict(b["mezcla"], volumen_db=0.0, paneo=0.0, mute=False)
+                paneo = [-1.0, 1.0] if p.get("canales", 1) == 2 else 0.0
+                mezcla = dict(b["mezcla"], volumen_db=0.0, paneo=paneo, mute=False)
                 mezcla.update({k: v for k, v in (p.get("mezcla") or {}).items() if v is not None})
                 p = dict(b, mezcla=mezcla, clips=p.get("clips", []))
             pistas.append(p)
