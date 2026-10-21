@@ -324,9 +324,11 @@ def _regiones_midi(d, bloques):
     return lista, [c for c in (lista.hijos if lista else []) if c.tipo_contenido in (0x2633, 0x2001)]
 
 
-def _altas_midi(d, bloques, regiones, chunks, clips):
+def _altas_midi(d, bloques, regiones, chunks, clips, bajas=None):
     """regiones: [{"nombre", "largo"}] nuevas, con su chunk en chunks[k];
     clips: {pista: [(región, tick)]}, región = índice existente o ("nueva", k).
+    bajas: {pista: [índice del clip]} (orden por tick, como al leer): se quita su
+    0x1056; la región queda en la lista de clips, como al borrar en Pro Tools.
 
     Verificado en Pro Tools 12 dibujando una nota y duplicando el clip: una
     región MIDI es un 0x2633 al final de 0x2634 (u32 cantidad en +2) con un
@@ -349,12 +351,25 @@ def _altas_midi(d, bloques, regiones, chunks, clips):
         reemplazos.append((punto, punto, nuevas, lista.pos))
     plantilla_col = next((d[e.pos:e.fin] for e in buscar(bloques, 0x1056) if e.tamano == 0x2B), _PLANTILLA_1056)
     mapa = _primero(bloques, 0x1058)
-    for pista, lista_clips in clips.items():
+    bajas = bajas or {}
+    n_reg = len(P.leer_regiones_midi(d, bloques))
+    for pista in sorted(set(clips) | set(bajas)):
+        lista_clips = clips.get(pista, [])
         pl = next((c for c in (mapa.hijos if mapa else []) if c.tipo_contenido == 0x1057
                    and P._cadena(d, c.inicio + 2)[0] == pista), None)
         if pl is None:
             raise ErrorEscritura(f"no se encontró la pista MIDI {pista!r}")
-        insercion = b""
+        col = sorted(((P._sin_cero(P._entero(d, f.inicio + 9, 5)), e) for e in pl.hijos
+                      if e.tipo_contenido == 0x1056 for f in e.hijos if f.tipo_contenido == 0x104F
+                      and struct.unpack_from("<I", d, f.inicio + 4)[0] < n_reg), key=lambda x: x[0])
+        quitar = []
+        for j in bajas.get(pista, []):
+            if j >= len(col):
+                raise ErrorEscritura(f"{pista}: no existe el clip MIDI {j}")
+            e = col[j][1]
+            quitar.append((e.pos, e.fin))
+            reemplazos.append((e.pos, e.fin, b"", pl.pos))
+        nuevos_col = []
         for region, tick in lista_clips:
             ri = len(existentes) + region[1] if isinstance(region, tuple) else region
             if tick < 0:
@@ -364,14 +379,13 @@ def _altas_midi(d, bloques, regiones, chunks, clips):
             col[f + 7 + 2] = 0                      # mute
             struct.pack_into("<I", col, f + 7 + 4, ri)
             col[f + 7 + 9:f + 7 + 14] = (int(tick) + CERO).to_bytes(5, "little")
-            insercion += bytes(col)
+            nuevos_col.append((int(tick) + CERO, bytes(col)))
         largo_nombre = struct.unpack_from("<I", d, pl.inicio + 2)[0]
         p_cant = pl.inicio + 6 + largo_nombre
         cantidad = struct.unpack_from("<I", d, p_cant)[0]
-        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad + len(lista_clips))))
+        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad + len(lista_clips) - len(quitar))))
         hijos = [h for h in pl.hijos if h.tipo_contenido == 0x1056]
-        punto = hijos[-1].fin if hijos else p_cant + 4
-        reemplazos.append((punto, punto, insercion, pl.pos))
+        reemplazos += _insertar_ordenado(d, hijos, nuevos_col, quitar, p_cant + 4, pl.pos)
     return reemplazos
 
 
@@ -449,7 +463,13 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
                 quitar.append((f["bloque"], f["fin_bloque"]))
         for a, b in quitar:
             reemplazos.append((a, b, b"", e.pos))
-        insercion = b""
+        largo_nombre = struct.unpack_from("<I", d, e.inicio + 2)[0]
+        p_cant = e.inicio + 6 + largo_nombre
+        cantidad = struct.unpack_from("<I", d, p_cant)[0]
+        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos))))
+        hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
+        fin_vacio = p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2) and e.fin - (p_cant + 4) > 2 else 0)
+        nuevos_col = []
         for indices, muestra in nuevos:
             if muestra < 0:
                 raise ErrorEscritura(f"{pista}: posición negativa")
@@ -457,17 +477,36 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
             col[18] = 0
             struct.pack_into("<I", col, 20, indices[k])
             col[25:30] = int(muestra).to_bytes(5, "little")
-            insercion += bytes(col)
-        largo_nombre = struct.unpack_from("<I", d, e.inicio + 2)[0]
-        p_cant = e.inicio + 6 + largo_nombre
-        cantidad = struct.unpack_from("<I", d, p_cant)[0]
-        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos))))
-        if insercion:
-            hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
-            punto = hijos[-1].fin if hijos else p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2)
-                                                              and e.fin - (p_cant + 4) > 2 else 0)
-            reemplazos.append((punto, punto, insercion, e.pos))
+            nuevos_col.append((int(muestra), bytes(col)))
+        reemplazos += _insertar_ordenado(d, hijos, nuevos_col, quitar, fin_vacio, e.pos)
     return reemplazos
+
+
+def _pos_colocacion(d, e):
+    """Muestra (audio) o tick + CERO (MIDI) del 0x104F de una colocación."""
+    f = next(x for x in e.hijos if x.tipo_contenido == 0x104F)
+    return P._entero(d, f.inicio + 9, 5)
+
+
+def _insertar_ordenado(d, hijos, nuevos, quitar, punto_vacio, contenedor):
+    """Inserta colocaciones nuevas [(posición, bytes)] entre las existentes
+    manteniendo el orden por posición: Pro Tools las guarda ordenadas, y si una
+    queda fuera de orden pierde colocaciones al leer [verificado con MIDI]."""
+    quedan = [h for h in hijos if not any(h.pos == a for a, _ in quitar)]
+    grupos = {}
+    for pos, b in sorted(nuevos, key=lambda x: x[0]):
+        sig = next((h for h in quedan if _pos_colocacion(d, h) > pos), None)
+        if sig is not None:
+            punto = sig.pos
+        elif quedan:
+            punto = quedan[-1].fin
+        elif hijos:
+            punto = hijos[-1].fin
+        else:
+            punto = punto_vacio
+        grupos.setdefault(punto, b"")
+        grupos[punto] += b
+    return [(p, p, b, contenedor) for p, b in grupos.items()]
 
 
 # ------------------------------------------------- archivos y regiones nuevas
@@ -1065,9 +1104,9 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
         reemplazos_notas, out_notas, chunks_nuevos = _cambios_notas(
             d, bloques, notas or {}, [(r["notas"], r["largo"]) for r in regiones_midi])
         out.update(out_notas)
-    if midi_nuevos.get("clips"):
+    if midi_nuevos.get("clips") or midi_nuevos.get("bajas"):
         reemplazos_notas += _altas_midi(d, bloques, regiones_midi, chunks_nuevos if regiones_midi else [],
-                                        midi_nuevos["clips"])
+                                        midi_nuevos.get("clips", {}), midi_nuevos.get("bajas"))
     nuevo = bytearray(d)
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b

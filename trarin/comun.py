@@ -463,8 +463,9 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                 regiones.setdefault(p["id"], {})[j] = cambio
         for i, x in oc.items():
             if i not in vistos:
-                if x["tipo"] != "audio":
-                    raise ErrorComun(f"Pro Tools: quitar clips MIDI aún no está soportado ({i})")
+                if x["tipo"] == "midi":
+                    midi_nuevos.setdefault("bajas", {}).setdefault(p["id"], []).append(int(i.rsplit("#m", 1)[1]))
+                    continue
                 clips_borrados.setdefault(p["id"], []).append(int(i.rsplit("#", 1)[1]))
     return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
                             marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
