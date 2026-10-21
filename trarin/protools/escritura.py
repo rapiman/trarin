@@ -447,10 +447,61 @@ def _cambios_tempo(d, bloques, tempo, out):
             out[p + 29] = struct.pack("<d", float(t["bpm"]))
 
 
+# ----------------------------------------------------------------- compases
+
+_RESTO_COMPAS = bytes.fromhex("01000300000000000200000003000000")
+
+
+def _cambios_compases(d, bloques, compases):
+    """Reescribe la lista de compases en las dos copias del bloque 0x2029
+    (verificado agregando compases en Pro Tools 12). Tras 'Meter' 02 00:
+    u32 largo del resto, u32 cantidad, eventos de 36 bytes (int64 tick + 10**12,
+    u32 compás, u32 numerador, u32 denominador y 16 bytes fijos), una tabla de
+    16 bytes por evento (u32 compás mostrado, u32 1, 8 bytes en cero) y 8 bytes
+    finales. Sin eventos, Pro Tools usa 4/4."""
+    eventos, compas, previo = [], 1, None
+    for c in sorted(compases, key=lambda x: x["tick"]):
+        num, den = int(c["numerador"]), int(c["denominador"])
+        if not (1 <= num <= 99 and den in (1, 2, 4, 8, 16, 32, 64)):
+            raise ErrorEscritura(f"compás inválido: {num}/{den}")
+        if previo is None:
+            if c["tick"] != 0:
+                raise ErrorEscritura("el primer compás debe empezar en el tick 0")
+        else:
+            largo = previo[1] * 4 * 960_000 // previo[2]
+            dif = c["tick"] - previo[0]
+            if dif <= 0 or dif % largo:
+                raise ErrorEscritura(f"el cambio de compás en el tick {c['tick']} no cae al inicio de un compás")
+            compas += dif // largo
+        eventos.append((c["tick"], compas, num, den))
+        previo = (c["tick"], num, den)
+    reemplazos = []
+    for b in buscar(bloques, 0x2029):
+        m = d.find(b"Meter\x02\x00", b.inicio, b.fin)
+        if m < 0:
+            raise ErrorEscritura("bloque de compases no reconocido")
+        m += 7
+        n = struct.unpack_from("<I", d, m + 4)[0]
+        fin = m + 8 + 36 * n + 16 * n + 8
+        if fin != b.fin or struct.unpack_from("<I", d, m)[0] != fin - m - 4:
+            raise ErrorEscritura("bloque de compases con otra estructura en esta versión")
+        resto = d[m + 8 + 20:m + 8 + 36] if n else _RESTO_COMPAS
+        desfase = (struct.unpack_from("<i", d, m + 8 + 36 * n)[0]
+                   - struct.unpack_from("<I", d, m + 8 + 8)[0]) if n else 0
+        cuerpo = struct.pack("<I", len(eventos))
+        for tick, compas, num, den in eventos:
+            cuerpo += struct.pack("<qIII", tick + CERO, compas, num, den) + resto
+        for _, compas, _, _ in eventos:
+            cuerpo += struct.pack("<iIQ", compas + desfase, 1, 0)
+        cuerpo += d[fin - 8:fin]
+        reemplazos.append((m, fin, struct.pack("<I", len(cuerpo)) + cuerpo))
+    return reemplazos
+
+
 # ------------------------------------------------------------------ entrada
 
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
-                     marcadores_nuevos=None, marcadores_borrados=None, nombres=None):
+                     marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -475,6 +526,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     reemplazos = _cambios_marcadores(d, bloques, marcadores) if marcadores else []
     if nombres:
         reemplazos += _renombrar_pistas(d, bloques, nombres)
+    if compases is not None:
+        reemplazos += _cambios_compases(d, bloques, compases)
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
