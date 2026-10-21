@@ -354,6 +354,140 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
     return reemplazos
 
 
+# ------------------------------------------------- archivos y regiones nuevas
+
+_COLA_2628 = bytes.fromhex("feff00000000ffff04000400" + "00" * 21 + "ffffffff")
+_COLA_2629 = bytes.fromhex("00000000803f0000803f0000000000000000ff")
+_TIPO_ARCHIVO = {".wav": b"EVAW", ".aif": b"FFIA", ".aiff": b"FFIA"}
+
+
+def info_wav(ruta):
+    """(muestras, bits, canales, frecuencia) de un WAV (RIFF, chunks fmt y data)."""
+    datos = Path(ruta).read_bytes()
+    if datos[:4] != b"RIFF" or datos[8:12] != b"WAVE":
+        raise ErrorEscritura(f"{ruta}: no es un WAV")
+    p, fmt, largo_datos = 12, None, None
+    while p + 8 <= len(datos):
+        cid, tam = datos[p:p + 4], struct.unpack_from("<I", datos, p + 4)[0]
+        if cid == b"fmt ":
+            fmt = struct.unpack_from("<HHIIHH", datos, p + 8)
+        elif cid == b"data":
+            largo_datos = tam
+        p += 8 + tam + (tam & 1)
+    if not fmt or largo_datos is None:
+        raise ErrorEscritura(f"{ruta}: WAV incompleto")
+    _, canales, frecuencia, _, bloque, bits = fmt
+    return largo_datos // bloque, bits, canales, frecuencia
+
+
+def _lista_rutas(d, a):
+    """Entradas del 0x103A: (tipo, padre, nombre, extra). Tipo 0 = volumen,
+    1 = carpeta, 2 = archivo; 'padre' es el índice de la entrada padre
+    (FFFFFFFF en un volumen) y 'extra' 4 bytes (serie del volumen, 0 en una
+    carpeta, tipo de archivo en un archivo)."""
+    p = a.inicio + 2
+    n = struct.unpack_from("<I", d, p)[0]
+    p += 4
+    out = []
+    for _ in range(n):
+        tipo, padre, largo = d[p], struct.unpack_from("<I", d, p + 1)[0], struct.unpack_from("<I", d, p + 5)[0]
+        nombre = d[p + 9:p + 9 + largo]
+        out.append((tipo, padre, nombre, d[p + 9 + largo:p + 13 + largo]))
+        p += 13 + largo
+    if p != a.fin:
+        raise ErrorEscritura("lista de archivos de audio no reconocida en esta versión")
+    return out
+
+
+def _altas_archivos_regiones(d, bloques, archivos, regiones):
+    """archivos: [{"ruta", "muestras", "bits"}] (rutas absolutas de Windows);
+    regiones: [{"nombre", "archivo" (índice en la sesión, o −(k+1) para el
+    archivo nuevo k), "desde", "largo"}].
+
+    Verificado importando un archivo en Pro Tools 12: el archivo suma una
+    cadena de entradas al 0x103A (carpeta, archivo, volumen y carpetas hasta la
+    raíz; cada entrada apunta a su padre por índice) y un 0x1003 (copia de otro,
+    con número, largo y bits nuevos) al 0x1004, que lleva la cantidad en +2. Cada
+    región es un 0x2629 (con su 0x2628: nombre, desplazamiento y largo) al final
+    del 0x262A, que también lleva la cantidad. El índice 0x0002 no apunta a
+    estos bloques."""
+    reemplazos = []
+    lista = _primero(bloques, 0x1004)
+    regs = _primero(bloques, 0x262A)
+    if lista is None or regs is None:
+        raise ErrorEscritura("la sesión no tiene lista de archivos o de regiones")
+    n_arch = struct.unpack_from("<I", d, lista.inicio + 2)[0]
+    if archivos:
+        a = next(h for h in lista.hijos if h.tipo_contenido == 0x103A)
+        entradas = _lista_rutas(d, a)
+        series = {e[2].lower(): e[3] for e in entradas if e[0] == 0}
+        nuevas = b""
+        k = len(entradas)
+        tipo_de = lambda t, padre, nombre, extra: (bytes([t]) + struct.pack("<II", padre, len(nombre))
+                                                   + nombre + extra)
+        bloques_1003 = b""
+        h1003 = [h for h in lista.hijos if h.tipo_contenido == 0x1003]
+        if not h1003:
+            raise ErrorEscritura("no hay un archivo de audio que sirva de plantilla en esta sesión")
+        plantilla = h1003[0]
+        numero = max(struct.unpack_from("<I", d, h.inicio + 2)[0] for h in h1003)
+        for arch in archivos:
+            partes = arch["ruta"].replace("/", "\\").split("\\")
+            if len(partes) < 3 or not partes[0].endswith(":"):
+                raise ErrorEscritura(f"ruta de archivo no válida (debe ser absoluta): {arch['ruta']}")
+            ext = Path(partes[-1]).suffix.lower()
+            if ext not in _TIPO_ARCHIVO:
+                raise ErrorEscritura(f"tipo de archivo no soportado: {partes[-1]}")
+            vol = (partes[0].lower() + "\\").encode("utf-8")
+            carpetas = partes[1:-1]
+            i_carpeta, i_vol = k, k + 2
+            nuevas += tipo_de(1, i_vol + len(carpetas) - 1 if len(carpetas) > 1 else i_vol,
+                              carpetas[-1].encode("utf-8"), bytes(4))
+            nuevas += tipo_de(2, i_carpeta, partes[-1].encode("utf-8"), _TIPO_ARCHIVO[ext])
+            nuevas += tipo_de(0, 0xFFFFFFFF, vol, series.get(vol, bytes(4)))
+            for j, c in enumerate(carpetas[:-1]):
+                nuevas += tipo_de(1, i_vol + j, c.encode("utf-8"), bytes(4))
+            k = i_vol + 1 + len(carpetas[:-1])
+            numero += 1
+            b = bytearray(d[plantilla.pos:plantilla.fin])
+            struct.pack_into("<I", b, 9, numero)
+            for h in plantilla.hijos:
+                o = h.pos - plantilla.pos
+                if h.tipo_contenido == 0x1001:
+                    struct.pack_into("<Q", b, o + 7 + 8, int(arch["muestras"]))
+                    if arch.get("bits") in (16, 24, 32):
+                        b[o + 7 + 7] = arch["bits"]
+                elif h.tipo_contenido == 0x2106 and h.hijos:
+                    q = h.hijos[0].pos - plantilla.pos
+                    b[q - 16:q] = os.urandom(16)
+            bloques_1003 += bytes(b)
+        total = len(entradas) + sum(len(x["ruta"].replace("/", "\\").split("\\")) for x in archivos)
+        reemplazos.append((a.inicio + 2, a.inicio + 6, struct.pack("<I", total)))
+        reemplazos.append((a.fin, a.fin, nuevas, a.pos))
+        reemplazos.append((lista.inicio + 2, lista.inicio + 6, struct.pack("<I", n_arch + len(archivos))))
+        reemplazos.append((h1003[-1].fin, h1003[-1].fin, bloques_1003, lista.pos))
+    if regiones:
+        n_reg = struct.unpack_from("<I", d, regs.inicio + 2)[0]
+        nuevas = b""
+        for r in regiones:
+            nombre = r["nombre"].encode("utf-8")
+            desde, largo = int(r.get("desde", 0)), int(r["largo"])
+            w_off = (max(desde.bit_length(), 1) + 7) // 8 if desde else 0
+            w_len = (largo.bit_length() + 7) // 8
+            datos = (struct.pack("<I", len(nombre)) + nombre + bytes([0, w_off << 4, w_len << 4, 0, 0])
+                     + (desde.to_bytes(w_off, "little") if w_off else b"") + largo.to_bytes(w_len, "little")
+                     + _COLA_2628)
+            b2628 = b"\x5a\x01\x00" + struct.pack("<I", 2 + len(datos)) + b"\x28\x26" + datos
+            arch = r["archivo"] if r["archivo"] >= 0 else n_arch - r["archivo"] - 1
+            cont = b"\x29\x26" + b2628 + struct.pack("<I", arch) + _COLA_2629
+            nuevas += b"\x5a\x02\x00" + struct.pack("<I", len(cont)) + cont
+        ultimo = [h for h in regs.hijos if h.tipo_contenido in (0x2629, 0x1008)]
+        punto = ultimo[-1].fin if ultimo else regs.fin
+        reemplazos.append((regs.inicio + 2, regs.inicio + 6, struct.pack("<I", n_reg + len(regiones))))
+        reemplazos.append((punto, punto, nuevas, regs.pos))
+    return reemplazos
+
+
 # ------------------------------------------------------------------- mezcla
 
 def _canal_mezcla(d, bloques, indice):
@@ -734,7 +868,8 @@ def _cambios_compases(d, bloques, compases):
 
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
                      marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None,
-                     notas=None, clips_nuevos=None, clips_borrados=None):
+                     notas=None, clips_nuevos=None, clips_borrados=None, archivos_nuevos=None,
+                     regiones_nuevas=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -766,6 +901,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     if tempo is not None:
         reemplazos += _cambios_tempo(d, bloques, tempo)
     reemplazos += reemplazos_notas
+    if archivos_nuevos or regiones_nuevas:
+        reemplazos += _altas_archivos_regiones(d, bloques, archivos_nuevos or [], regiones_nuevas or [])
     for pista in set(clips_nuevos or {}) | set(clips_borrados or {}):
         reemplazos += _altas_bajas_clips(d, bloques, pista, (clips_nuevos or {}).get(pista, []),
                                          (clips_borrados or {}).get(pista, []))

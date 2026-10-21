@@ -396,6 +396,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     orig = _por_id(original["pistas"])
     mezcla, regiones, midi, nombres, notas = {}, {}, {}, {}, {}
     clips_nuevos, clips_borrados = {}, {}
+    altas_audio = {"archivos": [], "regiones": [], "indices": {}, "largo": {},
+                   "base_regiones": len(nativo["audio"]["regiones"])}
     for p in comun["pistas"]:
         o = orig[p["id"]]
         for k in set(p) | set(o):
@@ -419,7 +421,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         for c in p["clips"]:
             x = oc.get(c.get("id"))
             if x is None or c.get("id") in vistos:
-                _clip_nuevo_pt(c, p, original, nativo, fs, clips_nuevos)
+                _clip_nuevo_pt(c, p, original, nativo, fs, clips_nuevos, altas_audio, comun)
                 continue
             vistos.add(c["id"])
             if c["tipo"] != "audio":
@@ -455,7 +457,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
                             marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
                             compases=compases, notas=notas, clips_nuevos=clips_nuevos,
-                            clips_borrados=clips_borrados)
+                            clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
+                            regiones_nuevas=altas_audio["regiones"])
 
 
 def _cambios_marcadores_pt(nuevos, originales):
@@ -484,34 +487,68 @@ def _cambios_marcadores_pt(nuevos, originales):
         raise ErrorComun("Pro Tools: no se puede identificar un marcador a borrar")
     return cambios, altas, bajas
 
-def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos):
-    """Un clip de audio nuevo en Pro Tools debe usar una región que ya existe:
-    se busca un clip de la sesión con el mismo archivo, desde_muestra y
-    largo_muestras (y la misma cantidad de canales) y se reutilizan sus regiones."""
+def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
+    """Clip de audio nuevo en Pro Tools. Si hay un clip de la sesión con el mismo
+    archivo, desde_muestra y largo_muestras (y la misma cantidad de canales), se
+    reutilizan sus regiones. Si no, se crea una región nueva (solo en pistas
+    mono), y si el archivo no está en la sesión, se agrega: debe venir en
+    'archivos' con su 'ruta' absoluta (WAV mono a la frecuencia de la sesión)."""
     if c.get("tipo") != "audio":
         raise ErrorComun("Pro Tools: agregar clips MIDI aún no está soportado")
     canales = next((len(t["canales"]) for t in nativo["pistas_audio"] if t["nombre"] == pista["id"]), None)
     if not canales:
         raise ErrorComun(f"Pro Tools: la pista {pista['id']!r} no es de audio")
-    clave = (c.get("archivo"), c.get("desde_muestra"), c.get("largo_muestras"))
+    muestra = c.get("muestra")
+    if muestra is None:
+        muestra = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
+    clave = (c.get("archivo"), c.get("desde_muestra", 0), c.get("largo_muestras"))
     for t in original["pistas"]:
         for x in t["clips"]:
-            if x["tipo"] == "audio" and (x["archivo"], x.get("desde_muestra"), x["largo_muestras"]) == clave \
+            if x["tipo"] == "audio" and (x["archivo"], x.get("desde_muestra", 0), x["largo_muestras"]) == clave \
                     and x.get("canales", 1) == canales:
                 ta = next(a for a in nativo["pistas_audio"] if a["nombre"] == t["id"])
                 j = int(x["id"].rsplit("#", 1)[1])
                 ref = ta["canales"][0]["regiones"][j]
-                indices = []
-                for canal in ta["canales"]:
-                    r = next(r for r in canal["regiones"] if r["muestra"] == ref["muestra"])
-                    indices.append(r["indice_region"])
-                muestra = c.get("muestra")
-                if muestra is None:
-                    muestra = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
+                indices = [next(r for r in canal["regiones"] if r["muestra"] == ref["muestra"])["indice_region"]
+                           for canal in ta["canales"]]
                 clips_nuevos.setdefault(pista["id"], []).append((indices, muestra))
                 return
-    raise ErrorComun("Pro Tools: un clip nuevo debe usar una región existente (mismo archivo, "
-                     "desde_muestra y largo_muestras que otro clip de la sesión)")
+    if canales != 1:
+        raise ErrorComun("Pro Tools: un clip con región nueva solo puede ir en una pista mono")
+    originales = {a["id"]: a for a in original["archivos"]}
+    if c.get("archivo") in originales:
+        indice = c["archivo"]
+        total = originales[c["archivo"]].get("muestras")
+    else:
+        arch = next((a for a in comun["archivos"] if a.get("id") == c.get("archivo")), None)
+        if not arch or not arch.get("ruta"):
+            raise ErrorComun(f"Pro Tools: el archivo {c.get('archivo')!r} del clip nuevo no está en 'archivos' con su 'ruta'")
+        clave_a = arch["ruta"]
+        if clave_a not in altas["indices"]:
+            datos = {"ruta": arch["ruta"], "muestras": arch.get("muestras"), "bits": arch.get("bits")}
+            if Path(arch["ruta"]).exists():
+                from .protools.escritura import info_wav
+                m, bits, can, frec = info_wav(arch["ruta"])
+                if can != 1:
+                    raise ErrorComun(f"Pro Tools: {arch['ruta']} no es mono")
+                if frec != fs:
+                    raise ErrorComun(f"Pro Tools: {arch['ruta']} está a {frec} Hz y la sesión a {fs} Hz")
+                datos.update(muestras=m, bits=bits)
+            if not datos["muestras"]:
+                raise ErrorComun(f"Pro Tools: falta 'muestras' del archivo {arch['ruta']} (no se pudo leer)")
+            altas["indices"][clave_a] = -(len(altas["archivos"]) + 1)      # archivo nuevo k → −(k+1)
+            altas["archivos"].append(datos)
+            altas["largo"][clave_a] = datos["muestras"]
+        indice = altas["indices"][clave_a]
+        total = altas["largo"][clave_a]
+    desde = int(c.get("desde_muestra") or 0)
+    largo = int(c.get("largo_muestras") or (total - desde if total else 0))
+    if largo <= 0 or (total and desde + largo > total):
+        raise ErrorComun(f"Pro Tools: rango de audio inválido en el clip nuevo ({desde}+{largo} de {total})")
+    nombre = c.get("nombre") or Path(str(c.get("archivo"))).stem
+    region = altas["base_regiones"] + len(altas["regiones"])
+    altas["regiones"].append({"nombre": nombre, "archivo": indice, "desde": desde, "largo": largo})
+    clips_nuevos.setdefault(pista["id"], []).append(([region], muestra))
 
 
 def _sin(x):
