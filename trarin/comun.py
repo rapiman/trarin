@@ -248,12 +248,26 @@ def _desde_flstudio(n):
     for p in pistas.values():
         p.pop("archivo_sampler", None)
         p["clips"].sort(key=lambda c: c["tick"])
+        if p["mezcla"].get("insert") is not None:
+            p["mezcla"]["salida"] = f"insert:{p['mezcla']['insert']}"
+    inserts = [_pista_insert(m) for m in n.get("mezcla") or []]
     return {
         "marcadores": marcadores,
         "archivos": archivos,
-        "pistas": list(pistas.values()),
-        "nativo": {"mezcla": n.get("mezcla"), "arreglos": [{"nombre": a["nombre"], "pistas": a["pistas"]}
-                                                            for a in n["arreglos"]]},
+        "pistas": list(pistas.values()) + inserts,
+        "nativo": {"arreglos": [{"nombre": a["nombre"], "pistas": a["pistas"]} for a in n["arreglos"]]},
+    }
+
+
+def _pista_insert(m):
+    """Un insert del mezclador de FL como pista: 'master' (insert 0) o 'retorno'."""
+    num = m["numero"]
+    return {
+        "id": f"insert:{num}", "nombre": m.get("nombre") or ("Master" if num == 0 else f"Insert {num}"),
+        "tipo": "master" if num == 0 else "retorno", "color": None,
+        "mezcla": {"volumen_db": m.get("volumen_db", 0.0), "paneo": m.get("paneo", 0.0)},
+        "efectos": [{"nombre": e.get("nombre") or e.get("plugin"), "slot": e.get("slot")} for e in m["efectos"]],
+        "automatizacion": {}, "clips": [],
     }
 
 
@@ -318,8 +332,23 @@ def _a_flstudio(comun, original, nativo):
     patrones = {p["numero"]: p for p in nativo["patrones"]}
     orig_clips = {c["id"]: c for p in original["pistas"] for c in p["clips"]}
     items, notas_patron = {}, {}
+    orig_pistas = _por_id(original["pistas"])
+    mezcla = {m["numero"]: m for m in nativo["mezcla"]}
     for p in comun["pistas"]:
+        o = orig_pistas[p["id"]]
+        if isinstance(p["id"], str) and p["id"].startswith("insert:"):
+            if p["nombre"] != o["nombre"]:
+                raise ErrorComun("FL Studio: cambiar el nombre de un insert aún no está soportado")
+            m = mezcla[int(p["id"].split(":")[1])]
+            for k in ("volumen_db", "paneo"):
+                if p["mezcla"].get(k) != o["mezcla"].get(k):
+                    m[k] = p["mezcla"][k]
+            continue
+        if p["mezcla"].get("salida") != o["mezcla"].get("salida"):
+            raise ErrorComun("FL Studio: para cambiar el insert de un canal, editar 'mezcla.insert'")
         canales[p["id"]]["nombre"] = p["nombre"]
+        if p["mezcla"].get("insert") != o["mezcla"].get("insert"):
+            canales[p["id"]]["insert"] = p["mezcla"]["insert"]
         for c in p["clips"]:
             a_i, i_i, canal = (int(x) for x in c["id"].split(":"))
             pos = (c["tick"], c["largo_ticks"])

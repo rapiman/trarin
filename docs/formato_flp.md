@@ -31,7 +31,7 @@ sin cambios da un archivo **idéntico byte a byte** (verificado en los 7 proyect
 | 65, 193, 224 | patrón: número, nombre, notas |
 | 99, 241, 233, 238, 239 | arreglo: número, nombre, items de la playlist, pista, nombre de pista (FL anterior a 20: playlist única sin arreglo) |
 | 148, 205, 33, 34 | marcador de tiempo: posición (byte alto = tipo, 8 = cambio de compás), nombre, numerador, denominador; dentro de un patrón son marcas del patrón |
-| 236, 204, 98 | insert del mezclador, nombre, slot de efecto (los eventos de plugin 201/203 anteriores al 98 son de ese slot) |
+| 236, 204, 98 | insert del mezclador, nombre (va justo antes del 236 de su insert), slot de efecto (los eventos de plugin 201/203 anteriores al 98 son de ese slot) |
 | 225 | parámetros del mezclador: registros de 12 bytes; [4] id (192 volumen, 193 paneo), [6:8] u16 = insert << 6 \| slot, [8:12] int32 valor (volumen 0..16 000, ver curva del fader) |
 
 **Nota (24 bytes):** posición u32, banderas u16, canal u16, largo u32, tecla u16, grupo u16, afinación
