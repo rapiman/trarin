@@ -327,6 +327,20 @@ igual a la duración, y un cruce tiene un pre-roll intermedio, casi siempre la m
 empieza en `ancla − pre_roll` [verificado: el cruce del experimento empieza en 1|4|480, como
 muestra Pro Tools].
 
+**Escritura** [verificado en Pro Tools 12 con una entrada, un cruce y una salida en clips nuevos,
+guardando de nuevo y releyendo]: la geometría tiene formato fijo en todo el corpus (16 726 de
+16 792 se reproducen byte a byte): `2F 26`, 5 ceros, anchos, `00 00`, pre-roll y duración con el
+mínimo de bytes, y la cola de cada modo: entrada = modo, pendiente, 4 ceros, curva, 3 ceros
+(en 66 geometrías esos 3 bytes repiten la curva); salida = modo, pendiente, 10 ceros, curva;
+cruce = modo, pendiente, 10 ceros, curva de salida, 4 ceros, curva de entrada. Una geometría
+igual a una existente se reutiliza; si no, va al final de `0x2630` (el índice solo apunta a la
+lista). Cada fundido se coloca como un `0x1050` en el `0x1052` de cada canal: índice de la
+geometría en +4 del `0x104F`, ancla (inicio + pre-roll) en +9, el byte que sigue al `0x104F` en
+1, y el byte +17 del `0x104F` en 1 (en el corpus, 1 en 18 828 de 18 872 fundidos y 3 en casi
+todas las regiones; con 3, Pro Tools descarta la entrada al guardar). En la misma posición, el
+fundido va antes que la región. El pre-roll de un cruce es la distancia hasta el inicio del clip
+que empieza dentro de él.
+
 ## 8. MIDI
 
 - Pistas MIDI: `0x1058/0x1057` (nombre), `0x1056/0x104F`: índice en +4 y tick en +9 (5 bytes, menos `10**12`).
@@ -377,6 +391,20 @@ muestra Pro Tools].
   plugins de la sesión (`0x1018/0x1017`). El estado de cada plugin viaja en un chunk AAX:
   `'Controls State'` (pares `d_`/`l_` con id terminado en cero y rellenado a par, double/int32
   big endian), `'Preset Name'`, o bloques `FFBS` (u32 cantidad en +8 y float32 desde +12).
+- **Lugares de insert** [verificado en Pro Tools 12 agregando un plugin y copiando inserts entre
+  sesiones]: cada `0x261B` tiene un `0x2627` con 11 lugares: vacío = `0x2625`; ocupado =
+  `0x2616 → 0x2615 → (0x2626, u16 plugin, 0x2613 → (0x1038, 0x260E)), 0x2614`.
+  - el u16 que sigue al `0x2626` del `0x2615` es la posición del plugin en `0x1018` (sin contar los
+    `0x1017` vacíos, de categoría FF). La lista va ordenada por nombre (114 de 121 sesiones) y Pro
+    Tools pone el plugin nuevo en su lugar y renumera ese u16 en todos los inserts;
+  - el u16 en +2 del `0x2613` apunta a un registro `0x2064` de `0x2027` (archivo de ajustes
+    «Plug-In Settings» del plugin, `…Fact.tfx` con sus códigos; FFFF = ninguno);
+  - cada `0x1017`: u8 categoría (3 terceros, 4 Avid, FF vacío), nombre, códigos de fabricante y
+    producto de 4 letras al revés, identificador del paquete AAX;
+  - dos instancias del mismo plugin no tienen identificadores propios y el índice no cambia: copiar
+    los inserts de una pista es copiar su `0x2627` (entre canales con la misma cantidad de canales),
+    agregar los plugins y registros que falten y traducir los dos u16. Con el número de plugin sin
+    traducir, Pro Tools carga el plugin de esa posición y avisa «AAE error -20007».
 
 ## 10. Entradas, salidas y buses
 

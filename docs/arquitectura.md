@@ -15,6 +15,7 @@ python -m trarin leer SESION.(ptx|als|flp) -o sesion.json
 # editar sesion.json (a mano o con una IA)
 python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nueva.(als|flp)
 python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ...   # consulta antes de armar un show
+python -m trarin show plan SHOW.json                             # cómo quedarían las canciones juntas
 ```
 
 ## Show (juntar sesiones)
@@ -35,8 +36,12 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   empieza, con el cambio de tempo una blanca antes del inicio (configurable); con separación negativa
   el tempo cambia en la mitad de la zona encimada.
 - Mezcla de pistas juntadas: por ahora gana la de la primera canción; después, automatización.
-- Plugins: la meta es copiarlos; mientras tanto mandan la base o la plantilla compatible y la consulta
-  avisa qué plugins faltan.
+- Plugins: se copian los inserts de cada pista de la canción a su pista del show
+  (`protools/inserts.py`, con el estado de cada plugin); la consulta avisa qué plugins faltan.
+- Plan de tiempo (`show.py`, `trarin show plan`): inicio de cada canción, mapa de tempo, compases y
+  marcadores del show, calculados por tiempo real (el audio y el MIDI suenan igual que en su sesión;
+  donde el tempo del show coincide con el de la canción, las posiciones en ticks se trasladan
+  exactas). Falta escribir la sesión del show con ese plan.
 - Los fundidos de los clips son obligatorios.
 
 ## Principios

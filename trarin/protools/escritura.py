@@ -437,16 +437,85 @@ def _plantilla_colocacion(d, bloques):
     raise ErrorEscritura("no hay una colocación de región que sirva de plantilla en esta sesión")
 
 
-def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
+def _bytes_geometria(f):
+    """Bloque 0x262F de una geometría de fundido: {"tipo", "pre_roll", "muestras",
+    "pendiente", curvas}. Formato fijo en todo el corpus (16 792 geometrías):
+    2F 26, 5 ceros, anchos en nibbles (bajo pre-roll, alto duración), 00 00,
+    pre-roll y duración con el mínimo de bytes, y la cola de cada modo:
+    entrada  modo, pendiente, 4 ceros, curva, 3 ceros;
+    salida   modo, pendiente, 10 ceros, curva;
+    cruzado  modo, pendiente, 10 ceros, curva de salida, 4 ceros, curva de entrada.
+    Una curva es [tipo u8, preset i16] (0 estándar, 1 S, 2 preset)."""
+    modos = {v: k for k, v in P._MODO_FUNDIDO.items()}
+    pendientes = {v: k for k, v in P._PENDIENTE.items()}
+    formas = {v: k for k, v in P._CURVA.items()}
+    tipo = f.get("tipo")
+    if tipo not in modos or f.get("pendiente") not in pendientes:
+        raise ErrorEscritura(f"fundido no reconocido: {f}")
+
+    def ancho(v):
+        if not 0 <= v < 1 << 24:
+            raise ErrorEscritura(f"fundido fuera de rango: {f}")
+        return 0 if v == 0 else (v.bit_length() + 7) // 8
+
+    def curva(c):
+        c = c or {"forma": "estandar"}
+        if c.get("forma") not in formas:
+            raise ErrorEscritura(f"curva de fundido no reconocida: {c}")
+        return bytes([formas[c["forma"]]]) + struct.pack("<h", int(c.get("preset", 0)))
+
+    pre, dur = int(f["pre_roll"]), int(f["muestras"])
+    wp, wt = ancho(pre), ancho(dur)
+    cont = (b"\x2f\x26" + bytes(5) + bytes([wp | wt << 4]) + bytes(2)
+            + pre.to_bytes(wp, "little") + dur.to_bytes(wt, "little")
+            + bytes([modos[tipo], pendientes[f["pendiente"]]]))
+    if tipo == "entrada":
+        cont += bytes(4) + curva(f.get("curva")) + bytes(3)
+    elif tipo == "salida":
+        cont += bytes(10) + curva(f.get("curva"))
+    else:
+        cont += bytes(10) + curva(f.get("curva_salida")) + bytes(4) + curva(f.get("curva_entrada"))
+    return b"\x5a\x02\x00" + struct.pack("<I", len(cont)) + cont
+
+
+def _altas_fundidos(d, bloques, geometrias):
+    """Agrega a 0x2630 las geometrías que no estén ya (iguales byte a byte) y
+    devuelve (reemplazos, índice de cada una). El índice 0x0002 solo apunta a
+    la lista, no a sus hijos."""
+    lista = _primero(bloques, 0x2630)
+    if lista is None:
+        raise ErrorEscritura("la sesión no tiene lista de fundidos (0x2630)")
+    hijos = [h for h in lista.hijos if h.tipo_contenido == 0x262F]
+    if struct.unpack_from("<I", d, lista.inicio + 2)[0] != len(hijos):
+        raise ErrorEscritura("lista de fundidos no reconocida")
+    conocidas = {bytes(d[h.inicio:h.fin]): k for k, h in enumerate(hijos)}
+    nuevas, indices = [], []
+    for g in geometrias:
+        cont = g[7:]
+        if cont not in conocidas:
+            conocidas[cont] = len(hijos) + len(nuevas)
+            nuevas.append(g)
+        indices.append(conocidas[cont])
+    reemplazos = []
+    if nuevas:
+        reemplazos.append((lista.inicio + 2, lista.inicio + 6, struct.pack("<I", len(hijos) + len(nuevas))))
+        punto = hijos[-1].fin if hijos else lista.inicio + 6
+        reemplazos.append((punto, punto, b"".join(nuevas), lista.pos))
+    return reemplazos, indices
+
+
+def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
     """nuevos: [(índices de región por canal, muestra)]; borrados: [índice del
-    clip]. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
-    región, +25 muestra, relativos al 0x1050) dentro del 0x1052 de cada canal,
+    clip]; fundidos: [(índice de geometría, ancla)] nuevos, iguales en cada
+    canal. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
+    región o de fundido, +25 muestra, relativos al 0x1050; el byte que sigue al
+    0x104F vale 1 en un fundido) dentro del 0x1052 de cada canal,
     que lleva la cantidad (u32) tras su nombre. Un clip borrado se lleva sus
     fundidos de entrada y salida; si tiene un fundido cruzado, da error."""
     entradas = _entradas_playlist(d, bloques, pista)
     canales = _colocaciones(d, bloques, pista)
     base = canales[0][0]
-    plantilla = _plantilla_colocacion(d, bloques) if nuevos else None
+    plantilla = _plantilla_colocacion(d, bloques) if nuevos or fundidos else None
     reemplazos = []
     for k, (e, (regs, fun)) in enumerate(zip(entradas, canales)):
         quitar = []
@@ -466,7 +535,8 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
         largo_nombre = struct.unpack_from("<I", d, e.inicio + 2)[0]
         p_cant = e.inicio + 6 + largo_nombre
         cantidad = struct.unpack_from("<I", d, p_cant)[0]
-        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos))))
+        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos)
+                                                          + len(fundidos))))
         hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
         fin_vacio = p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2) and e.fin - (p_cant + 4) > 2 else 0)
         nuevos_col = []
@@ -478,6 +548,14 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados):
             struct.pack_into("<I", col, 20, indices[k])
             col[25:30] = int(muestra).to_bytes(5, "little")
             nuevos_col.append((int(muestra), bytes(col)))
+        for indice, ancla in fundidos:
+            col = bytearray(plantilla)
+            col[18] = 0
+            struct.pack_into("<I", col, 20, indice)
+            col[25:30] = int(ancla).to_bytes(5, "little")
+            col[16 + struct.unpack_from("<I", col, 12)[0]] = 1     # byte tras el 0x104F
+            col[16 + 17] = 1      # +17 del 0x104F: 1 en los fundidos, 3 en las regiones (corpus)
+            nuevos_col.append((int(ancla), bytes(col), True))
         reemplazos += _insertar_ordenado(d, hijos, nuevos_col, quitar, fin_vacio, e.pos)
     return reemplazos
 
@@ -488,14 +566,23 @@ def _pos_colocacion(d, e):
     return P._entero(d, f.inicio + 9, 5)
 
 
+def _es_fundido(d, e):
+    f = next(x for x in e.hijos if x.tipo_contenido == 0x104F)
+    return f.fin < e.fin and d[f.fin] == 1
+
+
 def _insertar_ordenado(d, hijos, nuevos, quitar, punto_vacio, contenedor):
-    """Inserta colocaciones nuevas [(posición, bytes)] entre las existentes
-    manteniendo el orden por posición: Pro Tools las guarda ordenadas, y si una
-    queda fuera de orden pierde colocaciones al leer [verificado con MIDI]."""
+    """Inserta colocaciones nuevas [(posición, bytes[, es_fundido])] entre las
+    existentes manteniendo el orden por posición: Pro Tools las guarda
+    ordenadas, y si una queda fuera de orden pierde colocaciones al leer
+    [verificado con MIDI]. En la misma posición, el fundido va antes que la
+    región (como en las sesiones de Pro Tools)."""
     quedan = [h for h in hijos if not any(h.pos == a for a, _ in quitar)]
     grupos = {}
-    for pos, b in sorted(nuevos, key=lambda x: x[0]):
-        sig = next((h for h in quedan if _pos_colocacion(d, h) > pos), None)
+    nuevos = [(x[0], x[1], x[2] if len(x) > 2 else False) for x in nuevos]
+    for pos, b, fun in sorted(nuevos, key=lambda x: (x[0], not x[2])):
+        sig = next((h for h in quedan if _pos_colocacion(d, h) > pos
+                    or (fun and _pos_colocacion(d, h) == pos and not _es_fundido(d, h))), None)
         if sig is not None:
             punto = sig.pos
         elif quedan:
@@ -1078,12 +1165,14 @@ def _cambios_compases(d, bloques, compases):
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
                      marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None,
                      notas=None, clips_nuevos=None, clips_borrados=None, archivos_nuevos=None,
-                     regiones_nuevas=None, midi_nuevos=None):
+                     regiones_nuevas=None, midi_nuevos=None, fundidos_nuevos=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
     midi_nuevos: {"regiones": [{"nombre", "notas", "largo"}], "clips": {pista: [(región, tick)]}}
     (región: índice de una región MIDI existente o ("nueva", k)).
+    fundidos_nuevos: {pista: [{"tipo", "pre_roll", "muestras", "pendiente",
+    curvas, "muestra"}]} (muestra = inicio del fundido; ancla = muestra + pre_roll).
     Escribe una copia cifrada en 'salida' (que no debe existir)."""
     salida = Path(salida)
     if salida.exists():
@@ -1120,9 +1209,17 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     reemplazos += reemplazos_notas
     if archivos_nuevos or regiones_nuevas:
         reemplazos += _altas_archivos_regiones(d, bloques, archivos_nuevos or [], regiones_nuevas or [])
-    for pista in set(clips_nuevos or {}) | set(clips_borrados or {}):
+    fundidos_nuevos = fundidos_nuevos or {}
+    por_pista = {}
+    if fundidos_nuevos:
+        todos = [(pista, f) for pista, fs in fundidos_nuevos.items() for f in fs]
+        r, indices = _altas_fundidos(d, bloques, [_bytes_geometria(f) for _, f in todos])
+        reemplazos += r
+        for (pista, f), k in zip(todos, indices):
+            por_pista.setdefault(pista, []).append((k, int(f["muestra"]) + int(f["pre_roll"])))
+    for pista in set(clips_nuevos or {}) | set(clips_borrados or {}) | set(por_pista):
         reemplazos += _altas_bajas_clips(d, bloques, pista, (clips_nuevos or {}).get(pista, []),
-                                         (clips_borrados or {}).get(pista, []))
+                                         (clips_borrados or {}).get(pista, []), por_pista.get(pista, []))
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
