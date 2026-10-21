@@ -1,4 +1,4 @@
-"""Uso:  python -m trarin leer SESION.ptx [-o salida.yaml] [--json] [--resumen]"""
+"""Uso:  python -m trarin leer SESION.ptx [-o salida.json] [--yaml] [--resumen]"""
 
 import argparse
 import json
@@ -23,22 +23,27 @@ def _resumen(s):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="trarin")
     sub = p.add_subparsers(dest="orden", required=True)
-    l = sub.add_parser("leer", help="vuelca una sesión .ptx a YAML o JSON")
+    l = sub.add_parser("leer", help="vuelca una sesión .ptx a JSON (o YAML con --yaml)")
     l.add_argument("sesion")
     l.add_argument("-o", "--salida")
-    l.add_argument("--json", action="store_true")
+    l.add_argument("--yaml", action="store_true", help="YAML en vez de JSON (requiere pyyaml)")
     l.add_argument("--resumen", action="store_true", help="solo un resumen legible")
     a = p.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
     s = leer(a.sesion)
     if a.resumen:
         _resumen(s)
         return
-    if a.json:
-        texto = json.dumps(s, ensure_ascii=False, indent=2)
-    else:
-        import yaml
+    if a.yaml:
+        try:
+            import yaml
+        except ImportError:
+            sys.exit("--yaml requiere pyyaml (pip install pyyaml); sin --yaml la salida es JSON")
         texto = yaml.safe_dump(s, allow_unicode=True, sort_keys=False, width=120)
+    else:
+        texto = json.dumps(s, ensure_ascii=False, indent=2) + "\n"
     if a.salida:
         with open(a.salida, "w", encoding="utf-8") as f:
             f.write(texto)

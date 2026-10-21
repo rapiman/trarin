@@ -1,7 +1,7 @@
 # trarin
 
 Herramienta para armar shows a partir de sesiones de DAW. Lee cada sesión y la
-vuelca a un archivo de texto (YAML) que cualquier persona o IA puede leer y
+vuelca a un archivo de texto (JSON) que cualquier persona o IA puede leer y
 editar. Sobre esa representación se calcula dónde debe caer cada canción en el
 show, sin desfases de audio, MIDI ni mapa de tempo.
 
@@ -28,8 +28,8 @@ Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
 ```
 pip install -e .
 python -m trarin leer "Mi canción.ptx" --resumen
-python -m trarin leer "Mi canción.ptx" -o "Mi canción.yaml"
-python -m trarin leer "Mi canción.ptx" --json
+python -m trarin leer "Mi canción.ptx" -o "Mi canción.json"
+python -m trarin leer "Mi canción.ptx" --yaml     # requiere pip install pyyaml
 ```
 
 trarin nunca modifica la sesión original: la lee completa en memoria.
@@ -66,7 +66,7 @@ Ver `trarin/protools/tiempo.py`. Resumen:
 
 ## Licencia
 
+GNU LGPL 2.1 o posterior (ver `LICENSE`).
 `trarin/protools/descifrado.py` es un port de
-[libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit) y se
-distribuye bajo GNU LGPL 2.1 o posterior. La licencia del resto del proyecto
-está por definir.
+[libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit), que tiene
+la misma licencia.
