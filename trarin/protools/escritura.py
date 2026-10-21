@@ -182,7 +182,7 @@ def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana):
     MdChun → MdNLB (versión 3): u32 n, n eventos de 35 bytes (posición 5 bytes,
     00 00 40, nota, largo 5 bytes, 00 00 40, velocidad, y 17 bytes), una copia de
     la interpretación original (u32 n, u32 11, n × 11 bytes = bytes 8..18 de
-    cada evento), u32 n, un byte por nota y 6 bytes. El chunk termina con
+    cada evento), u32 n y n + 6 bytes (01 00 01 00 y ceros). El chunk termina con
     2A 00 00 00, un identificador de 8 bytes y 01 (se genera uno nuevo).
     Verificado editando y borrando notas en Pro Tools 12: Pro Tools crea un
     chunk nuevo y la región pasa a usarlo; los demás chunks no cambian."""
@@ -228,9 +228,14 @@ def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana):
         nuevos.append((bytes(ev), orig or bytes(ev[8:19]), marca))
     nuevos.sort(key=lambda x: (tick(x[0]), x[0][8]))
     m = len(nuevos)
+    # tras la copia original: u32 n y n + 6 bytes, siempre 01 00 01 00 y ceros
+    # (en los 890 chunks del corpus); no son marcas por nota
+    seccion = d[p2 + 4:p2 + 10 + n]
+    if seccion[4:] != bytes(len(seccion) - 4):
+        raise ErrorEscritura("formato de notas MIDI no reconocido en esta versión")
     nlb = (struct.pack("<I", m) + b"".join(e for e, _, _ in nuevos)
            + struct.pack("<II", m, 11) + b"".join(o for _, o, _ in nuevos)
-           + struct.pack("<I", m) + b"".join(f for _, _, f in nuevos) + d[p2 + 4 + n:p2 + 10 + n])
+           + struct.pack("<I", m) + bytes(seccion[:4]) + bytes(m + 2))
     resto = bytearray(d[n0 + l_nlb:c0 + l_chun])
     if resto[-13:-9] != b"\x2a\x00\x00\x00":
         raise ErrorEscritura("formato de notas MIDI no reconocido en esta versión")
@@ -239,8 +244,26 @@ def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana):
     return b"MdChun" + struct.pack("<HI", ver, len(contenido)) + contenido
 
 
-def _cambios_notas(d, bloques, cambios):
-    """cambios: {(pista, índice del clip): notas}. Devuelve (reemplazos, out)."""
+# Plantillas de Pro Tools 12 (una nota sola, región "MIDI 1-01" y su colocación),
+# para sesiones que aún no tienen MIDI.
+_PLANTILLA_CHUNK = bytes.fromhex(
+    "4d644368756e01007e0000004d644e4c420300450000000100000000afc9d4e80000403e005307000000004050"
+    "4000000000000000400000000000000040010000000b0000003e005307000000004050400100000001000100"
+    "000000000000004d64455301000f0000004d6454454c01000400000000000000000000002a000000b7638f02"
+    "0f48b03001")
+_PLANTILLA_2633 = bytes.fromhex(
+    "5a01005600000033265a0100490000002826090000004d49444920312d303100513000080010a5d4e800f22b"
+    "fffffffffffffffffeff00000000ffff04000400000000000000000000000000000000000000000000ffffff"
+    "ff00000000")
+_PLANTILLA_1056 = bytes.fromhex(
+    "5a01002b00000056105a0800220000004f10000000000000000010a5d4e800004003feff00000100ffffffff"
+    "ffffffff0000")
+
+
+def _cambios_notas(d, bloques, cambios, nuevas=()):
+    """cambios: {(pista, índice del clip): notas}; nuevas: [(notas, largo)] de
+    regiones MIDI nuevas (cada una con su chunk). Devuelve (reemplazos, out,
+    índices de los chunks de las regiones nuevas)."""
     b = _primero(bloques, 0x2000)
     lista = _primero(bloques, 0x2634) or _primero(bloques, 0x2002)
     if not b or not lista:
@@ -278,9 +301,101 @@ def _cambios_notas(d, bloques, cambios):
         ini, fin = chunks[fuente]
         insercion += _chunk_con_notas(d, ini, fin, notas, desde, largo)
         out[g.fin] = struct.pack("<I", len(chunks) + k)
-    reemplazos = [(b.inicio + 2, b.inicio + 6, struct.pack("<I", len(chunks) + len(por_region))),
+    # regiones nuevas: un chunk cada una, copia de uno de la sesión (o de la plantilla)
+    if chunks:
+        base, ini, fin = d, chunks[0][0], chunks[0][1]
+    else:
+        base, ini, fin = _PLANTILLA_CHUNK, 0, len(_PLANTILLA_CHUNK)
+    indices = []
+    for notas, largo in nuevas:
+        if any(n["tick"] >= largo for n in notas):
+            raise ErrorEscritura("una nota empieza después del final del clip MIDI nuevo")
+        indices.append(len(chunks) + len(por_region) + len(indices))
+        insercion += _chunk_con_notas(base, ini, fin, notas, 0, 1 << 39)
+    if not insercion:
+        return [], out, indices
+    reemplazos = [(b.inicio + 2, b.inicio + 6, struct.pack("<I", len(chunks) + len(por_region) + len(nuevas))),
                   (b.fin, b.fin, insercion, b.pos)]
-    return reemplazos, out
+    return reemplazos, out, indices
+
+
+def _regiones_midi(d, bloques):
+    lista = _primero(bloques, 0x2634) or _primero(bloques, 0x2002)
+    return lista, [c for c in (lista.hijos if lista else []) if c.tipo_contenido in (0x2633, 0x2001)]
+
+
+def _altas_midi(d, bloques, regiones, chunks, clips):
+    """regiones: [{"nombre", "largo"}] nuevas, con su chunk en chunks[k];
+    clips: {pista: [(región, tick)]}, región = índice existente o ("nueva", k).
+
+    Verificado en Pro Tools 12 dibujando una nota y duplicando el clip: una
+    región MIDI es un 0x2633 al final de 0x2634 (u32 cantidad en +2) con un
+    0x2628 (nombre, desplazamiento CERO + 0 y largo en ticks con ancho variable)
+    y el u32 del chunk de notas; cada aparición es un 0x1056 (con su 0x104F:
+    región en +4 y tick + CERO en +9, 5 bytes) en el 0x1057 de la pista, que
+    lleva la cantidad (u32) tras su nombre."""
+    reemplazos = []
+    lista, existentes = _regiones_midi(d, bloques)
+    if regiones:
+        if lista is None or lista.tipo_contenido != 0x2634:
+            raise ErrorEscritura("la sesión no tiene lista de regiones MIDI de Pro Tools 12")
+        plantilla = d[existentes[0].pos:existentes[0].fin] if existentes else _PLANTILLA_2633
+        nuevas = b""
+        for r, chunk in zip(regiones, chunks):
+            nuevas += _region_midi(plantilla, r["nombre"], r["largo"], chunk)
+        n = struct.unpack_from("<I", d, lista.inicio + 2)[0]
+        reemplazos.append((lista.inicio + 2, lista.inicio + 6, struct.pack("<I", n + len(regiones))))
+        punto = existentes[-1].fin if existentes else lista.inicio + 6
+        reemplazos.append((punto, punto, nuevas, lista.pos))
+    plantilla_col = next((d[e.pos:e.fin] for e in buscar(bloques, 0x1056) if e.tamano == 0x2B), _PLANTILLA_1056)
+    mapa = _primero(bloques, 0x1058)
+    for pista, lista_clips in clips.items():
+        pl = next((c for c in (mapa.hijos if mapa else []) if c.tipo_contenido == 0x1057
+                   and P._cadena(d, c.inicio + 2)[0] == pista), None)
+        if pl is None:
+            raise ErrorEscritura(f"no se encontró la pista MIDI {pista!r}")
+        insercion = b""
+        for region, tick in lista_clips:
+            ri = len(existentes) + region[1] if isinstance(region, tuple) else region
+            if tick < 0:
+                raise ErrorEscritura(f"{pista}: posición negativa")
+            col = bytearray(plantilla_col)
+            f = 9                                   # 0x104F dentro del 0x1056
+            col[f + 7 + 2] = 0                      # mute
+            struct.pack_into("<I", col, f + 7 + 4, ri)
+            col[f + 7 + 9:f + 7 + 14] = (int(tick) + CERO).to_bytes(5, "little")
+            insercion += bytes(col)
+        largo_nombre = struct.unpack_from("<I", d, pl.inicio + 2)[0]
+        p_cant = pl.inicio + 6 + largo_nombre
+        cantidad = struct.unpack_from("<I", d, p_cant)[0]
+        reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad + len(lista_clips))))
+        hijos = [h for h in pl.hijos if h.tipo_contenido == 0x1056]
+        punto = hijos[-1].fin if hijos else p_cant + 4
+        reemplazos.append((punto, punto, insercion, pl.pos))
+    return reemplazos
+
+
+def _region_midi(plantilla, nombre, largo, chunk):
+    """Bytes de un 0x2633 nuevo a partir de otro: nombre, desplazamiento CERO
+    (5 bytes), largo y el u32 del chunk de notas."""
+    b = bytearray(plantilla)
+    g = 9                                           # 0x2628 dentro del 0x2633
+    viejo, j = P._cadena(b, g + 7 + 2)
+    b_off = (b[j + 1] >> 4)
+    b_len = (b[j + 2] >> 4)
+    b_ini = (b[j + 3] >> 4)
+    valores_fin = j + 5 + b_off + b_len + b_ini
+    n_len = max(1, (int(largo).bit_length() + 7) // 8)
+    cab = bytes([b[j], (5 << 4) | (b[j + 1] & 0x0F), (n_len << 4) | (b[j + 2] & 0x0F), b[j + 3] & 0x0F, b[j + 4]])
+    valores = CERO.to_bytes(5, "little") + int(largo).to_bytes(n_len, "little")
+    nombre_b = nombre.encode("utf-8")
+    g_fin = g + 7 + struct.unpack_from("<I", b, g + 3)[0]
+    cont_2628 = (bytes(b[g + 7:g + 9]) + struct.pack("<I", len(nombre_b)) + nombre_b + cab + valores
+                 + bytes(b[valores_fin:g_fin]))
+    resto = bytearray(b[g_fin:])
+    struct.pack_into("<I", resto, 0, chunk)
+    cont = bytes(b[7:9]) + bytes(b[g:g + 3]) + struct.pack("<I", len(cont_2628)) + cont_2628 + bytes(resto)
+    return bytes(b[:3]) + struct.pack("<I", len(cont)) + cont
 
 
 def _entradas_playlist(d, bloques, nombre_playlist):
@@ -924,10 +1039,12 @@ def _cambios_compases(d, bloques, compases):
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
                      marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None,
                      notas=None, clips_nuevos=None, clips_borrados=None, archivos_nuevos=None,
-                     regiones_nuevas=None):
+                     regiones_nuevas=None, midi_nuevos=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
+    midi_nuevos: {"regiones": [{"nombre", "notas", "largo"}], "clips": {pista: [(región, tick)]}}
+    (región: índice de una región MIDI existente o ("nueva", k)).
     Escribe una copia cifrada en 'salida' (que no debe existir)."""
     salida = Path(salida)
     if salida.exists():
@@ -942,9 +1059,15 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     for indice, (nombre, cambio) in (mezcla or {}).items():
         _cambios_mezcla(d, bloques, indice, nombre, cambio, out)
     reemplazos_notas = []
-    if notas:
-        reemplazos_notas, out_notas = _cambios_notas(d, bloques, notas)
+    midi_nuevos = midi_nuevos or {}
+    regiones_midi = midi_nuevos.get("regiones", [])
+    if notas or regiones_midi:
+        reemplazos_notas, out_notas, chunks_nuevos = _cambios_notas(
+            d, bloques, notas or {}, [(r["notas"], r["largo"]) for r in regiones_midi])
         out.update(out_notas)
+    if midi_nuevos.get("clips"):
+        reemplazos_notas += _altas_midi(d, bloques, regiones_midi, chunks_nuevos if regiones_midi else [],
+                                        midi_nuevos["clips"])
     nuevo = bytearray(d)
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b
