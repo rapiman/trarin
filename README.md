@@ -9,7 +9,14 @@ show, sin desfases de audio, MIDI ni mapa de tempo.
 
 ## Estado
 
-Versión 0.1. Solo lectura. Pro Tools `.ptx`: probado con 12.5 (Windows), 12.8, 2019 y 2026 (Mac).
+Versión 0.1.
+
+- **Pro Tools** `.ptx` (lectura): probado con 12.5 (Windows), 12.8, 2019 y 2026 (Mac).
+- **Ableton Live** `.als` (lectura y escritura): probado con Live 12.
+- **FL Studio** `.flp` (lectura y escritura): probado con FL 12, 20 y 21.
+
+Detalle por DAW y decisiones abiertas en [`docs/arquitectura.md`](docs/arquitectura.md).
+La tabla siguiente es de Pro Tools.
 
 | Dato de la sesión                   | Estado    |
 |-------------------------------------|-----------|
@@ -42,9 +49,14 @@ pip install -e .
 python -m trarin leer "Mi canción.ptx" --resumen
 python -m trarin leer "Mi canción.ptx" -o "Mi canción.json"
 python -m trarin leer "Mi canción.ptx" --yaml     # requiere pip install pyyaml
+python -m trarin leer "Mi tema.als" -o tema.json  # también .flp
+python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als"
 ```
 
-trarin nunca modifica la sesión original: la lee completa en memoria.
+`escribir` aplica el JSON editado sobre una copia del archivo original y nunca
+sobrescribe la plantilla.
+
+trarin nunca modifica la sesión original.
 
 ## Representación (`formato: trarin/0`)
 
