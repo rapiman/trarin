@@ -115,6 +115,8 @@ def _desde_protools(n):
                 c["largo_ticks"] = fin - c["tick"]
                 if "clip_gain_db" in reg:
                     c["ganancia_db"] = reg["clip_gain_db"]
+                elif reg.get("clip_gain"):                 # curva: [{muestra (desde el inicio del clip), db}]
+                    c["ganancia_curva"] = [dict(x) for x in reg["clip_gain"]]
                 if r.get("mute"):
                     c["mute"] = True
                 if len(ta["canales"]) > 1:
@@ -643,7 +645,7 @@ def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     for t in original["pistas"]:
         for x in t["clips"]:
             if x["tipo"] == "audio" and (x["archivo"], x.get("desde_muestra", 0), x["largo_muestras"]) == clave \
-                    and x.get("canales", 1) == canales:
+                    and x.get("canales", 1) == canales and _ganancia_pt(x) == _ganancia_pt(c):
                 ta = next(a for a in nativo["pistas_audio"] if a["nombre"] == t["id"])
                 j = int(x["id"].rsplit("#", 1)[1])
                 ref = ta["canales"][0]["regiones"][j]
@@ -670,8 +672,18 @@ def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     indices = []
     for (indice, _), nom in zip(fuentes, nombres):
         indices.append(altas["base_regiones"] + len(altas["regiones"]))
-        altas["regiones"].append({"nombre": nom, "archivo": indice, "desde": desde, "largo": largo})
+        altas["regiones"].append({"nombre": nom, "archivo": indice, "desde": desde, "largo": largo,
+                                  "ganancia": _ganancia_pt(c)})
     clips_nuevos.setdefault(pista["id"], []).append((indices, muestra))
+
+
+def _ganancia_pt(c):
+    """Clip gain de un clip como nodos [{muestra, db}] (None = sin clip gain)."""
+    if c.get("ganancia_curva"):
+        return [{"muestra": int(x["muestra"]), "db": float(x["db"])} for x in c["ganancia_curva"]]
+    if c.get("ganancia_db") is not None:
+        return [{"muestra": 0, "db": float(c["ganancia_db"])}]
+    return None
 
 
 def _clip_midi_nuevo_pt(c, pista, original, nativo, midi_nuevos):

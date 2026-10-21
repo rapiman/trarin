@@ -43,6 +43,8 @@ def _canal(d, bloques, nombre, con_ancho=False):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canal = raiz.hijos[i]
     sb = next((h for h in canal.hijos if h.tipo_contenido == 0x261B), None)
+    if sb is None and canal.tipo_contenido == 0x2621:     # instrumento: inserts en el canal mismo
+        sb = canal
     ins = next((h for h in sb.hijos if h.tipo_contenido == 0x2627), None) if sb else None
     if ins is None:
         raise ErrorPista(f"{nombre}: el canal no tiene lugares de insert (0x2627)")

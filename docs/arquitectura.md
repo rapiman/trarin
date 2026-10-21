@@ -42,7 +42,9 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   buscados por nombre en la base (`protools/ruteo.py`); un bus con el mismo nombre en dos canciones
   queda como un solo bus. Un bus estéreo que no existe en la base se crea; otras rutas que no
   existen no se copian (se avisa). Las pistas MIDI nuevas llevan su salida MIDI, sus valores y su
-  automatización. Un auxiliar sin plantilla del mismo ancho en la base se copia de su canción.
+  automatización. Un auxiliar sin plantilla del mismo ancho en la base se copia de su canción, y
+  las pistas de instrumento (con sus clips MIDI, plugins, fader y salida MIDI) también. Los clips
+  llevan su clip gain (fijo o curva) y las pistas nuevas su color.
 - Plugins: se copian los inserts de cada pista de la canción a su pista del show
   (`protools/inserts.py`, con el estado de cada plugin); la consulta avisa qué plugins faltan.
 - Plan de tiempo (`show.py`, `trarin show plan`): inicio de cada canción, mapa de tempo, compases y
@@ -60,7 +62,7 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   están los archivos de audio (Pro Tools necesita sus identificadores). Verificado en Pro Tools 12
   juntando dos canciones (35 pistas): abre, guarda de nuevo sin perder nada y cierra; con el ruteo
   y la automatización copiados, Pro Tools guarda de nuevo las mismas entradas, salidas y puntos. Aún no:
-  pistas de instrumento y buses mono que no están en la base.
+  buses mono que no están en la base.
 - Los fundidos de los clips son obligatorios.
 
 ## Principios

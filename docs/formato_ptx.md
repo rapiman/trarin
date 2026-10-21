@@ -166,6 +166,10 @@ registro × cantidad:
 Un solo nodo es una ganancia fija. Hay curvas de 2 nodos en el corpus (pt_api solo acepta 1, 3 o 4).
 En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
 
+Una región nueva con clip gain suma un registro al final de `0x2637` (con +18 en 0, como varios del
+corpus) y lleva su número en lugar de `-1` [verificado en Pro Tools 12: los clips copiados a un show
+guardan de nuevo con la misma ganancia fija o curva].
+
 **Archivos y regiones nuevos** [verificado importando un archivo en Pro Tools 12 y repitiéndolo con
 trarin]: la lista de rutas `0x103A` lleva u32 cantidad y entradas `tipo u8 | u32 índice del padre |
 u32 largo + nombre | 4 bytes` (tipo 0 volumen con su serie y padre FFFFFFFF, 1 carpeta, 2 archivo con
@@ -449,6 +453,13 @@ corpus de 145 sesiones]:
   al mayor de `0x2603`); b de las mitades, el número global del par; en las mitades de los
   inserts, que quedan después, b sube en 3. `ruteo.crear_bus` reproduce esas listas byte a byte
   (salvo los identificadores nuevos).
+- Pista de instrumento nueva (Pro Tools 12, v9_antes_inst → v10_instrumento): como una MIDI
+  (entrada de tipo 7 en `0x2519`, `0x251A` en cada mitad, `0x1057` vacía en `0x1058`, grupo
+  `<ALL>`, tira) pero con un canal `0x2621` (`0x102D`, `0x2627`, `0x260D`, `0x2010`, `0x206F`,
+  `0x2611`) cuyo `0x2627` va al índice (`2624/n → 2621 → 2627`). No agrega salida a `0x2004`. A
+  2010.pos − 11: u32 n, u16 1, u32 n, u8 1 (n entre los canales MIDI e instrumento). El canal hace
+  de `0x261B`: lista de identificadores tras el fader, sin entrada de audio.
+- Color de pista: i16 en el byte 25 de los bytes propios del `0x2015` del canal (−1 = sin color).
 - Salida MIDI: u32 en +14 del `0x2036` del canal MIDI (`0x2611`), número desde 1 de una entrada
   `0x2005` de `0x2004` (0 = ninguna). Cada canal tiene la suya: si dos la comparten, Pro Tools se
   cae al cerrar la sesión.
