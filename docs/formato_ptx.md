@@ -53,11 +53,26 @@ La transformación es simétrica: la misma operación cifra y descifra.
 
 - El primer bloque, en `0x14`, es especial: `5A 01 00 04 00 00 00` + **u32 offset absoluto del
   bloque final `0x0002`** (11 bytes, sin `tipo_contenido`) [verificado en las 51 sesiones].
-- El último bloque es `0x0002` y termina justo al final del archivo [verificado]. Según pt_api
-  contiene series de registros de 15 bytes `00 00 00 01 04 00 01 00 | u32 offset | 00 00 00`,
-  cada serie precedida por su cantidad en u16 big endian, y apuntan a bloques concretos [externo].
-- Consecuencia: **cualquier cambio de tamaño de un bloque obliga a recalcular esos offsets**. pt_api
-  documenta el procedimiento de guardado; trarin todavía solo lee.
+- El último bloque es `0x0002` y termina justo al final del archivo [verificado]. Es un **índice**
+  de posiciones absolutas de bloques; decodificado por completo (leerlo y reescribirlo da el mismo
+  archivo en las 95 sesiones del corpus) [verificado]:
+
+  ```
+  u16 tipo_contenido | u32 n entradas
+  entrada = u32 profundidad | profundidad × paso | u32 m | m × grupo
+  paso    = u16 tipo | u32 posición del padre (FFFFFFFF = raíz) | u8 marca | u32 número
+  grupo   = u8 1 | u16 bytes (= 4n) | u16 n | n × u32 posición | 6 bytes en cero
+  ```
+
+  Las listas (marca 1, número 0) de `0x1015`, `0x1054`, `0x2519` y `0x2624` tienen un grupo por
+  bloque: el primero es la lista y después uno por hijo, en orden. `(0x2519, marca 0) + 0x251A`
+  guarda los `0x251A` de la primera mitad; `(0x2519, 1, k) + 0x251A`, uno por pista de la segunda
+  mitad; `(0x2519, 1, último) + 0x2716` lleva en `número` la cantidad de pistas; y
+  `(0x2624, 1, k)(0x261C|0x261E)(0x261B)(0x2627)`, uno por canal. El índice no apunta a `0x1050`,
+  `0x2077`, `0x1003`, `0x2629` ni a los trozos de `0x2000`.
+- Consecuencia: **cualquier cambio de tamaño de un bloque obliga a recalcular esos offsets**.
+  `reconstruccion.py` corrige tamaños, el puntero de `0x14` y las posiciones del índice; para
+  agregar bloques nuevos al índice está `indice.py`.
 
 ## 3. Datos de la sesión
 
@@ -179,6 +194,30 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
   está en los bytes propios de `0x2519`, en los dos `0x251A`, en la playlist activa `0x1014` y en
   las entradas `0x1052` de sus canales (audio), en `0x1057` (MIDI), y en el nombre del canal
   `0x102D → 0x2619` solo para auxiliares y master (en audio ese nombre es el de creación).
+
+- **Crear una pista de audio mono** [verificado en Pro Tools 12, comparando con una pista creada en
+  Pro Tools]. Se copia una pista de audio mono existente con una sola playlist, y se cambia:
+  - en los bytes propios de `0x2519`: u32 cantidad de pistas (justo antes de la primera entrada; la
+    cabecera no tiene largo fijo) y una entrada nueva al final:
+    `u16 tipo | nombre | u16 estéreo | uuid de 16 bytes | u16 número | u8 0`;
+  - entre las dos mitades de `0x251A` hay otra vez un u32 con la cantidad de pistas;
+  - un `0x251A` nuevo al final de cada mitad, con el nombre, el número y el uuid de la pista. Su
+    identificador de 8 bytes (los que siguen a `2A 00 00 00`) es propio de cada pista y lo comparte
+    con el nombre del canal `0x102D → 0x2619`; repetido, Pro Tools no abre la sesión;
+  - una playlist `0x1014` y una entrada vacía `0x1052` (nombre + 4 ceros + `01 00`). Pro Tools
+    guarda primero las playlists en uso (las que se llaman como su pista) y después las
+    alternativas; la nueva va al final de las primeras, y se corren los números de playlist de los
+    canales y los números de `0x1052` de las playlists que quedan después. La playlist también
+    tiene un identificador de 8 bytes propio;
+  - un canal `0x261C` copiado del de la plantilla: identificadores de parámetros nuevos (u16 n y n
+    u32 consecutivos tras los hijos del `0x261B`, mayores que todos los de la sesión), uuids de 16
+    bytes nuevos tras `FF 7F`, uuid de la pista, nombre, y tras el `0x261B`
+    `u32 número de canal de audio | u16 cantidad de playlists | u32 playlist | FF FF`. El u32 final
+    de su `0x2015` es correlativo entre los canales;
+  - el grupo `<ALL>` `0x202A` (u32 cantidad + u16 por pista), `0x202C` y una tira `0x2589` en
+    `0x258A` (u32 cantidad justo antes de las tiras; u16 número de pista en +2);
+  - en el índice: las posiciones nuevas en las listas, una entrada `(0x2519, 1, n+1) + 0x251A` antes
+    de la de `0x2716` (cuyo número pasa a n+1) y una entrada para el canal.
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 

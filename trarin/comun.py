@@ -380,8 +380,12 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     """Pro Tools: por ahora volumen, paneo y mute de pistas, y posición y mute
     de regiones de audio. Cualquier otro cambio da un error."""
     from .protools.escritura import escribir_cambios
-    if set(_por_id(comun["pistas"])) != set(_por_id(original["pistas"])):
-        raise ErrorComun("agregar o quitar pistas aún no está soportado")
+    ids_orig = set(_por_id(original["pistas"]))
+    if ids_orig - set(_por_id(comun["pistas"])):
+        raise ErrorComun("Pro Tools: quitar pistas aún no está soportado")
+    nuevas = [p for p in comun["pistas"] if p.get("id") not in ids_orig]
+    if nuevas:
+        return _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida)
     compases = None
     if [_sin(x) for x in comun["compases"]] != [_sin(x) for x in original["compases"]]:
         compases = [{k: c[k] for k in ("tick", "numerador", "denominador")} for c in comun["compases"]]
@@ -459,6 +463,49 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                             compases=compases, notas=notas, clips_nuevos=clips_nuevos,
                             clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
                             regiones_nuevas=altas_audio["regiones"])
+
+
+def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
+    """Crea primero las pistas nuevas (audio mono, vacías, con la mezcla de una
+    pista existente como plantilla) en una copia temporal y después aplica sobre
+    esa copia el resto de los cambios, incluidos los clips y la mezcla de las
+    pistas nuevas."""
+    import os
+    import tempfile
+    from .protools import leer
+    from .protools.descifrado import leer_descifrado
+    from .protools.pistas_nuevas import agregar_pistas
+    from .protools.reconstruccion import cifrar
+    usados = {p["nombre"] for p in original["pistas"]}
+    nombres = []
+    for p in nuevas:
+        nombre = p.get("nombre")
+        if not nombre or nombre in usados:
+            raise ErrorComun(f"Pro Tools: una pista nueva necesita un nombre no repetido ({nombre!r})")
+        if p.get("tipo", "audio") != "audio":
+            raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio mono")
+        usados.add(nombre)
+        nombres.append(nombre)
+    d = agregar_pistas(leer_descifrado(plantilla), nombres)
+    fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(cifrar(d))
+        nativo2 = leer(tmp)
+        original2 = a_comun(nativo2)
+        base = _por_id(original2["pistas"])
+        pistas = []
+        for p in comun["pistas"]:
+            if p in nuevas:
+                b = base[p["nombre"]]
+                mezcla = dict(b["mezcla"], volumen_db=0.0, paneo=0.0, mute=False)
+                mezcla.update({k: v for k, v in (p.get("mezcla") or {}).items() if v is not None})
+                p = dict(b, mezcla=mezcla, clips=p.get("clips", []))
+            pistas.append(p)
+        comun2 = dict(comun, pistas=pistas)
+        return _a_protools(comun2, original2, nativo2, tmp, salida)
+    finally:
+        os.unlink(tmp)
 
 
 def _cambios_marcadores_pt(nuevos, originales):
