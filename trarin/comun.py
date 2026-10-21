@@ -404,6 +404,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     orig = _por_id(original["pistas"])
     mezcla, regiones, midi, nombres, notas = {}, {}, {}, {}, {}
     clips_nuevos, clips_borrados = {}, {}
+    midi_nuevos = {"regiones": [], "clips": {}}
     altas_audio = {"archivos": [], "regiones": [], "indices": {}, "largo": {},
                    "base_regiones": len(nativo["audio"]["regiones"])}
     for p in comun["pistas"]:
@@ -429,7 +430,10 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         for c in p["clips"]:
             x = oc.get(c.get("id"))
             if x is None or c.get("id") in vistos:
-                _clip_nuevo_pt(c, p, original, nativo, fs, clips_nuevos, altas_audio, comun)
+                if c.get("tipo") == "midi":
+                    _clip_midi_nuevo_pt(c, p, original, nativo, midi_nuevos)
+                else:
+                    _clip_nuevo_pt(c, p, original, nativo, fs, clips_nuevos, altas_audio, comun)
                 continue
             vistos.add(c["id"])
             if c["tipo"] != "audio":
@@ -466,7 +470,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                             marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
                             compases=compases, notas=notas, clips_nuevos=clips_nuevos,
                             clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
-                            regiones_nuevas=altas_audio["regiones"])
+                            regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos)
 
 
 def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
@@ -587,6 +591,40 @@ def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
         indices.append(altas["base_regiones"] + len(altas["regiones"]))
         altas["regiones"].append({"nombre": nom, "archivo": indice, "desde": desde, "largo": largo})
     clips_nuevos.setdefault(pista["id"], []).append((indices, muestra))
+
+
+def _clip_midi_nuevo_pt(c, pista, original, nativo, midi_nuevos):
+    """Clip MIDI nuevo en Pro Tools. Si otro clip MIDI de la sesión tiene las
+    mismas notas y el mismo largo, se reutiliza su región (como al duplicar en
+    Pro Tools); si no, se crea una región nueva con sus notas."""
+    tm = next((t for t in nativo["pistas_midi"] if t["nombre"] == pista["id"]), None)
+    if tm is None:
+        raise ErrorComun(f"Pro Tools: la pista {pista['id']!r} no es MIDI")
+    if c.get("tick") is None or c["tick"] < 0:
+        raise ErrorComun("Pro Tools: un clip MIDI nuevo necesita 'tick'")
+    notas = [{k: int(n[k]) for k in ("tick", "largo_ticks", "nota", "velocidad")} for n in c.get("notas", [])]
+    largo = c.get("largo_ticks") or max((n["tick"] + n["largo_ticks"] for n in notas), default=0)
+    if largo <= 0:
+        raise ErrorComun("Pro Tools: un clip MIDI nuevo necesita 'largo_ticks' o notas")
+    clave = lambda ns: sorted((n["tick"], n["nota"], n["largo_ticks"], n["velocidad"]) for n in ns)
+    region = None
+    for t in original["pistas"]:
+        ta = next((x for x in nativo["pistas_midi"] if x["nombre"] == t["id"]), None)
+        for x in t["clips"]:
+            if ta and x["tipo"] == "midi" and x["largo_ticks"] == largo and clave(x["notas"]) == clave(notas):
+                region = ta["regiones"][int(x["id"].rsplit("#m", 1)[1])]["indice_region"]
+                break
+        if region is not None:
+            break
+    if region is None:
+        region = next((("nueva", k) for k, r in enumerate(midi_nuevos["regiones"])
+                       if r["largo"] == largo and clave(r["notas"]) == clave(notas)), None)
+    if region is None:
+        k = len(midi_nuevos["regiones"])
+        nombre = c.get("nombre") or f"{pista['id']}-trarin-{k + 1:02d}"
+        midi_nuevos["regiones"].append({"nombre": nombre, "notas": notas, "largo": int(largo)})
+        region = ("nueva", k)
+    midi_nuevos["clips"].setdefault(pista["id"], []).append((region, int(c["tick"])))
 
 
 def _archivo_clip_pt(archivo, original, comun, fs, altas):

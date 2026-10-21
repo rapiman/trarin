@@ -276,10 +276,17 @@ muestra Pro Tools].
 - Bloque `0x2000`: u32 cantidad de chunks `MdChun` y los chunks (cada chunk `Md…` = etiqueta, u16
   versión, u32 largo y contenido). `MdChun` → `MdNLB` v3: u32 n, n eventos de 35 bytes (posición,
   `00 00 40`, nota, largo, `00 00 40`, velocidad, 17 bytes), copia de la interpretación original
-  (u32 n, u32 11, n × 11 bytes), u32 n, un byte por nota y 6 bytes; siguen `MdCDS` (controladores) y
+  (u32 n, u32 11, n × 11 bytes), u32 n y n + 6 bytes que siempre son `01 00 01 00` y ceros (en los 890 chunks del corpus; no son marcas por nota: si no se respetan, Pro Tools da "size of header doesn't match" al leer la lista de chunks); siguen `MdCDS` (controladores) y
   `MdES`; el chunk termina en `2A 00 00 00` + identificador de 8 bytes + `01`. Al editar notas, Pro
   Tools agrega un chunk nuevo y la región pasa a usarlo (u32 tras el `0x2628`); trarin hace lo mismo
   [verificado editando, borrando y agregando notas].
+- **Clips MIDI nuevos** [verificado en Pro Tools 12 dibujando una nota y duplicando el clip]: una
+  región nueva suma un chunk al `0x2000` y un `0x2633` al final de `0x2634` (u32 cantidad en +2),
+  con su `0x2628` (nombre; desplazamiento CERO en 5 bytes y largo en ticks con ancho variable) y
+  el u32 del chunk. Cada aparición es un `0x1056` en el `0x1057` de la pista (u32 cantidad tras el
+  nombre; si la pista no tiene clips, justo después de la cantidad): duplicar en Pro Tools solo
+  agrega otro `0x1056` que apunta a la misma región. También cambian `0x2056` (herramienta de
+  edición elegida) y `0x206a`, que no hace falta escribir.
 - Controladores (en estudio): dentro de `MdChun`, varios `MdCDS`, cada uno con `Mdss` (5 bytes
   que identifican el carril) y `MdCD` (u32 cantidad, eventos de 12 bytes: tick de 5 bytes,
   `00 00 40`, int32 valor). Carriles vistos: `02 07` (volumen, 0–127), `02 0A` (paneo), `02 06`,
