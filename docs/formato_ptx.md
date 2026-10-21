@@ -196,6 +196,13 @@ muestra Pro Tools].
   bloque de notas cuyo índice es el u32 que sigue al `0x2628`.
 - Notas: bloque `MdNLB`: cantidad en +11 y eventos de 35 bytes desde +15: posición (5 bytes),
   nota (+8), largo (+9, 5 bytes), velocidad (+17) [verificado].
+- Bloque `0x2000`: u32 cantidad de chunks `MdChun` y los chunks (cada chunk `Md…` = etiqueta, u16
+  versión, u32 largo y contenido). `MdChun` → `MdNLB` v3: u32 n, n eventos de 35 bytes (posición,
+  `00 00 40`, nota, largo, `00 00 40`, velocidad, 17 bytes), copia de la interpretación original
+  (u32 n, u32 11, n × 11 bytes), u32 n, un byte por nota y 6 bytes; siguen `MdCDS` (controladores) y
+  `MdES`; el chunk termina en `2A 00 00 00` + identificador de 8 bytes + `01`. Al editar notas, Pro
+  Tools agrega un chunk nuevo y la región pasa a usarlo (u32 tras el `0x2628`); trarin hace lo mismo
+  [verificado editando, borrando y agregando notas].
 - Controladores (en estudio): dentro de `MdChun`, varios `MdCDS`, cada uno con `Mdss` (5 bytes
   que identifican el carril) y `MdCD` (u32 cantidad, eventos de 12 bytes: tick de 5 bytes,
   `00 00 40`, int32 valor). Carriles vistos: `02 07` (volumen, 0–127), `02 0A` (paneo), `02 06`,

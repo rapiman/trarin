@@ -4,7 +4,7 @@
 
 | DAW | Lectura | Escritura |
 |---|---|---|
-| Pro Tools `.ptx` (12, 2019, 2026) | amplia (ver `formato_ptx.md`) | desde el modelo común: nombre y mezcla de pistas, posición y mute de regiones, posición de clips MIDI, marcadores (cambiar, agregar, borrar), tempo, compases |
+| Pro Tools `.ptx` (12, 2019, 2026) | amplia (ver `formato_ptx.md`) | desde el modelo común: nombre y mezcla de pistas, posición y mute de regiones, posición y notas de clips MIDI, marcadores (cambiar, agregar, borrar), tempo, compases |
 | Ableton Live `.als` (12; sets de 11 reguardados) | tempo, compás, marcadores, pistas, clips del Arrangement y de Session, notas, audio y warp, mezcla, envíos, dispositivos, automatización de mezcla | tempo, compás, marcadores, pistas (nombre, volumen, paneo, mute), clips (posición, nombre, notas) |
 | FL Studio `.flp` (12, 20, 21) | tempo, compás, canales, patrones y notas, arreglos y playlist, marcadores, inserts con efectos, volumen y paneo | tempo, compás, patrones (nombre, notas), playlist, canales (nombre, insert), volumen y paneo de inserts |
 
@@ -47,5 +47,5 @@ python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nue
 
 ## Pendiente
 
-- Escritura de Pro Tools: crear selecciones, notas MIDI, puntos de automatización.
+- Escritura de Pro Tools: crear selecciones, puntos de automatización, agregar pistas y clips.
 - Servidor MCP.

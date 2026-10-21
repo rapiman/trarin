@@ -393,7 +393,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     fs = nativo["origen"].get("frecuencia_muestreo") or 48000
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
-    mezcla, regiones, midi, nombres = {}, {}, {}, {}
+    mezcla, regiones, midi, nombres, notas = {}, {}, {}, {}, {}
     for p in comun["pistas"]:
         o = orig[p["id"]]
         for k in set(p) | set(o):
@@ -416,11 +416,14 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         for c in p["clips"]:
             x = oc[c["id"]]
             if c["tipo"] != "audio":
-                libres = _SOLO_LECTURA | {"tick"}
+                libres = _SOLO_LECTURA | {"tick", "notas"}
                 if {k: v for k, v in c.items() if k not in libres} != {k: v for k, v in x.items() if k not in libres}:
-                    raise ErrorComun(f"Pro Tools: en el clip MIDI {c['id']} solo se puede cambiar la posición (tick)")
+                    raise ErrorComun(f"Pro Tools: en el clip MIDI {c['id']} solo se puede cambiar la posición y las notas")
+                j = int(c["id"].rsplit("#m", 1)[1])
                 if c["tick"] != x["tick"]:
-                    midi.setdefault(p["id"], {})[int(c["id"].rsplit("#m", 1)[1])] = c["tick"]
+                    midi.setdefault(p["id"], {})[j] = c["tick"]
+                if c["notas"] != x["notas"]:
+                    notas[(p["id"], j)] = c["notas"]
                 continue
             cambio = {}
             if c["muestra"] != x["muestra"]:
@@ -439,7 +442,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                 regiones.setdefault(p["id"], {})[j] = cambio
     return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
                             marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
-                            compases=compases)
+                            compases=compases, notas=notas)
 
 
 def _cambios_marcadores_pt(nuevos, originales):
