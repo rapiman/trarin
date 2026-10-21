@@ -363,6 +363,71 @@ def _altas_bajas_marcadores(d, bloques, nuevos, borrados):
     return reemplazos
 
 
+# ------------------------------------------------------------------ nombres
+
+def _cadena_en(d, p, texto):
+    """Reemplazo de la cadena (u32 largo + texto) que empieza en p."""
+    n = struct.unpack_from("<I", d, p)[0]
+    nuevo = texto.encode("utf-8")
+    return (p, p + 4 + n, struct.pack("<I", len(nuevo)) + nuevo)
+
+
+def _renombrar_pistas(d, bloques, nombres):
+    """nombres: {nombre actual: nombre nuevo}. Lugares donde Pro Tools guarda el
+    nombre de una pista (verificado renombrando en Pro Tools 12):
+    - lista de pistas 0x2519: en sus bytes propios (u32 largo + nombre) y en
+      cada 0x251A (nombre en +4; la lista viene dos veces);
+    - audio: la playlist activa 0x1014 (nombre en +2) y las entradas 0x1052
+      de sus canales (nombre en +2); MIDI: la playlist 0x1057 (nombre en +2);
+    - auxiliar o master: el nombre del canal (0x102D → 0x2619, en +2). En las
+      pistas de audio ese nombre es el de creación y Pro Tools no lo cambia."""
+    reemplazos = []
+    viejos = {v.encode("utf-8"): v for v in nombres}
+    lista = buscar(bloques, 0x2519)
+    if not lista:
+        raise ErrorEscritura("no se encontró la lista de pistas")
+    lista = lista[0]
+    fin_propios = lista.hijos[0].pos if lista.hijos else lista.fin
+    for viejo_b, viejo in viejos.items():
+        clave = struct.pack("<I", len(viejo_b)) + viejo_b
+        k = d.find(clave, lista.inicio, fin_propios)
+        if k < 0 or d.find(clave, k + 1, fin_propios) >= 0:
+            raise ErrorEscritura(f"no se pudo ubicar la pista {viejo!r} en la lista de pistas")
+        reemplazos.append(_cadena_en(d, k, nombres[viejo]))
+    tipos = {}
+    for b in buscar(bloques, 0x251A):
+        nombre = P._cadena(d, b.inicio + 4)[0]
+        if nombre in nombres:
+            tipos[nombre] = struct.unpack_from("<H", d, b.inicio + 2)[0]
+            reemplazos.append(_cadena_en(d, b.inicio + 4, nombres[nombre]))
+    mapa = _primero(bloques, 0x1054)
+    entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
+    for b in buscar(bloques, 0x1014):
+        nombre, j = P._cadena(d, b.inicio + 2)
+        if nombre not in nombres:
+            continue
+        reemplazos.append(_cadena_en(d, b.inicio + 2, nombres[nombre]))
+        n = struct.unpack_from("<I", d, j + 1)[0]
+        for i in struct.unpack_from(f"<{n}H", d, j + 5):
+            e = entradas[i]
+            if P._cadena(d, e.inicio + 2)[0] == nombre:
+                reemplazos.append(_cadena_en(d, e.inicio + 2, nombres[nombre]))
+    for b in buscar(bloques, 0x1057):
+        nombre = P._cadena(d, b.inicio + 2)[0]
+        if nombre in nombres:
+            reemplazos.append(_cadena_en(d, b.inicio + 2, nombres[nombre]))
+    raiz = _primero(bloques, 0x2624)
+    for canal in (raiz.hijos if raiz else []):
+        if canal.tipo_contenido == 0x261C:          # audio: nombre de creación, no cambia
+            continue
+        for cab in buscar([canal], 0x102D):
+            for nb in cab.hijos[:1]:
+                nombre = P._cadena(d, nb.inicio + 2)[0]
+                if nombre in nombres:
+                    reemplazos.append(_cadena_en(d, nb.inicio + 2, nombres[nombre]))
+    return reemplazos
+
+
 # ------------------------------------------------------------------- tempo
 
 def _cambios_tempo(d, bloques, tempo, out):
@@ -385,7 +450,7 @@ def _cambios_tempo(d, bloques, tempo, out):
 # ------------------------------------------------------------------ entrada
 
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
-                     marcadores_nuevos=None, marcadores_borrados=None):
+                     marcadores_nuevos=None, marcadores_borrados=None, nombres=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -408,6 +473,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b
     reemplazos = _cambios_marcadores(d, bloques, marcadores) if marcadores else []
+    if nombres:
+        reemplazos += _renombrar_pistas(d, bloques, nombres)
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
