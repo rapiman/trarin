@@ -121,6 +121,7 @@ def leer(ruta):
     compas = {"numerador": 4, "denominador": 4}
     titulo = None
     canales, patrones, arreglos, inserts = [], {}, [], []
+    nombre_insert = None
     canal = patron = arreglo = insert = None
     slot = {}
     marca = None
@@ -192,12 +193,14 @@ def leer(ruta):
         elif i == E_TM_DEN and marca is not None:
             marca["denominador"] = v[0]
         elif i == E_INSERT:
-            insert = {"numero": len(inserts), "nombre": None, "efectos": []}
+            # El nombre (204) de un insert va justo antes de su evento 236.
+            insert = {"numero": len(inserts), "nombre": nombre_insert, "efectos": []}
+            nombre_insert = None
             inserts.append(insert)
             arreglo = canal = patron = None
             slot = {}
-        elif i == E_INSERT_NOMBRE and insert is not None:
-            insert["nombre"] = texto(v)
+        elif i == E_INSERT_NOMBRE:
+            nombre_insert = texto(v)
         elif i == E_NOMBRE:
             if insert is not None:
                 slot["nombre"] = texto(v)
@@ -230,6 +233,7 @@ def leer(ruta):
             c["archivo"] = None
 
     compases = [{"tick": 0, "compas": 1, **compas}]
+    usados = {c.get("insert") for c in canales}
     return {
         "formato": FORMATO,
         "origen": {"daw": "flstudio", "producto": "FL Studio", "version_completa": version,
@@ -242,7 +246,8 @@ def leer(ruta):
         "patrones": [p for _, p in sorted(patrones.items()) if p["notas"] or p["nombre"]],
         "arreglos": arreglos,
         "mezcla": [ins for ins in inserts if ins["nombre"] or ins["efectos"]
-                   or ins.get("volumen_fader", 0.8) != 0.8 or ins["numero"] == 0],
+                   or ins.get("volumen_fader", 0.8) != 0.8 or ins.get("paneo", 0)
+                   or ins["numero"] == 0 or ins["numero"] in usados],
         "pendiente": ["automatización (canales de tipo automatización)", "estado de plugins",
                       "clips de audio de la playlist", "ruteo entre inserts"],
     }
