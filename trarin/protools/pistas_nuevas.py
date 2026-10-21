@@ -468,17 +468,31 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1, playlists
 
 # -------------------------------------------------------- pistas auxiliares
 
-def agregar_auxiliares(d, nombres, plantilla=None):
+def agregar_auxiliares(d, nombres, plantilla=None, externa=None):
     """Agrega pistas auxiliares al final, cada una como texto (estéreo) o como
     (nombre, canales). Son copia de un auxiliar de la sesión con la misma
-    cantidad de canales (plantilla: su nombre), con el mismo ruteo."""
+    cantidad de canales (plantilla: su nombre), con el mismo ruteo.
+
+    externa: (sesión descifrada, nombre de un auxiliar) para copiar un
+    auxiliar de otra sesión cuando esta no tiene uno que sirva. Sus inserts
+    quedan vacíos y su ruteo es el de la otra sesión: hay que copiarlos
+    después (inserts.copiar_inserts y ruteo.copiar_ruteo)."""
     for x in nombres:
         nombre, canales = (x, 2) if isinstance(x, str) else x
-        d = _agregar_aux(d, nombre, plantilla, canales)
+        d = _agregar_aux(d, nombre, plantilla, canales, externa)
     return d
 
 
-def _agregar_aux(d, nombre, plantilla, canales):
+def _inserts_vacios(dt, ins):
+    """Bytes de un 0x2627 como 'ins' (de la sesión dt) con los 11 lugares vacíos."""
+    vacio = next((h for h in ins.hijos if h.tipo_contenido == 0x2625), None)
+    if vacio is None:
+        raise ErrorPista("no hay un lugar de insert vacío que copiar")
+    cuerpo = bytes(dt[ins.inicio:ins.hijos[0].pos]) + bytes(dt[vacio.pos:vacio.fin]) * (len(ins.hijos))
+    return bytes(dt[ins.pos:ins.pos + 3]) + struct.pack("<I", len(cuerpo)) + cuerpo
+
+
+def _agregar_aux(d, nombre, plantilla, canales, externa=None):
     """Verificado creando un auxiliar estéreo y uno mono al final en Pro Tools 12
     y comparando: entrada de tipo 2 en 0x2519 y un 0x251A en cada mitad, un
     canal 0x261E al final de 0x2624, el grupo <ALL>, una tira 0x2589 y el
@@ -497,14 +511,21 @@ def _agregar_aux(d, nombre, plantilla, canales):
     if raiz is None or len(raiz.hijos) != len(entradas) or len(hijos) != 2 * len(entradas):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canales_mezcla = raiz.hijos
-    cands = [i for i, e in enumerate(entradas) if e[2] == 2 and e[4] == canales - 1
-             and canales_mezcla[i].tipo_contenido == 0x261E]
-    if plantilla:
-        cands = [i for i in cands if entradas[i][3] == plantilla]
+    # la plantilla: de esta sesión, o de otra (externa)
+    dt, bt = (externa[0], arbol(externa[0])) if externa else (d, bloques)
+    Lt = _primero(bt, 0x2519)
+    entradas_t = _lista_2519(dt, Lt)[0]
+    hijos_t = [h for h in Lt.hijos if h.tipo_contenido == 0x251A]
+    mitad_t = len(hijos_t) // 2
+    canales_t = _primero(bt, 0x2624).hijos
+    cands = [i for i, e in enumerate(entradas_t) if e[2] == 2 and e[4] == canales - 1
+             and canales_t[i].tipo_contenido == 0x261E]
+    if plantilla or externa:
+        cands = [i for i in cands if entradas_t[i][3] == (externa[1] if externa else plantilla)]
     if not cands:
         raise ErrorPista(f"no hay un auxiliar {'estéreo' if canales == 2 else 'mono'} que sirva de plantilla")
     i_t = cands[0]
-    t = entradas[i_t]
+    t = entradas_t[i_t]
     uuid_t, uuid = t[5], os.urandom(16)
     n_pistas = len(entradas)
     reemplazos = []
@@ -513,12 +534,12 @@ def _agregar_aux(d, nombre, plantilla, canales):
     entrada = (struct.pack("<H", 2) + _str(nombre) + struct.pack("<H", canales - 1) + uuid
                + struct.pack("<HB", n_pistas + 1, 0))
     reemplazos.append((fin_lista, fin_lista, entrada, L.pos))
-    q = d.find(b"\x2a\0\0\0", hijos[i_t].inicio, hijos[i_t].fin)
-    id_t = d[q + 4:q + 12]
+    q = dt.find(b"\x2a\0\0\0", hijos_t[i_t].inicio, hijos_t[i_t].fin)
+    id_t = bytes(dt[q + 4:q + 12])
     id_n = _id_nuevo(d, id_t)
 
     def nuevo_251a(h):
-        b = bytearray(d[h.pos:h.fin].replace(id_t, id_n))
+        b = bytearray(dt[h.pos:h.fin].replace(id_t, id_n))
         _, q = _cadena(b, 11)
         cola = bytearray(b[q:])
         cola[-16:] = uuid
@@ -529,10 +550,10 @@ def _agregar_aux(d, nombre, plantilla, canales):
     m = hijos[mitad - 1].fin
     if struct.unpack_from("<I", d, m)[0] != n_pistas or hijos[mitad].pos != m + 4:
         raise ErrorPista("lista de pistas no reconocida (cantidad entre mitades)")
-    reemplazos.append((m, m + 4, nuevo_251a(hijos[i_t]) + struct.pack("<I", n_pistas + 1), L.pos))
-    reemplazos.append((hijos[-1].fin, hijos[-1].fin, nuevo_251a(hijos[mitad + i_t]), L.pos))
+    reemplazos.append((m, m + 4, nuevo_251a(hijos_t[i_t]) + struct.pack("<I", n_pistas + 1), L.pos))
+    reemplazos.append((hijos[-1].fin, hijos[-1].fin, nuevo_251a(hijos_t[mitad_t + i_t]), L.pos))
     # 2) canal 0x261E
-    canal_t = canales_mezcla[i_t]
+    canal_t = canales_t[i_t]
     ids = []
     for c in canales_mezcla:
         sb = next((h for h in c.hijos if h.tipo_contenido == 0x261B), None)
@@ -543,20 +564,24 @@ def _agregar_aux(d, nombre, plantilla, canales):
         except ErrorPista:
             pass
     sb = next(h for h in canal_t.hijos if h.tipo_contenido == 0x261B)
-    k, lista = _ids_canal(d, sb)
+    k, lista = _ids_canal(dt, sb)
     nuevo_id = max(ids) + 1
     fijos = [(k + 2, struct.pack(f"<{len(lista)}I", *range(nuevo_id, nuevo_id + len(lista))))]
-    q = d.find(b"\xff\x7f", k, sb.fin)
+    q = dt.find(b"\xff\x7f", k, sb.fin)
     if q > 0:
-        fijos.append((q + 4, os.urandom(16 * struct.unpack_from("<H", d, q + 2)[0])))
+        fijos.append((q + 4, os.urandom(16 * struct.unpack_from("<H", dt, q + 2)[0])))
     nums = [struct.unpack_from("<I", d, b.fin - 4)[0] for b in buscar(bloques, 0x2015)]
     for b in buscar([canal_t], 0x2015):
         fijos.append((b.fin - 4, struct.pack("<I", max(nums) + 1)))
     cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
     nb = cab.hijos[0]
-    viejo = _str(_cadena(d, nb.inicio + 2)[0])
+    viejo = _str(_cadena(dt, nb.inicio + 2)[0])
     variables = [(nb.inicio + 2, nb.inicio + 2 + len(viejo), _str(nombre))]
-    c = _rehacer(d, canal_t, fijos, variables).replace(uuid_t, uuid).replace(id_t, id_n)
+    if externa:                                     # los inserts de la otra sesión no sirven aquí
+        ins = next((h for h in sb.hijos if h.tipo_contenido == 0x2627), None)
+        if ins is not None:
+            variables.append((ins.pos, ins.fin, _inserts_vacios(dt, ins)))
+    c = _rehacer(dt, canal_t, fijos, variables).replace(uuid_t, uuid).replace(id_t, id_n)
     reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(canales_mezcla) + 1)))
     reemplazos.append((canales_mezcla[-1].fin, canales_mezcla[-1].fin, bytes(c), raiz.pos))
     # 3) grupo <ALL> (0x202C no cambia)
@@ -569,14 +594,15 @@ def _agregar_aux(d, nombre, plantilla, canales):
         reemplazos.append((p + 7, p + 11, struct.pack("<I", cnt + 1)))
         reemplazos.append((fin_l, fin_l, struct.pack("<H", n_pistas)))
     # 4) tira de la ventana, copia de la de la plantilla
+    tiras_t = [h for v in buscar(bt, 0x258A) for h in v.hijos if h.tipo_contenido == 0x2589]
+    propia = next((h for h in tiras_t if struct.unpack_from("<H", dt, h.inicio + 2)[0] == i_t), None)
     for v in buscar(bloques, 0x258A):
         tiras = [h for h in v.hijos if h.tipo_contenido == 0x2589]
         if not tiras:
             continue
-        propia = next((h for h in tiras if struct.unpack_from("<H", d, h.inicio + 2)[0] == i_t), None)
         if propia is None:
             raise ErrorPista("tira del auxiliar de plantilla no encontrada")
-        b = bytearray(d[propia.pos:propia.fin])
+        b = bytearray(dt[propia.pos:propia.fin])
         struct.pack_into("<H", b, 9, n_pistas)
         q = tiras[0].pos - 4
         reemplazos.append((q, q + 4, struct.pack("<I", len(tiras) + 1)))
