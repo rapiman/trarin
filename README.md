@@ -20,8 +20,11 @@ Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
 | Archivos de audio y regiones        | listo     |
 | Pistas de audio (canales, colocaciones, sin fades) | listo |
 | MIDI (regiones, notas, pistas)      | listo     |
-| Volumen, paneo, mute, solo          | pendiente |
-| Automatización, plugins, envíos     | pendiente |
+| Volumen, paneo, mute, solo          | listo     |
+| Envíos (destino y nivel)            | listo     |
+| Plugins (cuáles hay en cada canal)  | listo     |
+| Puntos de automatización            | parcial   |
+| Ajustes internos de plugins         | no se interpreta (se conserva como bloque) |
 
 Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
 
@@ -65,6 +68,11 @@ Ver `trarin/protools/tiempo.py`. Resumen:
   Si el último byte del `0x1050` vale 1, la entrada es un fade o crossfade.
 - MIDI: notas en `0x2000` (bloques `MdNLB`, eventos de 35 bytes), regiones en
   `0x2634` (ventana sobre un bloque de notas) y pistas en `0x1058`/`0x1057`.
+
+- Mezcla: bloque `0x2624`, un hijo por canal (ver `trarin/protools/mezcla.py`).
+  Volumen en décimas de dB, paneo de -100 a 100. Descifrado con sesiones de
+  prueba hechas en Pro Tools, cada una con un solo cambio respecto de la
+  anterior: volumen, paneo, mute, solo, plugin, envío y automatización.
 
 ## Preguntas abiertas
 

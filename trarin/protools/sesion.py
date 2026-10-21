@@ -7,6 +7,7 @@ from .bloques import arbol, buscar
 from .descifrado import leer_descifrado
 from . import tiempo
 from . import pistas as P
+from .mezcla import leer_mezcla
 
 FORMATO = "trarin/0"
 
@@ -59,6 +60,7 @@ def leer(ruta) -> dict:
     pistas_audio = P.leer_pistas_audio(d, bloques, regiones)
     regiones_midi = P.leer_regiones_midi(d, bloques)
     pistas_midi = P.leer_pistas_midi(d, bloques, regiones_midi)
+    mezcla = leer_mezcla(d, bloques, [p["nombre"] for p in pistas_audio])
 
     for p in pistas_audio:
         for c in p["canales"]:
@@ -88,5 +90,6 @@ def leer(ruta) -> dict:
         "pistas_audio": pistas_audio,
         "midi": {"regiones": regiones_midi},
         "pistas_midi": pistas_midi,
-        "pendiente": ["volumen, paneo, mute, solo", "automatización", "plugins", "envíos y buses"],
+        "mezcla": mezcla,
+        "pendiente": ["puntos de automatización", "ajustes internos de plugins", "ruteo de entradas y salidas", "colores, grupos, playlists alternativas"],
     }
