@@ -1,8 +1,10 @@
 # Formato de sesión Pro Tools (.ptx) — lo que trarin sabe
 
 Este documento junta todo lo decodificado sobre el formato `.ptx`. Las pruebas se hicieron sobre
-un corpus de 51 sesiones de Pro Tools HD 12.5 en Windows (48 y 96 kHz) y sobre experimentos
-controlados en Pro Tools. Cada afirmación lleva una marca de confianza:
+un corpus de 51 sesiones de Pro Tools HD 12.5 en Windows (48 y 96 kHz), sobre experimentos
+controlados en Pro Tools 12.5 (una acción por sesión guardada, comparadas byte a byte) y sobre
+tres sesiones de Mac incluidas en ptformat: Pro Tools HD 12.8.3, Pro Tools 2019.6 y
+Pro Tools Ultimate 2026.4. Cada afirmación lleva una marca de confianza:
 
 - **[verificado]**: comprobado en todo el corpus o contra lo que muestra Pro Tools.
 - **[corpus]**: consistente en el corpus, pero sin experimento que lo confirme.
@@ -63,7 +65,7 @@ La transformación es simétrica: la misma operación cifra y descifra.
 |---|---|
 | `0x0003` | Producto, versión y plataforma: u32 largo en +3, nombre en +7 (`"Pro Tools HD"`), versión en `+3+largo+8`; luego `"12.5.0"`, `"Release"`, `"Pro Tools Session File"`, `"Windows"` [verificado] |
 | `0x1028` | Frecuencia de muestreo, u32 en carga +2 [verificado]; luego la ruta a `Last Used.pio` |
-| `0x204D` | Timecode. En PT12 mide 42 bytes: el código de cadencia está en el byte 0 y se repite como u32 en +21; termina con la cadena `"24:00:00:00"`. En PT2024 el código es un u32 en +40 [externo]. Tabla de códigos en `sesion.py`; el corpus solo tiene `0x07` (30 fps) |
+| `0x204D` | Timecode [verificado por experimento]. Byte 0: código de cadencia (`0x02` 25, `0x05` 29,97 drop, `0x07` 30, `0x09` 23,976; resto según la tabla de pt_api). u32 en +9: inicio de la sesión en cuadros a la cadencia nominal (86 400 = 01:00:00:00 a 24). La cadena final `HH:MM:SS:FF` es la duración de la sesión (Session Length). En 2026 el bloque mide 69 bytes y repite los datos, pero el byte 0 y +9 valen igual |
 | `0x2067` | Cadenas `Info #1..#5`, ruta de la sesión, identificador y nombre del archivo |
 | `0x204B` | Nombre interno de la sesión |
 | `0x2715` | `sessionMetadataBase64` |
@@ -81,10 +83,14 @@ La transformación es simétrica: la misma operación cifra y descifra.
   +29, pulso u32 en +37 [verificado con la sesión de tempo variable].
 - **Compases**: patrón `29 20 'Meter' 02 00`, cantidad en +4 y eventos de 36 bytes: int64 tick,
   u32 número de compás, u32 numerador, u32 denominador [verificado].
-- **Marcadores** (PT12): patrón `5A 0C 00 ?? 02 00 00 77 20` (tipo de contenido `0x2077`):
-  u16 número, u32 largo en +6, nombre, y posición en 5 bytes [verificado]. pt_api describe además
-  el comentario del marcador (u32 largo + UTF-8, 60 bytes después de los dos timestamps) y las
-  reglas de marcadores múltiples de PT2024 (`0x2519 → 0x251B → 0x251C`) [externo].
+- **Marcadores / ubicaciones de memoria** [verificado por experimento]: bloques `0x2077` hijos de
+  la primera lista `0x2030` que los contiene (la lista aparece dos veces). Carga: u16 número;
+  byte +3 banderas (bit 1 = selección; en el corpus aparecen 1 y 9 para marcadores); u32 largo en
+  +6 y nombre desde +10. Con E = fin del nombre: inicio en E y fin en E+8, cada uno 5 bytes de
+  tick (+10¹²) seguidos de `00 00 40`; comentario = u32 largo en E+80 y texto en E+84. El lector
+  anterior de trarin buscaba un patrón de bytes que fallaba cuando el bloque medía más de 255
+  bytes: perdía los marcadores de 16 de las 51 sesiones. pt_api describe además las reglas de
+  marcadores múltiples de PT2024 (`0x2519 → 0x251B → 0x251C`) [externo].
 
 ## 5. Archivos y regiones de audio
 
@@ -96,9 +102,10 @@ La transformación es simétrica: la misma operación cifra y descifra.
   - byte `j`: banderas; bytes `j+1..j+3`: anchos en nibbles del desplazamiento en el archivo, del
     largo y del inicio original; los valores siguen desde `j+5`.
   - El archivo de la región es el u32 que sigue al final del `0x2628`.
-  - **Clip gain**: los **últimos 4 bytes** del `0x2628` son un int32 con el índice en el
-    diccionario `0x2637` (`-1` = sin clip gain) [verificado en 44 208 regiones; en PT2024 está en
-    `largo-6`, según pt_api].
+  - **Clip gain**: int32 con el índice en el diccionario `0x2637` (`-1` = sin clip gain), 27 bytes
+    después de la última marca `FF FF 04 00 04 00` del `0x2628` [verificado en 45 833 bloques de
+    PT 12.5, 12.8, 2019 y 2026]. En PT 12 coincide con los últimos 4 bytes; en 2026 el bloque
+    sigue con `00 00` y un UUID de 16 bytes.
 - pt_api documenta además un segmento de 48 bytes con UUID por región, un enlace de 104 bytes con
   el índice de archivo en +96 y un perfil de "sync point" (`00 30 22 44 08`) [externo].
 
@@ -129,10 +136,11 @@ En PT12 el campo +18 no es la duración de la región; sigue sin identificar.
 | +0 | 1 | Mute de la región: 1 = silenciada |
 | +2 | 4 | Índice: región en `0x262A`, o fundido en `0x2630` |
 | +7 | 5 (u64) | Muestra del ancla |
-| +15 | 1 | Valores 1, 2 o 3; significado desconocido en PT12 (en PT2024 es el tipo, según pt_api) |
+| +15 | 1 | Casi siempre 3 en regiones y 1 en fundidos, pero no es confiable: en 183 regiones vale 1 y el índice no sería válido como fundido. pt_api lo usa como tipo en PT2024 |
 
-  El **último byte del `0x1050`** distingue el espacio de nombres: `1` = el índice apunta a un
-  fundido, `0` = a una región. En PT2024 ese papel lo cumple el byte +15.
+  El **primer byte después del `0x104F`** distingue el espacio de nombres: `1` = el índice apunta
+  a un fundido, `0` = a una región [verificado]. En PT 12.5 ese byte cierra el `0x1050`; en
+  12.8, 2019 y 2026 le sigue otro byte (`01`).
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 
@@ -143,13 +151,18 @@ Lista con u32 cantidad. Cada geometría:
 | +5 | Anchos en nibbles: **bajo = ancho del pre-roll, alto = ancho de la duración** (0, 1, 2 o 3 bytes) |
 | +8 | Pre-roll en muestras (la parte del fundido antes del ancla) |
 | siguiente | Duración total en muestras |
-| siguiente | Modo: `1` cruzado, `2` salida, `3` entrada |
-| siguiente | Forma: `1` potencia, `2` lineal (nombres según pt_api) |
+| m | Modo: `1` cruzado, `2` salida, `3` entrada |
+| m+1 | Pendiente: `1` Equal Power, `2` Equal Gain [verificado por experimento] |
+| curvas | `[tipo u8, preset int16]`: tipo `0` Standard, `1` S-Curve, `2` preset; el preset se cuenta desde la curva lineal (el segundo de los siete quedó como −2) |
+
+Ubicación de las curvas desde el byte de modo: entrada m+6 [verificado]; salida m+12 [corpus];
+cruce: curva de salida m+12 [verificado], curva de entrada m+19 [sin aislar: en el experimento
+quedó S-Curve aunque se eligió Standard, posiblemente por el vínculo entre ambas].
 
 En todo el corpus el modelo es consistente: una entrada tiene pre-roll 0, una salida tiene pre-roll
 igual a la duración, y un cruce tiene un pre-roll intermedio, casi siempre la mitad. El fundido
-empieza en `ancla − pre_roll`. Los cruces llevan una cola extra (`02 FF FF 00 00 00 00 02 FF FF`)
-que probablemente describe las curvas.
+empieza en `ancla − pre_roll` [verificado: el cruce del experimento empieza en 1|4|480, como
+muestra Pro Tools].
 
 ## 8. MIDI
 
@@ -200,9 +213,13 @@ sigue sin significado conocido; el resto son contenedores y copias.
 
 ## 13. Diferencias PT12 frente a PT2024 (pt_api)
 
-| Dato | PT12 (este corpus) | PT2024 (pt_api) |
+| Dato | Lo que lee trarin | pt_api (PT2024) |
 |---|---|---|
-| Fundido o región en una colocación | último byte del `0x1050` | byte +15 del `0x104F` |
-| Índice de clip gain en `0x2628` | últimos 4 bytes | `largo − 6` |
-| Cadencia de timecode `0x204D` | byte 0 (bloque de 42 bytes) | u32 en +40 |
+| Fundido o región en una colocación | primer byte después del `0x104F` | byte +15 del `0x104F` |
+| Índice de clip gain en `0x2628` | 27 bytes después de `FF FF 04 00 04 00` | `largo − 6` o `largo − 22` |
+| Cadencia de timecode `0x204D` | byte 0 (también en 2026) | u32 en +40 |
 | Curvas de clip gain | también 2 nodos | 1, 3 y 4 nodos |
+
+Versiones probadas: 12.5 (Windows, 51 sesiones), 12.8.3, 2019.6 y 2026.4 (Mac, una sesión cada
+una). Las sesiones `.ptf` de PT 8 se leen solo en parte y las `.pts` de PT 5 no se leen: usan
+otros tipos de bloque y quedan fuera del alcance actual.

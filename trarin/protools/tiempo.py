@@ -64,6 +64,44 @@ def leer_compases(d, bloques):
 
 
 def leer_marcadores(d, bloques):
+    """Ubicaciones de memoria (bloques 0x2077 dentro de la primera lista 0x2030).
+
+    Carga del 0x2077: u16 número; byte +3 banderas (bit 1 = selección; 1 y 9 son marcadores);
+    u32 largo del nombre en +6 y nombre desde +10. Al final del nombre (E):
+    inicio en E y fin en E+8, cada uno de 5 bytes de tick (+10**12) seguidos de
+    00 00 40; el comentario es u32 largo en E+80 y texto en E+84.
+    """
+    from .bloques import buscar
+    listas = [b for b in buscar(bloques, 0x2030)
+              if any(h.tipo_contenido == 0x2077 for h in b.hijos)]
+    if not listas:
+        return _leer_marcadores_patron(d, bloques)
+    marcas = []
+    for b in listas[0].hijos:
+        if b.tipo_contenido != 0x2077:
+            continue
+        p = b.inicio + 2
+        numero = struct.unpack_from("<H", d, p)[0]
+        tipo = d[p + 3]
+        largo = struct.unpack_from("<I", d, p + 6)[0]
+        if largo > 1024 or p + 10 + largo + 13 > b.fin:
+            continue
+        nombre = d[p + 10:p + 10 + largo].decode("utf-8", "replace")
+        e = p + 10 + largo
+        ev = {"numero": numero, "nombre": nombre,
+              "tick": int.from_bytes(d[e:e + 5], "little") - CERO}
+        if tipo & 2:
+            ev["tipo"] = "seleccion"
+            ev["fin_tick"] = int.from_bytes(d[e + 8:e + 13], "little") - CERO
+        if e + 84 <= b.fin:
+            n = struct.unpack_from("<I", d, e + 80)[0]
+            if 0 < n <= 65536 and e + 84 + n <= b.fin:
+                ev["comentario"] = d[e + 84:e + 84 + n].decode("utf-8", "replace")
+        marcas.append(ev)
+    return marcas
+
+
+def _leer_marcadores_patron(d, bloques):
     t = _tramo(d, bloques, 0x271A)
     if not t:
         return []
