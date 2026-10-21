@@ -3,6 +3,7 @@
   python -m trarin leer SESION --comun -o comun.json      (modelo común trarin/1)
   python -m trarin escribir EDITADO.json --plantilla ORIGINAL.(als|flp) -o NUEVO.(als|flp)
   python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ... [--json] [-o informe]
+  python -m trarin show plan SHOW.json [--json]
 """
 
 import argparse
@@ -95,7 +96,25 @@ def main(argv=None):
     k.add_argument("sesiones", nargs="+", help="sesiones .ptx en el orden del show")
     k.add_argument("--json", action="store_true", help="informe completo en JSON")
     k.add_argument("-o", "--salida")
+    sh = sub.add_parser("show", help="armador de shows: 'plan' muestra cómo quedarían las canciones juntas (solo lee)")
+    sh.add_argument("accion", choices=["plan"])
+    sh.add_argument("archivo", help="descripción del show (.json, o .yaml con pyyaml)")
+    sh.add_argument("--json", action="store_true")
     a = p.parse_args(argv)
+    if a.orden == "show":
+        from .show import cargar, planear, texto as texto_plan, ErrorShow
+        try:
+            plan = planear(cargar(a.archivo))
+        except ErrorShow as e:
+            p.error(str(e))
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if a.json:
+            sys.stdout.write(json.dumps({k: v for k, v in plan.items() if not k.startswith("_")},
+                                        ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(texto_plan(plan))
+        return
     if a.orden == "compatibilidad":
         from .compatibilidad import informe, texto as texto_informe, ErrorCompatibilidad
         try:

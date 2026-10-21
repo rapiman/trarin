@@ -1,0 +1,260 @@
+"""Armador de shows: plan de tiempo para juntar varias sesiones en una.
+
+El show se describe en un JSON (o YAML, con pyyaml):
+
+    {
+      "salida": "D:/Grabaciones/Pro tool/Show/show.ptx",
+      "base": "D:/.../Base.ptx",                 # opcional; si no, la primera canción
+      "separacion": {"compases": 2},             # o {"segundos": 4}; puede ser negativa
+      "cambio_tempo": {"modo": "antes", "negras": 2},   # o {"modo": "mitad"}
+      "canciones": [
+        {"sesion": "D:/.../Cancion1.ptx"},
+        {"sesion": "D:/.../Cancion2.ptx", "separacion": {"compases": 4}, "fin_compas": 120}
+      ]
+    }
+
+Reglas del plan (decididas con quien usa trarin):
+
+* Cada canción empieza al inicio de un compás del show: el primer compás
+  después de que termina la anterior (su último clip, o 'fin_compas'), más la
+  separación. Una separación en compases usa el último compás de la canción
+  anterior; una en segundos se redondea hacia arriba a compases.
+* Tempo en la separación positiva: el de la canción que termina hasta el punto
+  de cambio, y el de la que empieza desde ahí. Punto de cambio: 'antes' (por
+  defecto una blanca, 2 negras, antes del inicio de la siguiente, sin entrar en
+  la canción anterior) o 'mitad' (mitad de la separación).
+* Separación negativa (canciones encimadas): el tempo cambia en la mitad de la
+  zona encimada. El tempo y los compases de la canción que termina se cortan
+  ahí, y los de la que empieza rigen desde ahí.
+* Todo se ubica por tiempo real: cada evento de una canción va al instante
+  (inicio de la canción en el show + segundos dentro de la canción). Así el
+  audio y el MIDI suenan igual que en su sesión aunque cambie el tempo del show
+  en una zona encimada. Donde el tempo del show coincide con el de la canción,
+  la posición en ticks se traslada exacta (sin redondeos).
+"""
+
+import json
+import math
+from pathlib import Path
+
+from .protools import tiempo as T
+
+NEGRA = T.TICKS_NEGRA
+
+
+class ErrorShow(Exception):
+    pass
+
+
+def cargar(ruta):
+    texto = Path(ruta).read_text(encoding="utf-8")
+    if str(ruta).lower().endswith((".yaml", ".yml")):
+        try:
+            import yaml
+        except ImportError as e:
+            raise ErrorShow("un show en YAML requiere pyyaml (pip install pyyaml); en JSON no") from e
+        return yaml.safe_load(texto)
+    return json.loads(texto)
+
+
+def _largo_compas(c):
+    return NEGRA * 4 * c["numerador"] // c["denominador"]
+
+
+def _fin_cancion(comun):
+    """Tick donde termina el material de la canción (último clip o marcador)."""
+    fin = 0
+    for p in comun["pistas"]:
+        for c in p["clips"]:
+            if c.get("tick") is not None and c.get("largo_ticks"):
+                fin = max(fin, c["tick"] + c["largo_ticks"])
+    for m in comun.get("marcadores", []):
+        fin = max(fin, m.get("fin_tick") or m["tick"])
+    return fin
+
+
+def _vigente(eventos, tick):
+    v = eventos[0]
+    for e in eventos:
+        if e["tick"] <= tick:
+            v = e
+    return v
+
+
+def _compas_desde(compases, numero):
+    """Tick donde empieza el compás 'numero' (1 = el primero)."""
+    restantes, previo = numero - 1, compases[0]
+    for c in compases[1:]:
+        n = (c["tick"] - previo["tick"]) // _largo_compas(previo)
+        if restantes < n:
+            break
+        restantes -= n
+        previo = c
+    return previo["tick"] + restantes * _largo_compas(previo)
+
+
+def _separacion(sep, compas, tempo_bpm):
+    """Separación en ticks, múltiplo del compás vigente (puede ser negativa)."""
+    largo = _largo_compas(compas)
+    if "compases" in sep:
+        return round(float(sep["compases"])) * largo
+    if "segundos" in sep:
+        s = float(sep["segundos"])
+        n = math.ceil(abs(s) * tempo_bpm / 60.0 * NEGRA / largo)
+        return int(math.copysign(n, s)) * largo if s else 0
+    raise ErrorShow(f"separación no reconocida: {sep} (use 'compases' o 'segundos')")
+
+
+def planear(show, leer_comun=None):
+    """Plan de tiempo del show: inicio de cada canción, mapa de tempo, compases y
+    marcadores, en ticks del show. 'leer_comun' permite pasar sesiones ya leídas
+    (para pruebas); por defecto se leen con el modelo común."""
+    if leer_comun is None:
+        from .comun import leer_comun
+    canciones = show.get("canciones") or []
+    if len(canciones) < 1:
+        raise ErrorShow("el show no tiene canciones")
+    sep_def = show.get("separacion", {"compases": 2})
+    cambio = show.get("cambio_tempo", {"modo": "antes", "negras": 2})
+    if cambio.get("modo") not in ("antes", "mitad"):
+        raise ErrorShow("cambio_tempo.modo debe ser 'antes' o 'mitad'")
+    temas = []
+    for i, c in enumerate(canciones):
+        comun = leer_comun(c["sesion"]) if isinstance(c.get("sesion"), str) else c["sesion"]
+        tempo = [{"tick": e["tick"], "bpm": e["bpm"]} for e in comun["tempo"]] or [{"tick": 0, "bpm": 120.0}]
+        compases = comun["compases"] or [{"tick": 0, "numerador": 4, "denominador": 4}]
+        if compases[0]["tick"] != 0 or tempo[0]["tick"] != 0:
+            raise ErrorShow(f"{c['sesion']}: el tempo y el compás deben empezar en el tick 0")
+        fin = _compas_desde(compases, int(c["fin_compas"])) if c.get("fin_compas") else _fin_cancion(comun)
+        ultimo = _vigente(compases, fin)
+        fin_compas = ultimo["tick"] + math.ceil((fin - ultimo["tick"]) / _largo_compas(ultimo)) * _largo_compas(ultimo)
+        temas.append({"comun": comun, "nombre": Path(str(c.get("sesion"))).stem if isinstance(c.get("sesion"), str)
+                      else comun["origen"].get("archivo", f"cancion{i + 1}"),
+                      "tempo": tempo, "compases": compases, "fin": fin, "fin_compas": fin_compas,
+                      "frecuencia": comun["unidades"]["frecuencia_muestreo"]})
+    fs = {t["frecuencia"] for t in temas}
+    if len(fs) > 1:
+        raise ErrorShow(f"frecuencias de muestreo distintas: {sorted(fs)}")
+
+    # inicio de cada canción (ticks del show) y punto de cambio de tempo
+    inicios, cortes = [0], []
+    for i in range(1, len(temas)):
+        a, b = temas[i - 1], temas[i]
+        sep = canciones[i].get("separacion", sep_def)
+        ultimo = _vigente(a["compases"], a["fin_compas"] - 1)
+        g = _separacion(sep, ultimo, _vigente(a["tempo"], a["fin"])["bpm"])
+        inicio = inicios[-1] + a["fin_compas"] + g
+        if inicio <= inicios[-1]:
+            raise ErrorShow(f"la separación negativa antes de {b['nombre']} es más larga que {a['nombre']}")
+        fin_a = inicios[-1] + a["fin"]
+        if inicio >= fin_a:                       # separación positiva
+            if cambio["modo"] == "mitad":
+                corte = (fin_a + inicio) // 2
+            else:
+                corte = max(fin_a, inicio - int(float(cambio.get("negras", 2)) * NEGRA))
+        else:                                     # canciones encimadas
+            corte = (inicio + fin_a) // 2
+        inicios.append(inicio)
+        cortes.append(corte)
+
+    # mapa de tempo y compases del show
+    tempo, compases = [], []
+    for i, t in enumerate(temas):
+        desde = cortes[i - 1] if i else 0               # rige el tempo de esta canción
+        hasta = cortes[i] if i < len(cortes) else None
+        s = inicios[i]
+        tempo.append({"tick": desde, "bpm": _vigente(t["tempo"], max(desde - s, 0))["bpm"]})
+        tempo += [{"tick": s + e["tick"], "bpm": e["bpm"]} for e in t["tempo"]
+                  if s + e["tick"] > desde and (hasta is None or s + e["tick"] < hasta)]
+        # compases: desde el inicio de la canción (o el corte, si se encima), hasta el inicio de la siguiente
+        fin_c = inicios[i + 1] if i + 1 < len(inicios) else None
+        for e in t["compases"]:
+            k = s + e["tick"]
+            if fin_c is None or k < fin_c:
+                compases.append({"tick": k, "numerador": e["numerador"], "denominador": e["denominador"]})
+    tempo = _limpiar(tempo, ("bpm",))
+    compases = _limpiar(sorted(compases, key=lambda x: x["tick"]), ("numerador", "denominador"))
+    _verificar_compases(compases, inicios[1:])
+
+    plan = {"frecuencia_muestreo": temas[0]["frecuencia"], "tempo": tempo, "compases": compases,
+            "canciones": [], "marcadores": []}
+    for i, t in enumerate(temas):
+        s = inicios[i]
+        ini_s = T.segundos(s, tempo)
+        plan["canciones"].append({
+            "nombre": t["nombre"], "sesion": canciones[i].get("sesion") if isinstance(canciones[i].get("sesion"), str) else None,
+            "inicio_tick": s,
+            "inicio_s": round(ini_s, 6), "fin_s": round(ini_s + T.segundos(t["fin"], t["tempo"]), 6),
+            "inicio_compas": _compas(s, compases),
+            "cambio_tempo_siguiente": cortes[i] if i < len(cortes) else None,
+        })
+        plan["canciones"][-1]["fin_tick"] = a_show(plan, i, t["fin"], temas)
+        plan["marcadores"].append({"nombre": t["nombre"], "tick": s})
+        for m in t["comun"].get("marcadores", []):
+            item = {"nombre": m["nombre"], "tick": a_show(plan, i, m["tick"], temas)}
+            if m.get("fin_tick") is not None:
+                item["fin_tick"] = a_show(plan, i, m["fin_tick"], temas)
+            plan["marcadores"].append(item)
+    plan["_temas"] = temas
+    return plan
+
+
+def a_show(plan, i, tick, temas=None):
+    """Tick del show para un tick de la canción i: exacto donde el tempo del show
+    es el de la canción; por tiempo real donde no (zona encimada)."""
+    temas = temas or plan["_temas"]
+    t = temas[i]
+    c = plan["canciones"][i] if i < len(plan["canciones"]) else None
+    s = c["inicio_tick"] if c else _inicio_en_construccion(plan, i)
+    desde = plan["canciones"][i - 1]["cambio_tempo_siguiente"] if i and c else 0
+    hasta = c["cambio_tempo_siguiente"] if c else None
+    k = s + tick
+    if (desde is None or k >= desde) and (hasta is None or k < hasta):
+        return k
+    seg = T.segundos(s, plan["tempo"]) + T.segundos(tick, t["tempo"])
+    return T.tick_de_segundos(seg, plan["tempo"])
+
+
+def _inicio_en_construccion(plan, i):
+    raise ErrorShow("plan incompleto")
+
+
+def _limpiar(eventos, claves):
+    out = []
+    for e in sorted(eventos, key=lambda x: x["tick"]):
+        if out and out[-1]["tick"] == e["tick"]:
+            out[-1] = e
+        elif not out or any(out[-1][k] != e[k] for k in claves):
+            out.append(e)
+    return out
+
+
+def _verificar_compases(compases, inicios):
+    """Cada canción agregada empieza al inicio de un compás del show (los cambios
+    de compás propios de cada sesión se respetan tal como vienen)."""
+    for k in inicios:
+        previo = [c for c in compases if c["tick"] < k]
+        if previo and (k - previo[-1]["tick"]) % _largo_compas(previo[-1]):
+            raise ErrorShow(f"una canción quedó a mitad de compás (tick {k})")
+
+
+def _compas(tick, compases):
+    numero, previo = 1, compases[0]
+    for c in compases[1:]:
+        if c["tick"] > tick:
+            break
+        numero += (c["tick"] - previo["tick"]) // _largo_compas(previo)
+        previo = c
+    return numero + (tick - previo["tick"]) // _largo_compas(previo)
+
+
+def texto(plan):
+    L = ["# Plan del show", ""]
+    for i, c in enumerate(plan["canciones"]):
+        L.append(f"{i + 1}. {c['nombre']}: compás {c['inicio_compas']}, {c['inicio_s']:.2f} s → {c['fin_s']:.2f} s")
+    L += ["", "Tempo:"]
+    L += [f"  {_compas(e['tick'], plan['compases'])}|{e['tick']} {e['bpm']:g} BPM" for e in plan["tempo"]]
+    L += ["", "Compases:"]
+    L += [f"  compás {_compas(e['tick'], plan['compases'])}: {e['numerador']}/{e['denominador']}" for e in plan["compases"]]
+    L += ["", f"Marcadores: {len(plan['marcadores'])}"]
+    return "\n".join(L) + "\n"

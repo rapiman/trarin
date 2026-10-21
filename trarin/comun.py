@@ -405,7 +405,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
     mezcla, regiones, midi, nombres, notas = {}, {}, {}, {}, {}
-    clips_nuevos, clips_borrados = {}, {}
+    clips_nuevos, clips_borrados, fundidos_nuevos = {}, {}, {}
     midi_nuevos = {"regiones": [], "clips": {}}
     altas_audio = {"archivos": [], "regiones": [], "indices": {}, "largo": {},
                    "base_regiones": len(nativo["audio"]["regiones"])}
@@ -429,6 +429,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
             mezcla[indices[p["id"]]] = (p["id"], cambio)
         oc = _por_id(o["clips"])
         vistos = set()
+        fundidos_pista = []
         for c in p["clips"]:
             x = oc.get(c.get("id"))
             if x is None or c.get("id") in vistos:
@@ -436,6 +437,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                     _clip_midi_nuevo_pt(c, p, original, nativo, midi_nuevos)
                 else:
                     _clip_nuevo_pt(c, p, original, nativo, fs, clips_nuevos, altas_audio, comun)
+                    fundidos_pista += c.get("fundidos") or []
                 continue
             vistos.add(c["id"])
             if c["tipo"] != "audio":
@@ -463,6 +465,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
             if cambio:
                 j = int(c["id"].rsplit("#", 1)[1])
                 regiones.setdefault(p["id"], {})[j] = cambio
+        if fundidos_pista:
+            fundidos_nuevos[p["id"]] = _fundidos_nuevos_pt(p, fundidos_pista, nativo, fs)
         for i, x in oc.items():
             if i not in vistos:
                 if x["tipo"] == "midi":
@@ -473,7 +477,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                             marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
                             compases=compases, notas=notas, clips_nuevos=clips_nuevos,
                             clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
-                            regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos)
+                            regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos,
+                            fundidos_nuevos=fundidos_nuevos)
 
 
 def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
@@ -585,6 +590,39 @@ def _cambios_marcadores_pt(nuevos, originales):
     if any(not isinstance(i, int) for i in bajas):
         raise ErrorComun("Pro Tools: no se puede identificar un marcador a borrar")
     return cambios, altas, bajas
+
+def _fundidos_nuevos_pt(pista, fundidos, nativo, fs):
+    """Fundidos de los clips nuevos de una pista, sin repetir (un cruce figura
+    en los dos clips), con su pre-roll: 0 en una entrada, la duración en una
+    salida, y en un cruce lo que va del inicio del fundido al inicio del clip
+    que empieza dentro de él (el ancla de Pro Tools)."""
+    inicios = []
+    for c in pista["clips"]:
+        if c.get("tipo") == "audio":
+            m = c.get("muestra")
+            inicios.append(m if m is not None else round(T.segundos(c["tick"], nativo["tempo"]) * fs))
+    out, vistos = [], set()
+    for f in fundidos:
+        k = (f.get("tipo"), f.get("muestra"), f.get("muestras"))
+        if k in vistos:
+            continue
+        vistos.add(k)
+        ini, dur = int(f["muestra"]), int(f["muestras"])
+        if f["tipo"] == "entrada":
+            pre = 0
+        elif f["tipo"] == "salida":
+            pre = dur
+        elif f["tipo"] == "cruzado":
+            dentro = [m for m in inicios if ini < m < ini + dur]
+            if len(dentro) != 1:
+                raise ErrorComun(f"Pro Tools: el fundido cruzado en {ini} de {pista['id']!r} debe abarcar "
+                                 f"el inicio de un clip")
+            pre = dentro[0] - ini
+        else:
+            raise ErrorComun(f"Pro Tools: tipo de fundido desconocido {f.get('tipo')!r}")
+        out.append(dict(f, pre_roll=pre))
+    return out
+
 
 def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     """Clip de audio nuevo en Pro Tools. Si hay un clip de la sesión con el mismo
