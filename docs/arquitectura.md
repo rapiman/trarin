@@ -48,5 +48,4 @@ python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nue
 ## Pendiente
 
 - Escritura de Pro Tools desde el modelo común (la reconstrucción de la sesión ya está verificada).
-- Medir la curva del fader de FL Studio para expresar su volumen en dB.
 - Servidor MCP.
