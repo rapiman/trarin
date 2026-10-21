@@ -136,9 +136,9 @@ def segundos(tick, tempo):
             previo = {**e, "tick": min(0, e["tick"])}
         if e["tick"] >= tick:
             break
-        total += (e["tick"] - previo["tick"]) / previo["pulso_ticks"] * 60.0 / previo["bpm"]
+        total += (e["tick"] - previo["tick"]) / previo.get("pulso_ticks", TICKS_NEGRA) * 60.0 / previo["bpm"]
         previo = e
-    total += (tick - previo["tick"]) / previo["pulso_ticks"] * 60.0 / previo["bpm"]
+    total += (tick - previo["tick"]) / previo.get("pulso_ticks", TICKS_NEGRA) * 60.0 / previo["bpm"]
     return total
 
 
@@ -159,12 +159,17 @@ def compas_tiempo(tick, compases):
 
 
 def tick_de_segundos(seg, tempo):
-    """Inversa de segundos(): el tick que cae en 'seg' (búsqueda binaria)."""
-    bajo, alto = -10 ** 11, 10 ** 13
-    while alto - bajo > 1:
-        medio = (bajo + alto) // 2
-        if segundos(medio, tempo) < seg:
-            bajo = medio
-        else:
-            alto = medio
-    return alto
+    """Inversa de segundos(): el tick que cae en 'seg' (cálculo directo por tramos)."""
+    if not tempo:
+        tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
+    previo = {**tempo[0], "tick": min(0, tempo[0]["tick"])}
+    acumulado = 0.0
+    for e in tempo:
+        pulso = previo.get("pulso_ticks", TICKS_NEGRA)
+        dur = (e["tick"] - previo["tick"]) / pulso * 60.0 / previo["bpm"]
+        if acumulado + dur > seg:
+            break
+        acumulado += dur
+        previo = e
+    pulso = previo.get("pulso_ticks", TICKS_NEGRA)
+    return previo["tick"] + round((seg - acumulado) * previo["bpm"] / 60.0 * pulso)

@@ -1,5 +1,6 @@
 """Uso:
   python -m trarin leer SESION.(ptx|als|flp) [-o salida.json] [--yaml] [--resumen]
+  python -m trarin leer SESION --comun -o comun.json      (modelo común trarin/1)
   python -m trarin escribir EDITADO.json --plantilla ORIGINAL.(als|flp) -o NUEVO.(als|flp)
 """
 
@@ -84,6 +85,7 @@ def main(argv=None):
     l.add_argument("-o", "--salida")
     l.add_argument("--yaml", action="store_true", help="YAML en vez de JSON (requiere pyyaml)")
     l.add_argument("--resumen", action="store_true", help="solo un resumen legible")
+    l.add_argument("--comun", action="store_true", help="modelo común trarin/1 (mismo JSON para ptx, als y flp)")
     e = sub.add_parser("escribir", help="aplica un JSON editado sobre una copia de la sesión original (.als o .flp)")
     e.add_argument("json")
     e.add_argument("--plantilla", required=True, help="sesión original de la que se leyó el JSON")
@@ -93,6 +95,13 @@ def main(argv=None):
         with open(a.json, encoding="utf-8") as f:
             datos = json.load(f)
         ext = Path(a.plantilla).suffix.lower()
+        if Path(a.salida).exists():
+            p.error(f"{a.salida} ya existe: elija otro nombre")
+        if datos.get("formato") == "trarin/1":
+            from .comun import aplicar
+            aplicar(datos, a.plantilla, a.salida)
+            print(f"escrito {a.salida}")
+            return
         if ext == ".als":
             from .ableton import escribir
         elif ext == ".flp":
@@ -107,8 +116,12 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    s = leer(a.sesion)
-    if a.resumen:
+    if a.comun:
+        from .comun import leer_comun
+        s = leer_comun(a.sesion)
+    else:
+        s = leer(a.sesion)
+    if a.resumen and not a.comun:
         (_resumen if s["origen"]["daw"] == "protools" else _resumen_otro)(s)
         return
     if a.yaml:

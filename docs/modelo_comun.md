@@ -1,0 +1,57 @@
+# Modelo común `trarin/1`
+
+Un mismo JSON para Pro Tools (`.ptx`), Ableton Live (`.als`) y FL Studio (`.flp`), pensado para que
+una persona o una IA edite cualquiera de los tres con las mismas reglas.
+
+```
+python -m trarin leer SESION --comun -o comun.json
+# editar comun.json
+python -m trarin escribir comun.json --plantilla SESION -o SESION_nueva
+```
+
+`escribir` edita una copia del original: solo cambia lo que el JSON cambió. Sin cambios, el resultado
+es idéntico (FL Studio) o equivalente (Ableton) al original.
+
+## Estructura
+
+```
+{
+  "formato": "trarin/1",
+  "origen": {...},                       # DAW, versión, archivo
+  "unidades": {"ticks_por_negra": 960000, "frecuencia_muestreo": 48000},
+  "base_tiempo": "ticks" | "muestras",   # qué campo manda al escribir posiciones de clips
+  "tempo":     [{"tick", "bpm"}],
+  "compases":  [{"tick", "numerador", "denominador"}],
+  "marcadores":[{"id", "nombre", "tick", "fin_tick"?, "comentario"?}],
+  "archivos":  [{"id", "ruta", "muestras"?}],
+  "pistas": [{
+      "id", "nombre", "tipo": "audio|midi|retorno|grupo|master", "grupo"?, "color"?,
+      "mezcla": {"volumen_db", "paneo", "mute", "solo", "entrada", "salida", "envios": [{"destino", "volumen_db"}]},
+      "efectos": [{"nombre", ...}],
+      "automatizacion": {...},
+      "clips": [
+        {"id", "tipo": "audio", "nombre", "tick", "largo_ticks", "muestra"?, "largo_muestras"?,
+         "archivo", "desde_muestra"?, "ganancia_db"?, "mute"?, "fundidos"?},
+        {"id", "tipo": "midi", "nombre", "tick", "largo_ticks",
+         "notas": [{"tick", "largo_ticks", "nota", "velocidad"}]}
+      ]
+  }],
+  "nativo": {...}                        # lo propio de cada DAW; no se edita
+}
+```
+
+## Reglas
+
+- Ticks: 960 000 por negra. Las notas de un clip están en ticks relativos al inicio del clip.
+- `posicion` (compás|tiempo|ticks) y `segundos` son solo de lectura.
+- Volumen en dB. Paneo de −1 (izquierda) a 1 (derecha); en pistas estéreo de Pro Tools, `[izq, der]`.
+- Los `id` identifican cada pista y clip en el archivo original: no se cambian.
+- Por ahora no se pueden agregar ni quitar pistas o clips (se informa un error claro).
+
+## Particularidades por DAW
+
+| DAW | Notas |
+|---|---|
+| Pro Tools | `base_tiempo` = muestras: el audio se ubica por `muestra`. Pistas estéreo: un clip por región del primer canal, con `canales: 2`. Escritura desde el modelo común: en desarrollo. |
+| Ableton | Clips del Arrangement; los de Session van en `nativo.clips_session`. |
+| FL Studio | Cada **canal** es una pista. Cada aparición de un patrón en la playlist genera un clip en las pistas de los canales que suenan en él (`id` = `arreglo:item:canal`, `patron` = número). Los clips de una misma aparición se mueven juntos. Las notas de un patrón se comparten: editar las de un clip cambia el patrón en todas sus apariciones. Volumen de canales: pendiente de medir la curva del fader. |
