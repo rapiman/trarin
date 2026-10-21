@@ -51,6 +51,7 @@ python -m trarin leer "Mi canción.ptx" -o "Mi canción.json"
 python -m trarin leer "Mi canción.ptx" --yaml     # requiere pip install pyyaml
 python -m trarin leer "Mi tema.als" -o tema.json  # también .flp
 python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als"
+python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan compatibles son antes de juntarlas
 ```
 
 `escribir` aplica el JSON editado sobre una copia del archivo original y nunca
