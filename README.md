@@ -23,8 +23,11 @@ Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
 | Volumen, paneo, mute, solo          | listo     |
 | Envíos (destino y nivel)            | listo     |
 | Plugins (cuáles hay en cada canal)  | listo     |
-| Puntos de automatización            | parcial   |
-| Ajustes internos de plugins         | no se interpreta (se conserva como bloque) |
+| Automatización (volumen, mute, paneo) | listo   |
+| Entrada y salida de cada canal      | listo     |
+| Estado de plugins: controles genéricos, preset, valores FabFilter | listo |
+| Estado propio de otros plugins      | solo tamaño |
+| Colores, grupos, playlists alternativas | pendiente |
 
 Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
 
