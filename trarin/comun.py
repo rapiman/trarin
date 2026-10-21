@@ -477,7 +477,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
 
 
 def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
-    """Quita primero las pistas que faltan en el modelo (solo de audio) en una
+    """Quita primero las pistas que faltan en el modelo (de audio o MIDI) en una
     copia temporal y después aplica sobre esa copia el resto de los cambios."""
     import os
     import tempfile
@@ -486,8 +486,8 @@ def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
     from .protools.pistas_quitar import quitar_pistas
     from .protools.reconstruccion import cifrar
     for p in quitadas:
-        if p["tipo"] != "audio":
-            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio ({p['id']!r})")
+        if p["tipo"] not in ("audio", "midi"):
+            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio o MIDI ({p['id']!r})")
     d = quitar_pistas(leer_descifrado(plantilla), [p["id"] for p in quitadas])
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
