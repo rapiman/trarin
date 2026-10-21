@@ -18,7 +18,10 @@ Versión 0.1. Solo lectura. Por ahora solo Pro Tools 10 a 12 (`.ptx`, Windows).
 | Compases (cambios de métrica)       | listo     |
 | Marcadores                          | listo     |
 | Archivos de audio y regiones        | listo     |
-| Pistas de audio (canales, colocaciones, sin fades) | listo |
+| Pistas de audio (canales, colocaciones, mute de región) | listo |
+| Fundidos (entrada, salida, cruzados) | listo |
+| Clip gain (fijo y curvas)           | listo     |
+| Cadencia de timecode                | listo (solo visto 30 fps) |
 | MIDI (regiones, notas, pistas)      | listo     |
 | Volumen, paneo, mute, solo          | listo     |
 | Envíos (destino y nivel)            | listo     |
@@ -55,6 +58,9 @@ trarin nunca modifica la sesión original: la lee completa en memoria.
 - Antes del primer evento de tempo rige el BPM de ese primer evento.
 
 ## Formato Pro Tools 12 (lo descifrado hasta ahora)
+
+La especificación completa, con el grado de confianza de cada dato y las
+diferencias con Pro Tools 2024, está en [`docs/formato_ptx.md`](docs/formato_ptx.md).
 
 Ver `trarin/protools/tiempo.py`. Resumen:
 

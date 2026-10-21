@@ -85,7 +85,7 @@ def leer_archivos_audio(d, bloques):
     return archivos
 
 
-def leer_regiones_audio(d, bloques):
+def leer_regiones_audio(d, bloques, ganancias=None):
     lista = _primero(bloques, 0x262A) or _primero(bloques, 0x100B)
     if not lista:
         return []
@@ -97,10 +97,79 @@ def leer_regiones_audio(d, bloques):
         inicio, desplazamiento, largo = _tres_puntos(d, j)
         grupo = c.hijos[0] if c.hijos else None
         archivo = struct.unpack_from("<I", d, grupo.fin)[0] if grupo else None
-        regiones.append({"indice": len(regiones), "nombre": nombre, "archivo": archivo,
-                         "desde_muestra": desplazamiento, "muestras": largo,
-                         "inicio_original": inicio})
+        region = {"indice": len(regiones), "nombre": nombre, "archivo": archivo,
+                  "desde_muestra": desplazamiento, "muestras": largo,
+                  "inicio_original": inicio}
+        nombre_b = next((h for h in c.hijos if h.tipo_contenido == 0x2628), None)
+        if nombre_b and ganancias:
+            i = struct.unpack_from("<i", d, nombre_b.fin - 4)[0]
+            if 0 <= i < len(ganancias):
+                nodos = ganancias[i]
+                if len(nodos) == 1:
+                    region["clip_gain_db"] = nodos[0]["db"]
+                else:
+                    region["clip_gain"] = nodos
+        regiones.append(region)
     return regiones
+
+
+def leer_clip_gain(d, bloques):
+    """Diccionario de clip gain (bloque 0x2637).
+
+    u32 cantidad de registros; cada registro: 01 46 01 00, u32 tamaño (el
+    registro mide 8 + tamaño), u32 cantidad de nodos en +10 y, desde +22,
+    pares [u32 posición en muestras, float32 dB]. Un solo nodo = ganancia fija.
+    Cada región (0x2628) guarda en sus últimos 4 bytes el índice (int32,
+    -1 = sin clip gain)."""
+    b = _primero(bloques, 0x2637)
+    if not b:
+        return []
+    p = b.inicio + 2
+    n = struct.unpack_from("<I", d, p)[0]
+    k = p + 4
+    out = []
+    for _ in range(n):
+        if d[k:k + 4] != b"\x01\x46\x01\x00" or k + 22 > b.fin:
+            break
+        tam = struct.unpack_from("<I", d, k + 4)[0]
+        cant = struct.unpack_from("<I", d, k + 10)[0]
+        nodos = []
+        for j in range(cant):
+            pos, db = struct.unpack_from("<If", d, k + 22 + 8 * j)
+            nodos.append({"muestra": pos, "db": round(db, 2)})
+        out.append(nodos)
+        k += 8 + tam
+    return out
+
+
+_MODO_FUNDIDO = {1: "cruzado", 2: "salida", 3: "entrada"}
+_FORMA_FUNDIDO = {1: "potencia", 2: "lineal"}
+
+
+def leer_fundidos(d, bloques):
+    """Geometrías de fundido (bloque 0x2630 con hijos 0x262f).
+
+    Byte +5: anchos en nibbles (bajo = ancho del pre-roll, alto = ancho de la
+    duración); desde +8 el pre-roll y la duración en muestras; luego el modo
+    (1 cruzado, 2 salida, 3 entrada) y la forma. El pre-roll es la parte del
+    fundido antes del ancla del evento: 0 en una entrada, igual a la duración
+    en una salida."""
+    lista = _primero(bloques, 0x2630)
+    if not lista:
+        return []
+    out = []
+    for g in lista.hijos:
+        if g.tipo_contenido != 0x262F:
+            continue
+        p = g.inicio + 2
+        anchos = d[p + 5]
+        wp, wt = anchos & 15, anchos >> 4
+        pre = _entero(d, p + 8, wp) if wp else 0
+        dur = _entero(d, p + 8 + wp, wt) if wt else 0
+        modo, forma = d[p + 8 + wp + wt], d[p + 9 + wp + wt]
+        out.append({"tipo": _MODO_FUNDIDO.get(modo, modo), "pre_roll": pre, "muestras": dur,
+                    "forma": _FORMA_FUNDIDO.get(forma, forma)})
+    return out
 
 
 def leer_lista_pistas(d, bloques):
@@ -125,7 +194,7 @@ def leer_lista_pistas(d, bloques):
     return pistas
 
 
-def leer_pistas_audio(d, bloques, regiones, activas=None):
+def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
     """Playlists de audio (bloque 0x1014) con sus canales y regiones colocadas.
 
     Cada playlist trae los números de sus canales; cada número es la posición
@@ -148,26 +217,41 @@ def leer_pistas_audio(d, bloques, regiones, activas=None):
     mapa = _primero(bloques, 0x1054)
     entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
 
+    fundidos = fundidos or []
+
     def colocadas(c):
-        out = []
+        # Evento 0x1050 -> 0x104F: +2 mute, +4 índice, +9 muestra (ancla).
+        # El último byte del 0x1050 vale 1 si el índice apunta a un fundido.
+        out, fun = [], []
         for e in c.hijos:
-            if e.tipo_contenido != 0x1050 or d[e.fin - 1] == 1:   # 1 = fade / crossfade
+            if e.tipo_contenido != 0x1050:
                 continue
             for f in e.hijos:
                 if f.tipo_contenido != 0x104F:
                     continue
                 ri = struct.unpack_from("<I", d, f.inicio + 4)[0]
                 muestra = _entero(d, f.inicio + 9, 5)
-                if ri < len(regiones):
-                    out.append({"region": regiones[ri]["nombre"], "indice_region": ri, "muestra": muestra})
-        return sorted(out, key=lambda r: r["muestra"])
+                if d[e.fin - 1] == 1:
+                    if ri < len(fundidos):
+                        g = fundidos[ri]
+                        fun.append({"tipo": g["tipo"], "muestra": muestra - g["pre_roll"],
+                                    "muestras": g["muestras"], "forma": g["forma"]})
+                elif ri < len(regiones):
+                    item = {"region": regiones[ri]["nombre"], "indice_region": ri, "muestra": muestra}
+                    if d[f.inicio + 2] == 1:
+                        item["mute"] = True
+                    out.append(item)
+        return sorted(out, key=lambda r: r["muestra"]), sorted(fun, key=lambda r: r["muestra"])
 
     pistas, inactivas = [], []
     for pl in playlists:
         canales = []
         for k, i in enumerate(pl["ids"]):
-            regs = colocadas(entradas[i]) if i < len(entradas) else []
-            canales.append({"canal": k + 1, "regiones": regs})
+            regs, fun = colocadas(entradas[i]) if i < len(entradas) else ([], [])
+            canal = {"canal": k + 1, "regiones": regs}
+            if fun:
+                canal["fundidos"] = fun
+            canales.append(canal)
         item = {"nombre": pl["nombre"], "canales": canales}
         if activas is None or pl["nombre"] in activas:
             pistas.append(item)
