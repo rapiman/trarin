@@ -258,3 +258,156 @@ def texto(plan):
     L += [f"  compás {_compas(e['tick'], plan['compases'])}: {e['numerador']}/{e['denominador']}" for e in plan["compases"]]
     L += ["", f"Marcadores: {len(plan['marcadores'])}"]
     return "\n".join(L) + "\n"
+
+
+# ------------------------------------------------------------ armar la sesión
+
+def _canales(p):
+    pan = (p.get("mezcla") or {}).get("paneo")
+    return 2 if isinstance(pan, list) else 1
+
+
+def _ruta_audio(sesion, nombre):
+    """Ruta absoluta de un archivo de audio de una sesión: en su carpeta
+    «Audio Files» o, si no, en cualquier lugar bajo la carpeta de la sesión."""
+    carpeta = Path(sesion).parent
+    r = carpeta / "Audio Files" / nombre
+    if r.exists():
+        return str(r)
+    for x in carpeta.rglob(nombre):
+        return str(x)
+    return str(r)
+
+
+def _destino(p, cancion, mapa, pistas_show, match):
+    """Pista del show para la pista p de una canción: la indicada en 'match'
+    ({canción: {pista: pista del show o null}}), o la del mismo nombre, tipo y
+    canales; si no hay, la de nombre parecido (una sola). None = pista nueva."""
+    from .compatibilidad import clave
+    m = (match or {}).get(cancion, {})
+    if p["nombre"] in m:
+        return m[p["nombre"]]
+    compatibles = [q for q in pistas_show if q["tipo"] == p["tipo"] and _canales(q) == _canales(p)]
+    exacta = next((q for q in compatibles if q["nombre"] == p["nombre"]), None)
+    if exacta:
+        return exacta["nombre"]
+    parecidas = [q for q in compatibles if clave(q["nombre"]) == clave(p["nombre"])]
+    return parecidas[0]["nombre"] if len(parecidas) == 1 else None
+
+
+def armar(show, salida=None):
+    """Escribe la sesión del show. Devuelve (ruta, avisos). La base es
+    show["base"] o, si no hay, la primera canción (que queda tal cual, con el
+    tempo, los compases y los marcadores del show). Cada pista de las demás
+    canciones va a la pista del show que indique el match (por defecto, la del
+    mismo nombre, tipo y canales); si no hay, se crea una pista nueva con la
+    mezcla y los plugins de la pista de la canción."""
+    import os
+    import tempfile
+    from .comun import leer_comun, aplicar
+    from .protools.descifrado import leer_descifrado
+    from .protools.inserts import copiar_inserts, plugins_de
+    from .protools.reconstruccion import cifrar
+    salida = Path(salida or show.get("salida") or "")
+    if not str(salida) or salida.suffix.lower() != ".ptx":
+        raise ErrorShow("falta 'salida' (.ptx) del show")
+    if salida.exists():
+        raise ErrorShow(f"{salida} ya existe: elija otro nombre")
+    plan = planear(show)
+    canciones = show["canciones"]
+    base = show.get("base") or canciones[0]["sesion"]
+    desde = 0 if show.get("base") else 1       # la primera canción ya está en la base
+    comun = leer_comun(base)
+    fs = comun["unidades"]["frecuencia_muestreo"]
+    if fs != plan["frecuencia_muestreo"]:
+        raise ErrorShow(f"la base está a {fs} Hz y las canciones a {plan['frecuencia_muestreo']} Hz")
+    avisos = []
+    comun["tempo"] = [dict(e) for e in plan["tempo"]]
+    comun["compases"] = [dict(e) for e in plan["compases"]]
+    existentes = {(m["nombre"], m["tick"]) for m in comun["marcadores"]}
+    for m in plan["marcadores"]:
+        if (m["nombre"], m["tick"]) not in existentes:
+            comun["marcadores"].append(dict(m))
+    pistas_show = comun["pistas"]
+    nuevas = []                     # (nombre en el show, sesión de origen, pista de origen)
+    for i in range(desde, len(canciones)):
+        tema = plan["_temas"][i]
+        cs, sesion = tema["comun"], canciones[i]["sesion"]
+        cancion = plan["canciones"][i]["nombre"]
+        ini_m = round(plan["canciones"][i]["inicio_s"] * fs)
+        archivos = {a["id"]: a for a in cs["archivos"]}
+        for p in cs["pistas"]:
+            if p["tipo"] not in ("audio", "midi", "retorno"):
+                avisos.append(f"{cancion}: la pista {p['nombre']!r} ({p['tipo']}) no se copia (tipo no soportado)")
+                continue
+            if not p["clips"] and p["tipo"] != "retorno":
+                continue
+            dest = _destino(p, cancion, None, pistas_show, show.get("match"))
+            if dest is None:
+                nombre = p["nombre"]
+                usados = {q["nombre"] for q in pistas_show}
+                if nombre in usados:
+                    nombre = f"{p['nombre']} ({cancion})"
+                m = p.get("mezcla") or {}
+                q = {"nombre": nombre, "tipo": p["tipo"], "canales": _canales(p), "clips": [],
+                     "mezcla": {k: m.get(k) for k in ("volumen_db", "paneo", "mute") if m.get(k) is not None}}
+                pistas_show.append(q)
+                nuevas.append((nombre, sesion, p["nombre"], p["tipo"]))
+            else:
+                q = next((x for x in pistas_show if x["nombre"] == dest), None)
+                if q is None:
+                    raise ErrorShow(f"match de {cancion}: no existe la pista del show {dest!r}")
+            for c in p["clips"]:
+                q["clips"].append(_clip_al_show(c, i, plan, ini_m, archivos, sesion, comun))
+    with tempfile.TemporaryDirectory(dir=str(salida.parent)) as tmp:
+        intermedia = Path(tmp) / "show.ptx"
+        aplicar(comun, base, str(intermedia))
+        d = leer_descifrado(str(intermedia))
+        origenes = {}
+        for nombre, sesion, pista, tipo in nuevas:
+            if tipo == "midi":
+                continue
+            if sesion not in origenes:
+                origenes[sesion] = leer_descifrado(sesion)
+            try:
+                if plugins_de(origenes[sesion], pista):
+                    d = copiar_inserts(d, nombre, origenes[sesion], pista)
+            except Exception as e:                      # se avisa y se sigue sin esos plugins
+                avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
+        salida.write_bytes(cifrar(d))
+    return salida, avisos
+
+
+def _clip_al_show(c, i, plan, ini_m, archivos, sesion, comun):
+    """Clip de la canción i como clip nuevo del show (sin 'id')."""
+    if c["tipo"] == "midi":
+        t0 = a_show(plan, i, c["tick"])
+        notas = []
+        for n in c.get("notas", []):
+            a = a_show(plan, i, c["tick"] + n["tick"])
+            b = a_show(plan, i, c["tick"] + n["tick"] + n["largo_ticks"])
+            notas.append({"tick": a - t0, "largo_ticks": max(b - a, 1), "nota": n["nota"], "velocidad": n["velocidad"]})
+        return {"tipo": "midi", "nombre": c.get("nombre"), "tick": t0,
+                "largo_ticks": a_show(plan, i, c["tick"] + c["largo_ticks"]) - t0, "notas": notas}
+    canciones = plan["canciones"][i]["nombre"]
+
+    def arch(k):
+        clave = f"{canciones}:{k}"
+        if not any(a.get("id") == clave for a in comun["archivos"]):
+            a = archivos.get(k)
+            if a is None:
+                raise ErrorShow(f"{canciones}: el clip {c.get('nombre')!r} apunta a un archivo desconocido")
+            comun["archivos"].append({"id": clave, "ruta": _ruta_audio(sesion, a["ruta"]),
+                                      "muestras": a.get("muestras")})
+        return clave
+
+    nuevo = {"tipo": "audio", "nombre": c.get("nombre"), "muestra": ini_m + c["muestra"],
+             "largo_muestras": c["largo_muestras"], "desde_muestra": c.get("desde_muestra", 0),
+             "archivo": arch(c["archivo"])}
+    if c.get("archivos_canales"):
+        nuevo["archivos_canales"] = [arch(k) for k in c["archivos_canales"]]
+    if c.get("mute"):
+        nuevo["mute"] = True
+    if c.get("fundidos"):
+        nuevo["fundidos"] = [dict(f, muestra=ini_m + f["muestra"]) for f in c["fundidos"]]
+    return nuevo

@@ -4,6 +4,7 @@
   python -m trarin escribir EDITADO.json --plantilla ORIGINAL.(als|flp) -o NUEVO.(als|flp)
   python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ... [--json] [-o informe]
   python -m trarin show plan SHOW.json [--json]
+  python -m trarin show armar SHOW.json
 """
 
 import argparse
@@ -96,13 +97,24 @@ def main(argv=None):
     k.add_argument("sesiones", nargs="+", help="sesiones .ptx en el orden del show")
     k.add_argument("--json", action="store_true", help="informe completo en JSON")
     k.add_argument("-o", "--salida")
-    sh = sub.add_parser("show", help="armador de shows: 'plan' muestra cómo quedarían las canciones juntas (solo lee)")
-    sh.add_argument("accion", choices=["plan"])
+    sh = sub.add_parser("show", help="armador de shows: 'plan' muestra cómo quedarían las canciones juntas (solo lee); 'armar' escribe la sesión del show")
+    sh.add_argument("accion", choices=["plan", "armar"])
     sh.add_argument("archivo", help="descripción del show (.json, o .yaml con pyyaml)")
     sh.add_argument("--json", action="store_true")
     a = p.parse_args(argv)
     if a.orden == "show":
-        from .show import cargar, planear, texto as texto_plan, ErrorShow
+        from .show import cargar, planear, armar, texto as texto_plan, ErrorShow
+        if a.accion == "armar":
+            try:
+                ruta, avisos = armar(cargar(a.archivo))
+            except ErrorShow as e:
+                p.error(str(e))
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+            print(f"escrito {ruta}")
+            for x in avisos:
+                print(f"  aviso: {x}")
+            return
         try:
             plan = planear(cargar(a.archivo))
         except ErrorShow as e:

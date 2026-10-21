@@ -16,6 +16,7 @@ python -m trarin leer SESION.(ptx|als|flp) -o sesion.json
 python -m trarin escribir sesion.json --plantilla SESION.(als|flp) -o SESION_nueva.(als|flp)
 python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ...   # consulta antes de armar un show
 python -m trarin show plan SHOW.json                             # cómo quedarían las canciones juntas
+python -m trarin show armar SHOW.json                            # escribe la sesión del show
 ```
 
 ## Show (juntar sesiones)
@@ -41,7 +42,18 @@ Decisiones tomadas para el armador de shows (en desarrollo):
 - Plan de tiempo (`show.py`, `trarin show plan`): inicio de cada canción, mapa de tempo, compases y
   marcadores del show, calculados por tiempo real (el audio y el MIDI suenan igual que en su sesión;
   donde el tempo del show coincide con el de la canción, las posiciones en ticks se trasladan
-  exactas). Falta escribir la sesión del show con ese plan.
+  exactas).
+- Armado (`trarin show armar`): copia la base (la primera canción, o `base`) con el tempo, los
+  compases y los marcadores del plan; cada pista de las demás canciones va a la pista del show que
+  indique `match` (`{canción: {pista: pista del show o null}}`) o, por defecto, a la del mismo nombre,
+  tipo y canales (o nombre parecido, si hay una sola); si no hay, se crea una pista nueva (audio,
+  MIDI o auxiliar) con la mezcla y los plugins de la pista de la canción. Los clips de audio apuntan
+  a los archivos originales de cada canción (carpeta «Audio Files»), con sus fundidos; los clips MIDI
+  llevan sus notas. Las sesiones originales no se tocan. Hay que correrlo en el computador donde
+  están los archivos de audio (Pro Tools necesita sus identificadores). Verificado en Pro Tools 12
+  juntando dos canciones (35 pistas): abre, guarda de nuevo sin perder nada y cierra. Aún no:
+  pistas de instrumento, envíos y ruteo de las pistas nuevas (usan el de la plantilla), y la
+  automatización de las canciones que no son la base.
 - Los fundidos de los clips son obligatorios.
 
 ## Principios
