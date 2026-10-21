@@ -430,21 +430,43 @@ def _renombrar_pistas(d, bloques, nombres):
 
 # ------------------------------------------------------------------- tempo
 
-def _cambios_tempo(d, bloques, tempo, out):
-    """Cambia BPM y posición de los eventos de tempo existentes (mismo número de
-    eventos) en las dos copias del bloque 0x2028. Evento 'TMS': tick (int64,
-    +10**12) en +19, BPM (double) en +29."""
-    copias = buscar(bloques, 0x2028)
-    for b in copias:
-        evs = [b.pos + m.end() - 3 for m in _EV_TEMPO.finditer(d[b.pos:b.fin])]
-        evs.sort(key=lambda p: struct.unpack_from("<q", d, p + 19)[0])
-        if len(evs) != len(tempo):
-            raise ErrorEscritura("agregar o quitar cambios de tempo aún no está soportado")
-        for p, t in zip(evs, tempo):
-            if not 5 <= t["bpm"] <= 999:
-                raise ErrorEscritura(f"BPM fuera de rango: {t['bpm']}")
-            out[p + 19] = struct.pack("<q", t["tick"] + CERO)
-            out[p + 29] = struct.pack("<d", float(t["bpm"]))
+def _cambios_tempo(d, bloques, tempo):
+    """Reescribe el mapa de tempo en las dos copias del bloque 0x2028 (verificado
+    agregando un cambio de tempo en Pro Tools 12). Tras 'Tempo' 02 00: u32 largo
+    (4 + 61 por evento), u32 cantidad, 4 bytes, eventos de 61 bytes ('Const' …
+    'TMS'; tick int64 + 10**12 en +30, BPM double en +40, figura del pulso u32 en
+    +49, y dos banderas en +21 y +39 que valen 1 en el primer evento) y 13 bytes
+    finales. Los eventos existentes se reutilizan en orden; los nuevos se copian
+    de un evento que no sea el primero (o del primero, con las banderas en 0)."""
+    if not tempo or tempo[0]["tick"] != 0:
+        raise ErrorEscritura("el primer tempo debe estar en el tick 0")
+    reemplazos = []
+    for b in buscar(bloques, 0x2028):
+        m = d.find(b"Tempo\x02\x00", b.inicio, b.fin)
+        if m < 0:
+            raise ErrorEscritura("bloque de tempo no reconocido")
+        m += 7
+        largo, n = struct.unpack_from("<II", d, m)
+        ini = m + 12
+        if largo != 4 + 61 * n or b.fin - (ini + 61 * n) != 13 or d[ini:ini + 5] != b"Const":
+            raise ErrorEscritura("bloque de tempo con otra estructura en esta versión")
+        viejos = [bytearray(d[ini + 61 * k:ini + 61 * (k + 1)]) for k in range(n)]
+        if len(viejos) > 1:
+            otro = viejos[1]
+        else:
+            otro = bytearray(viejos[0])
+            otro[21] = otro[39] = 0
+        cuerpo = b""
+        for k, t in enumerate(sorted(tempo, key=lambda x: x["tick"])):
+            if not 5 <= t["bpm"] <= 500:
+                raise ErrorEscritura(f"BPM fuera de rango (5 a 500): {t['bpm']}")
+            ev = bytearray(viejos[k] if k < n else otro)
+            struct.pack_into("<q", ev, 30, t["tick"] + CERO)
+            struct.pack_into("<d", ev, 40, float(t["bpm"]))
+            cuerpo += ev
+        k = len(tempo)
+        reemplazos.append((m, ini + 61 * n, struct.pack("<II", 4 + 61 * k, k) + d[m + 8:ini] + cuerpo))
+    return reemplazos
 
 
 # ----------------------------------------------------------------- compases
@@ -518,8 +540,6 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
         _cambios_midi(d, bloques, pista, cambios, out)
     for indice, (nombre, cambio) in (mezcla or {}).items():
         _cambios_mezcla(d, bloques, indice, nombre, cambio, out)
-    if tempo is not None:
-        _cambios_tempo(d, bloques, tempo, out)
     nuevo = bytearray(d)
     for pos, b in out.items():
         nuevo[pos:pos + len(b)] = b
@@ -528,6 +548,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
         reemplazos += _renombrar_pistas(d, bloques, nombres)
     if compases is not None:
         reemplazos += _cambios_compases(d, bloques, compases)
+    if tempo is not None:
+        reemplazos += _cambios_tempo(d, bloques, tempo)
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)

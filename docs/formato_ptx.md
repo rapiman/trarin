@@ -81,6 +81,10 @@ La transformación es simétrica: la misma operación cifra y descifra.
 - Ticks: 960 000 por negra. Las posiciones musicales llevan un desplazamiento de `10**12`.
 - **Tempo**: patrón `Const 01 00 2E 00 00 00 TMS`. Desde `TMS`: tick int64 en +19, bpm double en
   +29, pulso u32 en +37 [verificado con la sesión de tempo variable].
+- **Tempo, estructura completa** (bloque `0x2028`, dos copias): tras `28 20 'Tempo' 02 00`, u32 largo
+  (4 + 61 × eventos), u32 cantidad, 4 bytes, eventos de 61 bytes (`Const` … `TMS`: tick en +30, BPM
+  en +40, figura del pulso en +49, banderas en +21 y +39 que valen 1 en el primer evento) y 13 bytes
+  finales [verificado: agregar un tempo con trarin da los mismos bytes que con Pro Tools].
 - **Compases** (bloque `0x2029`, dos copias): tras `29 20 'Meter' 02 00`, u32 largo del resto,
   u32 cantidad y eventos de 36 bytes: int64 tick (+10¹²), u32 número de compás, u32 numerador,
   u32 denominador y 16 bytes fijos; luego una tabla de 16 bytes por evento (u32 compás mostrado,

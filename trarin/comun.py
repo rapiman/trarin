@@ -387,8 +387,8 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     tempo = None
     if [_sin(x) for x in comun["tempo"]] != [_sin(x) for x in original["tempo"]]:
         tempo = [{"tick": t["tick"], "bpm": t["bpm"]} for t in comun["tempo"]]
-        if tempo[0]["tick"] != original["tempo"][0]["tick"]:
-            raise ErrorComun("Pro Tools: el primer evento de tempo no se puede mover")
+        if tempo[0]["tick"] != 0:
+            raise ErrorComun("Pro Tools: el primer tempo debe estar en el tick 0")
     marcadores, altas, bajas = _cambios_marcadores_pt(comun["marcadores"], original["marcadores"])
     fs = nativo["origen"].get("frecuencia_muestreo") or 48000
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
