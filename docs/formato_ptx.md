@@ -199,6 +199,10 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
   Agregar o quitar colocaciones [verificado en Pro Tools 12]: el `0x1052` de cada canal lleva el
   nombre, u32 cantidad de colocaciones y los `0x1050`; una colocación nueva es una copia de otra con
   índice de región y muestra nuevos. El índice `0x0002` no apunta a los `0x1050`.
+  Las colocaciones van ordenadas por posición dentro de la playlist (572 de 586 `0x1052` y 135 de 136
+  `0x1057` del corpus); una colocación nueva se inserta antes de la primera con posición mayor. Si
+  queda fuera de orden, Pro Tools abre la sesión pero al volver a guardarla pierde colocaciones
+  [verificado con MIDI: un clip agregado al final en el tick 0 hizo desaparecer el último].
   **Escritura** [verificado en Pro Tools 12]: mover una región cambia la muestra del ancla en cada canal
   y la de sus fundidos de entrada y salida; silenciarla cambia el byte de mute. Ambos son de tamaño
   fijo, así que no hace falta reconstruir la sesión.
@@ -301,6 +305,9 @@ muestra Pro Tools].
   nombre; si la pista no tiene clips, justo después de la cantidad): duplicar en Pro Tools solo
   agrega otro `0x1056` que apunta a la misma región. También cambian `0x2056` (herramienta de
   edición elegida) y `0x206a`, que no hace falta escribir.
+  Quitar un clip MIDI es borrar su `0x1056` y bajar la cantidad; la región queda en la lista de
+  clips, como al borrar en la línea de tiempo [verificado en Pro Tools 12, guardando de nuevo y
+  releyendo].
 - Controladores (en estudio): dentro de `MdChun`, varios `MdCDS`, cada uno con `Mdss` (5 bytes
   que identifican el carril) y `MdCD` (u32 cantidad, eventos de 12 bytes: tick de 5 bytes,
   `00 00 40`, int32 valor). Carriles vistos: `02 07` (volumen, 0–127), `02 0A` (paneo), `02 06`,
