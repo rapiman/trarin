@@ -381,13 +381,18 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     de regiones de audio. Cualquier otro cambio da un error."""
     from .protools.escritura import escribir_cambios
     _verificar_mismas_entidades(comun, original)
-    for k in ("tempo", "compases", "marcadores"):
-        if comun[k] != original[k] and [_sin(x) for x in comun[k]] != [_sin(x) for x in original[k]]:
-            raise ErrorComun(f"Pro Tools: cambiar {k} aún no está soportado")
+    if [_sin(x) for x in comun["compases"]] != [_sin(x) for x in original["compases"]]:
+        raise ErrorComun("Pro Tools: cambiar compases aún no está soportado")
+    tempo = None
+    if [_sin(x) for x in comun["tempo"]] != [_sin(x) for x in original["tempo"]]:
+        tempo = [{"tick": t["tick"], "bpm": t["bpm"]} for t in comun["tempo"]]
+        if tempo[0]["tick"] != original["tempo"][0]["tick"]:
+            raise ErrorComun("Pro Tools: el primer evento de tempo no se puede mover")
+    marcadores = _cambios_marcadores_pt(comun["marcadores"], original["marcadores"])
     fs = nativo["origen"].get("frecuencia_muestreo") or 48000
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
-    mezcla, regiones = {}, {}
+    mezcla, regiones, midi = {}, {}, {}
     for p in comun["pistas"]:
         o = orig[p["id"]]
         for k in set(p) | set(o):
@@ -406,8 +411,11 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         for c in p["clips"]:
             x = oc[c["id"]]
             if c["tipo"] != "audio":
-                if _sin(c) != _sin(x):
-                    raise ErrorComun(f"Pro Tools: editar clips MIDI aún no está soportado ({c['id']})")
+                libres = _SOLO_LECTURA | {"tick"}
+                if {k: v for k, v in c.items() if k not in libres} != {k: v for k, v in x.items() if k not in libres}:
+                    raise ErrorComun(f"Pro Tools: en el clip MIDI {c['id']} solo se puede cambiar la posición (tick)")
+                if c["tick"] != x["tick"]:
+                    midi.setdefault(p["id"], {})[int(c["id"].rsplit("#m", 1)[1])] = c["tick"]
                 continue
             cambio = {}
             if c["muestra"] != x["muestra"]:
@@ -424,7 +432,23 @@ def _a_protools(comun, original, nativo, plantilla, salida):
             if cambio:
                 j = int(c["id"].rsplit("#", 1)[1])
                 regiones.setdefault(p["id"], {})[j] = cambio
-    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones)
+    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi)
+
+
+def _cambios_marcadores_pt(nuevos, originales):
+    """Nombre, inicio y fin de marcadores existentes (se identifican por 'id')."""
+    orig = {m["id"]: m for m in originales}
+    if set(orig) != {m["id"] for m in nuevos} or len(nuevos) != len(originales):
+        raise ErrorComun("Pro Tools: agregar o quitar marcadores aún no está soportado")
+    cambios = {}
+    for m in nuevos:
+        o = orig[m["id"]]
+        cambio = {k: m.get(k) for k in ("nombre", "tick", "fin_tick", "comentario") if m.get(k) != o.get(k)}
+        if "fin_tick" in cambio and "fin_tick" not in o:
+            raise ErrorComun(f"Pro Tools: el marcador {m['id']} no es una selección; no tiene fin")
+        if cambio:
+            cambios[m["id"]] = cambio
+    return cambios
 
 
 def _sin(x):
