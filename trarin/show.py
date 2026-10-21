@@ -305,14 +305,7 @@ def armar(show, salida=None):
     nombre en la base) y la automatización de la pista de la canción. En las
     pistas que ya existen, la automatización de la canción reemplaza a la de
     la pista desde el comienzo de la canción."""
-    import os
     import tempfile
-    from .comun import leer_comun, aplicar
-    from .protools.descifrado import leer_descifrado
-    from .protools.inserts import copiar_inserts, plugins_de
-    from .protools.pistas_nuevas import agregar_auxiliares
-    from .protools.ruteo import copiar_midi, copiar_ruteo, juntar_automatizacion
-    from .protools.reconstruccion import cifrar
     salida = Path(salida or show.get("salida") or "")
     if not str(salida) or salida.suffix.lower() != ".ptx":
         raise ErrorShow("falta 'salida' (.ptx) del show")
@@ -322,11 +315,62 @@ def armar(show, salida=None):
     canciones = show["canciones"]
     base = show.get("base") or canciones[0]["sesion"]
     desde = 0 if show.get("base") else 1       # la primera canción ya está en la base
+    tmp = tempfile.TemporaryDirectory(dir=str(salida.parent))
+    try:
+        return _armar(show, salida, plan, canciones, base, desde, tmp.name)
+    finally:
+        tmp.cleanup()
+
+
+def _instrumentos_nuevos(plan, canciones, desde, pistas, match):
+    """Pistas de instrumento de las canciones que no van a una pista de la base:
+    {nombre en el show: (sesión, pista de origen)}. Se crean antes de armar."""
+    pistas = list(pistas)
+    out = {}
+    for i in range(desde, len(canciones)):
+        cancion = plan["canciones"][i]["nombre"]
+        for p in plan["_temas"][i]["comun"]["pistas"]:
+            if p["tipo"] != "0x0007" or _destino(p, cancion, None, pistas, match) is not None:
+                continue
+            nombre = p["nombre"]
+            if nombre in {q["nombre"] for q in pistas}:
+                nombre = f"{p['nombre']} ({cancion})"
+            out[nombre] = (canciones[i]["sesion"], p["nombre"])
+            pistas.append(dict(p, nombre=nombre, clips=[]))
+    return out
+
+
+def _armar(show, salida, plan, canciones, base, desde, tmp):
+    from .comun import leer_comun, aplicar
+    from .protools.descifrado import leer_descifrado
+    from .protools.inserts import copiar_inserts, plugins_de
+    from .protools.pistas_nuevas import agregar_auxiliares, agregar_instrumento
+    from .protools.ruteo import copiar_color, copiar_midi, copiar_ruteo, juntar_automatizacion
+    from .protools.reconstruccion import cifrar
+    avisos = []
+    origenes = {}
+
+    def origen(sesion):
+        if sesion not in origenes:
+            origenes[sesion] = leer_descifrado(sesion)
+        return origenes[sesion]
+
+    # las pistas de instrumento nuevas se crean primero en una copia de la base
+    instrumentos = _instrumentos_nuevos(plan, canciones, desde, leer_comun(base)["pistas"], show.get("match"))
+    if instrumentos:
+        d0 = leer_descifrado(base)
+        for nombre, (sesion, pista) in list(instrumentos.items()):
+            try:
+                d0 = agregar_instrumento(d0, nombre, (origen(sesion), pista))
+            except Exception as e:
+                avisos.append(f"la pista de instrumento {pista!r} no se copia ({e})")
+                del instrumentos[nombre]
+        base = str(Path(tmp) / "base.ptx")
+        Path(base).write_bytes(cifrar(d0))
     comun = leer_comun(base)
     fs = comun["unidades"]["frecuencia_muestreo"]
     if fs != plan["frecuencia_muestreo"]:
         raise ErrorShow(f"la base está a {fs} Hz y las canciones a {plan['frecuencia_muestreo']} Hz")
-    avisos = []
     comun["tempo"] = [dict(e) for e in plan["tempo"]]
     comun["compases"] = [dict(e) for e in plan["compases"]]
     existentes = {(m["nombre"], m["tick"]) for m in comun["marcadores"]}
@@ -344,10 +388,10 @@ def armar(show, salida=None):
         ini_m = round(plan["canciones"][i]["inicio_s"] * fs)
         archivos = {a["id"]: a for a in cs["archivos"]}
         for p in cs["pistas"]:
-            if p["tipo"] not in ("audio", "midi", "retorno"):
+            if p["tipo"] not in ("audio", "midi", "retorno", "0x0007"):
                 avisos.append(f"{cancion}: la pista {p['nombre']!r} ({p['tipo']}) no se copia (tipo no soportado)")
                 continue
-            if not p["clips"] and p["tipo"] != "retorno":
+            if not p["clips"] and p["tipo"] not in ("retorno", "0x0007"):
                 continue
             dest = _destino(p, cancion, None, pistas_show, show.get("match"))
             if dest is None:
@@ -369,50 +413,62 @@ def armar(show, salida=None):
                 q = next((x for x in pistas_show if x["nombre"] == dest), None)
                 if q is None:
                     raise ErrorShow(f"match de {cancion}: no existe la pista del show {dest!r}")
-                copias.append((False, dest, sesion, p["nombre"], p["tipo"], ini_m, cancion))
+                if instrumentos.get(dest) == (sesion, p["nombre"]):      # creada para esta pista
+                    copias.append((True, dest, sesion, p["nombre"], "instrumento", ini_m, cancion))
+                else:
+                    copias.append((False, dest, sesion, p["nombre"], p["tipo"], ini_m, cancion))
             for c in p["clips"]:
                 q["clips"].append(_clip_al_show(c, i, plan, ini_m, archivos, sesion, comun))
-    with tempfile.TemporaryDirectory(dir=str(salida.parent)) as tmp:
-        intermedia = Path(tmp) / "show.ptx"
-        aplicar(comun, base, str(intermedia))
-        d = leer_descifrado(str(intermedia))
-        origenes = {}
-        for nueva, nombre, sesion, pista, tipo, ini_m, cancion in copias:
-            if sesion not in origenes:
-                origenes[sesion] = leer_descifrado(sesion)
-            o = origenes[sesion]
-            if tipo == "midi":
-                if nueva:                               # salida MIDI, valores y automatización
-                    try:
-                        d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion)
-                        avisos += av
-                    except Exception as e:
-                        avisos.append(f"{nombre}: no se copió la salida MIDI ni la automatización ({e})")
-                continue
-            if tipo == "retorno_externo":
+    intermedia = Path(tmp) / "show.ptx"
+    aplicar(comun, base, str(intermedia))
+    d = leer_descifrado(str(intermedia))
+    for nueva, nombre, sesion, pista, tipo, ini_m, cancion in copias:
+        o = origen(sesion)
+        if nueva and tipo != "retorno_externo":
+            try:
+                d = copiar_color(d, nombre, o, pista)
+            except Exception as e:
+                avisos.append(f"{nombre}: no se copió el color ({e})")
+        if tipo == "midi":
+            if nueva:                               # salida MIDI, valores y automatización
                 try:
-                    d = agregar_auxiliares(d, [(nombre, externos[nombre])], externa=(o, pista))
-                except Exception as e:
-                    avisos.append(f"{cancion}: el auxiliar {pista!r} no se copia ({e})")
-                    continue
-            if not nueva:
-                try:
-                    d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion)
+                    d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion)
                     avisos += av
                 except Exception as e:
-                    avisos.append(f"{nombre}: no se copió la automatización de {cancion} ({e})")
+                    avisos.append(f"{nombre}: no se copió la salida MIDI ni la automatización ({e})")
+            continue
+        if tipo == "retorno_externo":
+            try:
+                d = agregar_auxiliares(d, [(nombre, externos[nombre])], externa=(o, pista))
+            except Exception as e:
+                avisos.append(f"{cancion}: el auxiliar {pista!r} no se copia ({e})")
                 continue
+        if tipo == "retorno_externo":
+            d = copiar_color(d, nombre, o, pista)
+        if not nueva:
             try:
-                if plugins_de(o, pista):
-                    d = copiar_inserts(d, nombre, o, pista)
-            except Exception as e:                      # se avisa y se sigue sin esos plugins
-                avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
-            try:
-                d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion)
+                d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion)
                 avisos += av
-            except Exception as e:                      # se avisa y se sigue con el de la plantilla
-                avisos.append(f"{nombre}: no se copió el ruteo ni la automatización ({e})")
-        salida.write_bytes(cifrar(d))
+            except Exception as e:
+                avisos.append(f"{nombre}: no se copió la automatización de {cancion} ({e})")
+            continue
+        try:
+            if plugins_de(o, pista):
+                d = copiar_inserts(d, nombre, o, pista)
+        except Exception as e:                      # se avisa y se sigue sin esos plugins
+            avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
+        try:
+            d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion)
+            avisos += av
+        except Exception as e:                      # se avisa y se sigue con el de la plantilla
+            avisos.append(f"{nombre}: no se copió el ruteo ni la automatización ({e})")
+        if tipo == "instrumento":                   # además, su canal MIDI y salida MIDI
+            try:
+                d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion)
+                avisos += av
+            except Exception as e:
+                avisos.append(f"{nombre}: no se copió la salida MIDI ({e})")
+    salida.write_bytes(cifrar(d))
     return salida, avisos
 
 
@@ -446,6 +502,9 @@ def _clip_al_show(c, i, plan, ini_m, archivos, sesion, comun):
         nuevo["archivos_canales"] = [arch(k) for k in c["archivos_canales"]]
     if c.get("mute"):
         nuevo["mute"] = True
+    for k in ("ganancia_db", "ganancia_curva"):                # clip gain
+        if c.get(k) is not None:
+            nuevo[k] = c[k]
     if c.get("fundidos"):
         nuevo["fundidos"] = [dict(f, muestra=ini_m + f["muestra"]) for f in c["fundidos"]]
     return nuevo

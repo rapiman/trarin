@@ -454,8 +454,8 @@ def _actualizar_indice(d, n_pistas, n_canales, i_pl, i_map, canales=1, playlists
     i_2716 = next(i for i, e in enumerate(entradas) if [s.tipo for s in e.camino] == [0x2519, 0x2716])
     entradas.insert(i_2716, nueva_251a)
     if ins is not None:
-        ult = max(i for i, e in enumerate(entradas) if [s.tipo for s in e.camino][:2] == [0x2624, 0x261C]
-                  or [s.tipo for s in e.camino][:2] == [0x2624, 0x261E])
+        ult = max(i for i, e in enumerate(entradas) if [s.tipo for s in e.camino][:2] in
+                  ([0x2624, 0x261C], [0x2624, 0x261E], [0x2624, 0x2621]))
         entradas.insert(ult + 1, Entrada([Paso(0x2624, raiz_pos, 1, n_canales + 1),
                                           Paso(canal.tipo_contenido, raiz.pos, 0, 0),
                                           Paso(0x261B, canal.pos, 0, 0),
@@ -827,6 +827,184 @@ def _actualizar_indice_midi(d, n_pistas, n_canales, n_1057):
                          [Grupo([hijos[-1].pos])])
     i_2716 = next(i for i, e in enumerate(entradas) if [s.tipo for s in e.camino] == [0x2519, 0x2716])
     entradas.insert(i_2716, nueva_251a)
+    nuevo = escribir_indice(entradas, resto)
+    out = bytearray(d[:final.inicio]) + nuevo
+    struct.pack_into("<I", out, final.pos + 3, len(nuevo))
+    return bytes(out)
+
+
+# ------------------------------------------------------- pistas de instrumento
+
+def agregar_instrumento(d, nombre, externa):
+    """Agrega al final una pista de instrumento vacía, copia de la pista de
+    instrumento externa = (sesión descifrada, nombre) de otra sesión.
+
+    Verificado creando una pista de instrumento estéreo en Pro Tools 12
+    (v9_antes_inst → v10_instrumento): como una pista MIDI (entrada de tipo 7
+    en 0x2519 y un 0x251A en cada mitad, playlist 0x1057 vacía en 0x1058, grupo
+    <ALL>, tira 0x2589 y en el índice las listas de 0x1058, 0x2519 y 0x2624 y
+    el número de 0x2716), pero el canal es un 0x2621 con 0x102D, 0x2627
+    (inserts, con su entrada en el índice), 0x260D (fader), 0x2010, 0x206F y
+    0x2611 (canal MIDI). No agrega salida MIDI a 0x2004 (u32 en +14 del 0x2036
+    en 0); tras el 0x2010 menos 11 bytes: u32 n, u16 1, u32 n, u8 1, con n el
+    número entre los canales MIDI e instrumento. Del canal de la otra sesión se
+    cambian nombre, UUID, identificadores, número del 0x2015, los
+    identificadores de parámetros y los UUID tras FF7F; los inserts quedan
+    vacíos y el ruteo es el de la otra sesión: hay que copiarlos después
+    (inserts.copiar_inserts, ruteo.copiar_ruteo, ruteo.copiar_midi)."""
+    dt, pista_t = externa
+    bloques = arbol(d)
+    bt = arbol(dt)
+    L = _primero(bloques, 0x2519)
+    entradas, fin_lista, pos_cantidad = _lista_2519(d, L)
+    if any(e[3] == nombre for e in entradas):
+        raise ErrorPista(f"ya existe una pista llamada {nombre!r}")
+    hijos = [h for h in L.hijos if h.tipo_contenido == 0x251A]
+    mitad = len(hijos) // 2
+    raiz = _primero(bloques, 0x2624)
+    mapa = _primero(bloques, 0x1058)
+    if raiz is None or len(raiz.hijos) != len(entradas) or len(hijos) != 2 * len(entradas):
+        raise ErrorPista("los canales de mezcla no corresponden con las pistas")
+    if mapa is None:
+        raise ErrorPista("la sesión no tiene la lista de playlists MIDI (0x1058)")
+    l1057 = [h for h in mapa.hijos if h.tipo_contenido == 0x1057]
+    canales = raiz.hijos
+    # plantilla en la otra sesión
+    Lt = _primero(bt, 0x2519)
+    entradas_t = _lista_2519(dt, Lt)[0]
+    hijos_t = [h for h in Lt.hijos if h.tipo_contenido == 0x251A]
+    mitad_t = len(hijos_t) // 2
+    canales_t = _primero(bt, 0x2624).hijos
+    i_t = next((i for i, e in enumerate(entradas_t) if e[3] == pista_t and e[2] == 7
+                and canales_t[i].tipo_contenido == 0x2621), None)
+    if i_t is None:
+        raise ErrorPista(f"{pista_t!r} no es una pista de instrumento")
+    t = entradas_t[i_t]
+    uuid_t, uuid = t[5], os.urandom(16)
+    pl = next((h for h in [x for x in _primero(bt, 0x1058).hijos if x.tipo_contenido == 0x1057]
+               if _cadena(dt, h.inicio + 2)[0] == pista_t), None)
+    if pl is None:
+        raise ErrorPista(f"no se encontró la playlist de {pista_t!r}")
+    q = dt.find(b"\x2a\0\0\0", hijos_t[i_t].inicio, hijos_t[i_t].fin)
+    id_t = bytes(dt[q + 4:q + 12])
+    id_n = _id_nuevo(d, id_t)
+    n_pistas = len(entradas)
+    reemplazos = []
+
+    # 1) 0x2519
+    reemplazos.append((pos_cantidad, pos_cantidad + 4, struct.pack("<I", n_pistas + 1)))
+    entrada = (struct.pack("<H", 7) + _str(nombre) + struct.pack("<H", t[4]) + uuid
+               + struct.pack("<HB", n_pistas + 1, 0))
+    reemplazos.append((fin_lista, fin_lista, entrada, L.pos))
+
+    def nuevo_251a(h):
+        b = bytearray(dt[h.pos:h.fin].replace(id_t, id_n))
+        _, q = _cadena(b, 11)
+        cola = bytearray(b[q:])
+        cola[-16:] = uuid
+        struct.pack_into("<I", cola, len(cola) - 16 - 6, n_pistas + 1)
+        cont = b[7:9] + b[9:11] + _str(nombre) + bytes(cola)
+        return b"\x5a" + b[1:3] + struct.pack("<I", len(cont)) + cont
+
+    m = hijos[mitad - 1].fin
+    if struct.unpack_from("<I", d, m)[0] != n_pistas or hijos[mitad].pos != m + 4:
+        raise ErrorPista("lista de pistas no reconocida (cantidad entre mitades)")
+    reemplazos.append((m, m + 4, nuevo_251a(hijos_t[i_t]) + struct.pack("<I", n_pistas + 1), L.pos))
+    reemplazos.append((hijos[-1].fin, hijos[-1].fin, nuevo_251a(hijos_t[mitad_t + i_t]), L.pos))
+
+    # 2) playlist 0x1057 vacía
+    n_viejo = struct.unpack_from("<I", dt, pl.inicio + 2)[0]
+    p_cant = pl.inicio + 6 + n_viejo
+    variables = [(pl.inicio + 2, p_cant, _str(nombre))]
+    variables += [(h.pos, h.fin, b"") for h in pl.hijos if h.tipo_contenido == 0x1056]
+    nuevo_1057 = _rehacer(dt, pl, [(p_cant, struct.pack("<I", 0))], variables)
+    n_1058 = struct.unpack_from("<I", d, mapa.inicio + 2)[0]
+    reemplazos.append((mapa.inicio + 2, mapa.inicio + 6, struct.pack("<I", n_1058 + 1)))
+    punto = l1057[-1].fin if l1057 else mapa.inicio + 6
+    reemplazos.append((punto, punto, nuevo_1057, mapa.pos))
+
+    # 3) canal 0x2621
+    canal_t = canales_t[i_t]
+    ids = []
+    for c in canales:
+        sb = next((h for h in c.hijos if h.tipo_contenido == 0x261B), None) or \
+            (c if c.tipo_contenido == 0x2621 else None)
+        if sb is None:
+            continue
+        try:
+            ids += _ids_canal(d, sb)[1]
+        except ErrorPista:
+            pass
+    k, lista = _ids_canal(dt, canal_t)
+    nuevo_id = max(ids, default=0) + 1
+    fijos = [(k + 2, struct.pack(f"<{len(lista)}I", *range(nuevo_id, nuevo_id + len(lista))))]
+    q = dt.find(b"\xff\x7f", k, canal_t.fin)
+    if q > 0:
+        fijos.append((q + 4, os.urandom(16 * struct.unpack_from("<H", dt, q + 2)[0])))
+    nums = [struct.unpack_from("<I", d, b.fin - 4)[0] for b in buscar(bloques, 0x2015)]
+    fijos += [(b.fin - 4, struct.pack("<I", max(nums, default=0) + 1)) for b in buscar([canal_t], 0x2015)]
+    fijos += [(b.inicio + 14, struct.pack("<I", 0)) for b in buscar([canal_t], 0x2036)]
+    n_midi = sum(1 for c in canales if c.tipo_contenido in (0x2620, 0x2621))
+    h2010 = next((h for h in canal_t.hijos if h.tipo_contenido == 0x2010), None)
+    if h2010 is None or struct.unpack_from("<H", dt, h2010.pos - 7)[0] != 1 or dt[h2010.pos - 1] != 1:
+        raise ErrorPista("canal de instrumento de plantilla no reconocido")
+    fijos += [(h2010.pos - 11, struct.pack("<I", n_midi)), (h2010.pos - 5, struct.pack("<I", n_midi))]
+    cab = next(h for h in canal_t.hijos if h.tipo_contenido == 0x102D)
+    nb = cab.hijos[0]
+    viejo = _str(_cadena(dt, nb.inicio + 2)[0])
+    variables = [(nb.inicio + 2, nb.inicio + 2 + len(viejo), _str(nombre))]
+    ins = next((h for h in canal_t.hijos if h.tipo_contenido == 0x2627), None)
+    if ins is not None:
+        variables.append((ins.pos, ins.fin, _inserts_vacios(dt, ins)))
+    canal = _rehacer(dt, canal_t, fijos, variables).replace(uuid_t, uuid).replace(id_t, id_n)
+    reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(canales) + 1)))
+    reemplazos.append((canales[-1].fin, canales[-1].fin, canal, raiz.pos))
+
+    # 4) grupo <ALL>
+    for grp in buscar(bloques, 0x202A):
+        nom, p = _cadena(d, grp.inicio + 2)
+        if nom != "<ALL>":
+            continue
+        cnt = struct.unpack_from("<I", d, p + 7)[0]
+        fin_l = p + 11 + 2 * cnt
+        reemplazos.append((p + 7, p + 11, struct.pack("<I", cnt + 1)))
+        reemplazos.append((fin_l, fin_l, struct.pack("<H", n_pistas)))
+
+    # 5) tira de la ventana
+    tiras_t = [h for v in buscar(bt, 0x258A) for h in v.hijos if h.tipo_contenido == 0x2589]
+    propia = next((h for h in tiras_t if struct.unpack_from("<H", dt, h.inicio + 2)[0] == i_t), None)
+    for v in buscar(bloques, 0x258A):
+        tiras = [h for h in v.hijos if h.tipo_contenido == 0x2589]
+        if not tiras:
+            continue
+        if propia is None:
+            raise ErrorPista("tira de la pista de instrumento de plantilla no encontrada")
+        b = bytearray(dt[propia.pos:propia.fin])
+        struct.pack_into("<H", b, 9, n_pistas)
+        q = tiras[0].pos - 4
+        reemplazos.append((q, q + 4, struct.pack("<I", len(tiras) + 1)))
+        reemplazos.append((tiras[-1].fin, tiras[-1].fin, bytes(b), v.pos))
+
+    nuevo = reconstruir(d, reemplazos)
+    nuevo = _actualizar_indice_midi(nuevo, n_pistas, len(canales), len(l1057))
+    return _indice_2627(nuevo, len(canales))
+
+
+def _indice_2627(d, n_canales):
+    """Agrega al índice la entrada del 0x2627 del último canal (0x2621, sin 0x261B)."""
+    bloques = arbol(d)
+    final = bloques[-1]
+    entradas, resto = leer_indice(d[final.inicio:final.fin])
+    raiz = _primero(bloques, 0x2624)
+    canal = raiz.hijos[-1]
+    ins = next((h for h in canal.hijos if h.tipo_contenido == 0x2627), None)
+    if ins is None:
+        return d
+    ult = max((i for i, e in enumerate(entradas) if len(e.camino) > 1 and e.camino[0].tipo == 0x2624),
+              default=next(i for i, e in enumerate(entradas) if e.camino[0].tipo == 0x2624))
+    entradas.insert(ult + 1, Entrada([Paso(0x2624, 0xFFFFFFFF, 1, n_canales + 1),
+                                      Paso(0x2621, raiz.pos, 0, 0),
+                                      Paso(0x2627, canal.pos, 0, 0)], [Grupo([ins.pos])]))
     nuevo = escribir_indice(entradas, resto)
     out = bytearray(d[:final.inicio]) + nuevo
     struct.pack_into("<I", out, final.pos + 3, len(nuevo))

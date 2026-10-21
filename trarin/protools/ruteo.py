@@ -82,8 +82,10 @@ def _canal(d, bloques, nombre):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canal = raiz.hijos[i]
     sb = next((h for h in canal.hijos if h.tipo_contenido == 0x261B), None)
+    if sb is None and canal.tipo_contenido == 0x2621:     # instrumento: el canal hace de 0x261B
+        sb = canal
     if sb is None:
-        raise ErrorPista(f"{nombre}: canal sin 0x261B (las pistas MIDI todavía no se copian)")
+        raise ErrorPista(f"{nombre}: canal sin 0x261B (pista MIDI: ver copiar_midi)")
     return sb
 
 
@@ -175,32 +177,38 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="")
         b = arbol(d)
         sb, tabla = _canal(d, b, pista), _Tabla(d, b)
 
-    # entrada
-    ei, ef = _entrada(d, sb)
-    oi, of = _entrada(d_origen, sb_o)
-    campo = bytearray(d_origen[oi:of])
-    nombre, p = _cadena(d_origen, oi)
-    if d_origen[p + 4:p + 8] == b"\x2a\x00\x00\x00":
-        ident = bytes(d_origen[p + 8:p + 16])
-        nuevo = tabla.buscar(tabla_o.clase(ident), nombre)
-        if nuevo is None:
-            avisos.append(f"{pista}: la entrada «{nombre}» no existe en el show (queda la de la plantilla)")
-            campo = None
-        else:
-            campo[p - oi + 8:p - oi + 16] = nuevo
-    if campo is not None and bytes(campo) != bytes(d[ei:ef]):
-        reemplazos.append((ei, ef, bytes(campo)))
-        # tras el 0x102D del canal: u8 (1 = entrada de dos canales), u16 número
-        # global de la ruta de entrada (FFFF = ninguna) y u8 1
-        cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
-        cab_o = next(h for h in sb_o.hijos if h.tipo_contenido == 0x102D)
-        ancho, num = d_origen[cab_o.fin], struct.unpack_from("<H", d_origen, cab_o.fin + 1)[0]
-        nid = bytes(campo[p - oi + 8:p - oi + 16]) if campo[p - oi + 4:p - oi + 8] == b"\x2a\x00\x00\x00" else None
-        if nid is not None and num != 0xFFFF:
-            num = _numero_ruta(d, b, nid)
-            if num is None:
-                raise ErrorPista(f"{pista}: no se reconoce la numeración de la entrada «{nombre}»")
-        reemplazos.append((cab.fin, cab.fin + 3, bytes([ancho]) + struct.pack("<H", num)))
+    # entrada (una pista de instrumento no tiene entrada de audio)
+    try:
+        ei, ef = _entrada(d, sb)
+        oi, of = _entrada(d_origen, sb_o)
+    except ErrorPista:
+        if sb.tipo_contenido != 0x2621:
+            raise
+        ei = None
+    if ei is not None:
+        campo = bytearray(d_origen[oi:of])
+        nombre, p = _cadena(d_origen, oi)
+        if d_origen[p + 4:p + 8] == b"\x2a\x00\x00\x00":
+            ident = bytes(d_origen[p + 8:p + 16])
+            nuevo = tabla.buscar(tabla_o.clase(ident), nombre)
+            if nuevo is None:
+                avisos.append(f"{pista}: la entrada «{nombre}» no existe en el show (queda la de la plantilla)")
+                campo = None
+            else:
+                campo[p - oi + 8:p - oi + 16] = nuevo
+        if campo is not None and bytes(campo) != bytes(d[ei:ef]):
+            reemplazos.append((ei, ef, bytes(campo)))
+            # tras el 0x102D del canal: u8 (1 = entrada de dos canales), u16 número
+            # global de la ruta de entrada (FFFF = ninguna) y u8 1
+            cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+            cab_o = next(h for h in sb_o.hijos if h.tipo_contenido == 0x102D)
+            ancho, num = d_origen[cab_o.fin], struct.unpack_from("<H", d_origen, cab_o.fin + 1)[0]
+            nid = bytes(campo[p - oi + 8:p - oi + 16]) if campo[p - oi + 4:p - oi + 8] == b"\x2a\x00\x00\x00" else None
+            if nid is not None and num != 0xFFFF:
+                num = _numero_ruta(d, b, nid)
+                if num is None:
+                    raise ErrorPista(f"{pista}: no se reconoce la numeración de la entrada «{nombre}»")
+            reemplazos.append((cab.fin, cab.fin + 3, bytes([ancho]) + struct.pack("<H", num)))
 
     # faders: el del canal y los envíos
     fs_o, ti, tf, _ = _faders(d_origen, sb_o)
@@ -267,10 +275,16 @@ def _referencias(d, sb):
     """[(identificador, nombre)] de las rutas que usa un canal: su entrada y los
     destinos de sus faders (salida y envíos)."""
     out = []
-    oi, _ = _entrada(d, sb)
-    nombre, p = _cadena(d, oi)
-    if d[p + 4:p + 8] == b"\x2a\x00\x00\x00":
-        out.append((bytes(d[p + 8:p + 16]), nombre))
+    try:
+        oi, _ = _entrada(d, sb)
+    except ErrorPista:
+        if sb.tipo_contenido != 0x2621:
+            raise
+        oi = None
+    if oi is not None:
+        nombre, p = _cadena(d, oi)
+        if d[p + 4:p + 8] == b"\x2a\x00\x00\x00":
+            out.append((bytes(d[p + 8:p + 16]), nombre))
     for f in _faders(d, sb)[0]:
         e = next((h for h in f.hijos if h.tipo_contenido == 0x260E), None)
         if e is not None:
@@ -544,3 +558,31 @@ def crear_bus(d, nombre):
             if b > ultimo:
                 reemplazos.append((p + 6, p + 8, struct.pack("<H", b + 3)))
     return reconstruir(d, reemplazos)
+
+
+def _pos_propia(b, k):
+    """Posición absoluta del byte k de los bytes propios de b (sin sus hijos)."""
+    p = b.inicio
+    for h in b.hijos + [None]:
+        tramo = (h.pos if h is not None else b.fin) - p
+        if k < tramo:
+            return p + k
+        k -= tramo
+        if h is None:
+            break
+        p = h.fin
+    raise ErrorPista("bloque más corto de lo esperado")
+
+
+def copiar_color(d, pista, d_origen, pista_origen):
+    """d con el color de 'pista' igual al de 'pista_origen' de d_origen: i16
+    en el byte 25 de los bytes propios del 0x2015 del canal (−1 = sin color)."""
+    b, bo = arbol(d), arbol(d_origen)
+    v = buscar([_canal_bloque(d, b, pista)], 0x2015)
+    vo = buscar([_canal_bloque(d_origen, bo, pista_origen)], 0x2015)
+    if not v or not vo:
+        raise ErrorPista(f"{pista}: canal sin 0x2015")
+    p, po = _pos_propia(v[0], 25), _pos_propia(vo[0], 25)
+    if d[p:p + 2] == d_origen[po:po + 2]:
+        return d
+    return reconstruir(d, [(p, p + 2, bytes(d_origen[po:po + 2]))])

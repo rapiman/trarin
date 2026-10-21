@@ -767,14 +767,32 @@ def _altas_archivos_regiones(d, bloques, archivos, regiones):
     if regiones:
         n_reg = struct.unpack_from("<I", d, regs.inicio + 2)[0]
         nuevas = b""
+        # clip gain: un registro nuevo al final del diccionario 0x2637 por región
+        # con ganancia (u32 cantidad; 01460100, u32 tamaño, 0000, u32 nodos,
+        # 0400, u16 nodos − 1, u32 0 y los nodos [u32 muestra, float32 dB])
+        dic = _primero(bloques, 0x2637)
+        registros = b""
+        n_dic = struct.unpack_from("<I", d, dic.inicio + 2)[0] if dic is not None else 0
+        con_ganancia = 0
         for r in regiones:
             nombre = r["nombre"].encode("utf-8")
             desde, largo = int(r.get("desde", 0)), int(r["largo"])
             w_off = (max(desde.bit_length(), 1) + 7) // 8 if desde else 0
             w_len = (largo.bit_length() + 7) // 8
+            cola = _COLA_2628
+            if r.get("ganancia"):
+                if dic is None:
+                    raise ErrorEscritura("la sesión no tiene el diccionario de clip gain (0x2637)")
+                nodos = r["ganancia"]
+                registros += (b"\x01\x46\x01\x00" + struct.pack("<I", 14 + 8 * len(nodos)) + b"\0\0"
+                              + struct.pack("<I", len(nodos)) + b"\x04\x00"
+                              + struct.pack("<HI", len(nodos) - 1, 0)
+                              + b"".join(struct.pack("<If", int(x["muestra"]), float(x["db"])) for x in nodos))
+                cola = cola[:-4] + struct.pack("<i", n_dic + con_ganancia)
+                con_ganancia += 1
             datos = (struct.pack("<I", len(nombre)) + nombre + bytes([0, w_off << 4, w_len << 4, 0, 0])
                      + (desde.to_bytes(w_off, "little") if w_off else b"") + largo.to_bytes(w_len, "little")
-                     + _COLA_2628)
+                     + cola)
             b2628 = b"\x5a\x01\x00" + struct.pack("<I", 2 + len(datos)) + b"\x28\x26" + datos
             arch = r["archivo"] if r["archivo"] >= 0 else n_arch - r["archivo"] - 1
             cont = b"\x29\x26" + b2628 + struct.pack("<I", arch) + _COLA_2629
@@ -783,6 +801,9 @@ def _altas_archivos_regiones(d, bloques, archivos, regiones):
         punto = ultimo[-1].fin if ultimo else regs.fin
         reemplazos.append((regs.inicio + 2, regs.inicio + 6, struct.pack("<I", n_reg + len(regiones))))
         reemplazos.append((punto, punto, nuevas, regs.pos))
+        if registros:
+            reemplazos.append((dic.inicio + 2, dic.inicio + 6, struct.pack("<I", n_dic + con_ganancia)))
+            reemplazos.append((dic.fin, dic.fin, registros))
     return reemplazos
 
 
