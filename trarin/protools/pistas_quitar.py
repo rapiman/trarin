@@ -1,4 +1,4 @@
-"""Quitar pistas de audio o MIDI de una sesión .ptx.
+"""Quitar pistas de audio, MIDI o auxiliares de una sesión .ptx.
 
 Verificado borrando una pista de audio con clips y fundidos en Pro Tools 12 y
 comparando con la misma sesión guardada de nuevo sin cambios. Es lo inverso de
@@ -21,6 +21,8 @@ su salida 0x2005 de 0x2004 si ningún otro canal la usa (los u32 en +14 de los
 0x2036 que apuntan más allá bajan), y los canales 0x2620/0x2621 siguientes bajan
 su número n; 0x202C no cambia.
 
+Un auxiliar (0x261E) no tiene playlists; 0x202C no cambia (como al crearlo).
+
 Las regiones y archivos de la pista quedan en la lista de clips, como al borrar
 la pista en Pro Tools. Las definiciones de fundidos (0x2630) también quedan.
 """
@@ -35,7 +37,7 @@ from .reconstruccion import reconstruir
 
 
 def quitar_pistas(d, nombres):
-    """d: sesión descifrada. nombres: pistas de audio o MIDI a quitar. Devuelve la
+    """d: sesión descifrada. nombres: pistas de audio, MIDI o auxiliares a quitar. Devuelve la
     sesión descifrada sin esas pistas."""
     for nombre in nombres:
         d = _quitar_una(d, nombre)
@@ -53,16 +55,17 @@ def _quitar_una(d, nombre):
     i = next((k for k, e in enumerate(entradas) if e[3] == nombre), None)
     if i is None:
         raise ErrorPista(f"no existe la pista {nombre!r}")
-    midi = entradas[i][2] == 1
-    if entradas[i][2] not in (0, 1):
-        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio o MIDI")
+    tipo = entradas[i][2]
+    midi, aux = tipo == 1, tipo == 2
+    if tipo not in (0, 1, 2):
+        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio, MIDI o auxiliares")
     if len(entradas) < 2:
         raise ErrorPista("la sesión debe conservar al menos una pista")
     raiz = _primero(bloques, 0x2624)
     if raiz is None or len(raiz.hijos) != len(entradas):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canal = raiz.hijos[i]
-    if canal.tipo_contenido != (0x2620 if midi else 0x261C):
+    if canal.tipo_contenido != {0: 0x261C, 1: 0x2620, 2: 0x261E}[tipo]:
         raise ErrorPista(f"{nombre}: el canal no corresponde al tipo de pista")
     n = len(entradas)
     reemplazos = []
@@ -96,7 +99,7 @@ def _quitar_una(d, nombre):
 
     if midi:
         _quitar_midi(d, bloques, raiz, canal, nombre, quitar, reemplazos)
-    else:
+    elif not aux:                       # un auxiliar no tiene playlists
         _quitar_audio(d, bloques, raiz, canal, nombre, quitar, reemplazos)
     quitar(canal, raiz)
     reemplazos.append((raiz.inicio + 2, raiz.inicio + 6, struct.pack("<I", len(raiz.hijos) - 1)))
@@ -120,7 +123,7 @@ def _quitar_una(d, nombre):
             if not nueva:
                 raise ErrorPista(f"{nombre}: es la única pista del grupo {nom!r}")
             reemplazos.append((p + 7, p + 11 + 2 * cnt, struct.pack(f"<I{len(nueva)}H", len(nueva), *nueva)))
-    for gc in buscar(bloques, 0x202C) if not midi else []:
+    for gc in buscar(bloques, 0x202C) if tipo == 0 else []:
         a1, a2 = struct.unpack_from("<II", d, gc.inicio + 14)
         if struct.unpack_from("<I", d, gc.inicio + 2)[0] == 1 and (a1, a2) == (n - 1, n):
             reemplazos.append((gc.inicio + 14, gc.inicio + 22, struct.pack("<II", n - 2, n - 1)))
