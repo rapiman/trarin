@@ -44,6 +44,15 @@ def _parsear(d: bytes, pos: int, maximo: int):
     i = 1
     while i < tamano and pos + i < maximo:
         h = _parsear(d, pos + i, inicio + tamano)
+        if h and i == 9 and d[pos + 10:pos + 13] == b"\0\0\0":
+            # muchas listas llevan un u32 cantidad tras el tipo de contenido: con
+            # 90 elementos (0x5A) esa cantidad parece un bloque; si en +4 empieza
+            # un bloque válido, la cantidad no es un hijo
+            real = _parsear(d, pos + 13, inicio + tamano)
+            if real is not None:
+                h = None
+                i = 13
+                continue
         if h:
             b.hijos.append(h)
             i += h.tamano + 7

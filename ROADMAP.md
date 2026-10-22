@@ -1,12 +1,16 @@
 # Hoja de ruta
 
-Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado en Pro Tools 12.
+Estado al 2026-10-22 (noche). Lo marcado ✅ está hecho y verificado en Pro Tools 12.
 
 ## Armador de shows
 
 - ✅ Plan, armado, match, ruteo, automatización, plugins, buses, instrumentos.
 - ⏳ **Prueba con cinco canciones de otro disco**, con separación negativa y
   cambios de tempo. Es lo siguiente pendiente del armador.
+- ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
+  archivos WAV y MIDI, buses propios del show.
+- ⏳ **show real**: armado; falta revisarlo en
+  Pro Tools, agregar las grabaciones de Live que quedaron en el Mac («un proyecto de Live») y decidir los cortes de una canción.
 - Investigar por qué un show grande (una canción repetida) tarda varios minutos en cerrarse
   en Pro Tools, aunque abre y guarda bien.
 
@@ -45,3 +49,9 @@ Preguntas abiertas antes de construir:
   de shows ya las copia).
 - Pendiente: automatización de pistas MIDI (no hay ejemplos en las sesiones de prueba)
   y de parámetros de plugins.
+
+## Audio
+
+- ✅ Detector de bpm (`trarin bpm`) y conversor de frecuencia (`trarin convertir-audio`).
+- Pendiente: usar el detector para proponer el tempo de una sesión (grilla de Pro
+  Tools alineada al primer pulso).

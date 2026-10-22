@@ -48,6 +48,10 @@ La transformación es simétrica: la misma operación cifra y descifra.
 - Algunos tipos tienen carga fija y nunca contienen hijos, aunque su contenido tenga un `0x5A` que
   parezca una cabecera [externo]: `0x0002 0x1028 0x104F 0x204D 0x260A 0x262F 0x2637`.
   En el mapa `0x1054`, los primeros 4 bytes son un contador y nunca un bloque.
+- Muchas listas (`0x2624`, `0x1004`, `0x262A`…) llevan un u32 cantidad justo tras el tipo de
+  contenido. Con 90 elementos (`0x5A`) esa cantidad parece la cabecera de un hijo que se traga a los
+  verdaderos: el lector la descarta si en los 4 bytes siguientes empieza un bloque válido
+  (encontrado al juntar 90 canales en un show).
 
 ### 2.1 Tabla de punteros (necesaria para escribir)
 
