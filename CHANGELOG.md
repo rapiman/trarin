@@ -5,6 +5,24 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Más rápido en sesiones grandes
+- Leer una sesión: el mapa de tempo se prepara una vez (`MapaTempo`, búsqueda
+  binaria) en vez de recorrerse en cada conversión, y el descifrado se hace de
+  una vez. Leer el show pasó de 8,7 s a 1,1 s, con los mismos datos en las 150
+  sesiones de prueba (y en 221.000 conversiones comparadas una a una).
+- El árbol de bloques de los mismos bytes se arma una sola vez (memoria de los
+  últimos 4).
+- `ruteo.en_lote`: varias operaciones independientes con un solo
+  `reconstruir`. Lo usan `copiar_ruteo`, `copiar_color`, `copiar_inserts` y
+  `escribir_automatizacion` (argumento `lote`); lo que no se puede agrupar
+  (crear buses, agregar plugins a la sesión) se hace después, de a una. 88
+  operaciones sobre el show: de 27 s a 0,5 s, mismos bytes en 62 sesiones.
+- Agregar varias pistas MIDI o varios auxiliares en una pasada (8 MIDI: de
+  6,4 s a 1 s), mismos bytes que de a una en 453 casos. El modelo común agrega
+  juntas las pistas seguidas del mismo tipo y escribe la automatización de
+  todas las pistas de una vez.
+- Consolidar el show: de 6,7 min a menos de 2 min (casi todo es medir el audio).
+
 ### Quitar y agregar varias pistas de una vez
 - `quitar_pistas` con varias pistas hace una sola pasada sobre el archivo (antes,
   una por pista): 55 pistas del show en 0,7 s en vez de 37 s. Los mismos bytes

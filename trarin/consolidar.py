@@ -397,6 +397,11 @@ def automatizacion(fuentes, pistas, ventanas):
 
 # ---------------------------------------------------------------- ejecución
 
+def _par(r, lote, d):
+    """Adapta una operación que devuelve d (o None en lote) a la forma de en_lote."""
+    return None if lote is not None else (r, [])
+
+
 def consolidar(sesion, reglas, salida, tmp=None, rutas_audio=None, registro=print):
     """Escribe 'salida' con la sesión consolidada. Devuelve (plan, avisos)."""
     import os
@@ -466,54 +471,79 @@ def consolidar(sesion, reglas, salida, tmp=None, rutas_audio=None, registro=prin
     registro("escribiendo las pistas nuevas…")
     aplicar(modelo, sesion, str(paso1))
 
-    # 2) plugins, color, salida MIDI y ruteo
+    # 2) plugins, color, salida MIDI y ruteo: cada cosa en un lote (un solo reconstruir)
+    from .protools.ruteo import en_lote
     d = leer_descifrado(str(paso1))
     o = leer_descifrado(sesion)
     principal = reglas.get("salida_principal", "Speakers 1-2")
+
+    def avisando(etq, f):
+        def g(dd, lote):
+            try:
+                r = f(dd, lote)
+            except Exception as e:
+                if type(e).__name__ == "NoAgrupable":
+                    raise
+                avisos.append(f"{etq} ({e})")
+                return (dd, []) if lote is None else []
+            return r
+        return g
+
+    def color(nombre, f):
+        return avisando(f"{nombre}: no se copió el color",
+                        lambda dd, lote: _par(copiar_color(dd, nombre, o, f, lote=lote), lote, dd))
+
+    def plugins(nombre, f):
+        return avisando(f"{nombre}: no se copiaron los plugins de {f}",
+                        lambda dd, lote: _par(copiar_inserts(dd, nombre, o, f, lote=lote), lote, dd))
+
+    def salida_de(nombre, bus, origen=None, renombrar=None):
+        def f(dd, lote):
+            r = copiar_ruteo(dd, nombre, dd, origen or nombre, renombrar=renombrar, salida=bus,
+                             envios=False, lote=lote)
+            return r if lote is not None else r
+        return f
+
+    colores, insertos = [], []
     for nombre, x in plan["nuevas"].items():
         origenes = list(dict.fromkeys(f for f, _ in x["fuentes"]))
-        try:
-            d = copiar_color(d, nombre, o, origenes[0])
-        except Exception as e:
-            avisos.append(f"{nombre}: no se copió el color ({e})")
+        colores.append(color(nombre, origenes[0]))
         con = [f for f in origenes if plugins_de(o, f)]
         if con:
-            try:
-                d = copiar_inserts(d, nombre, o, con[0])
-            except Exception as e:
-                avisos.append(f"{nombre}: no se copiaron los plugins de {con[0]} ({e})")
+            insertos.append(plugins(nombre, con[0]))
             for f in con[1:]:
                 avisos.append(f"{nombre}: los plugins de {f} ({', '.join(plugins_de(o, f))}) no se copiaron "
                               f"(ya lleva los de {con[0]})")
         elif plugins_de(d, nombre):
             # la pista nueva es copia de otra de la sesión (con sus plugins): se dejan sin plugins
-            try:
-                d = copiar_inserts(d, nombre, o, origenes[0])
-            except Exception as e:
-                avisos.append(f"{nombre}: no se quitaron los plugins de la plantilla ({e})")
-        d, av = copiar_ruteo(d, nombre, d, nombre, salida=x["categoria"].get("salida") or principal, envios=False)
+            insertos.append(avisando(f"{nombre}: no se quitaron los plugins de la plantilla",
+                                     lambda dd, lote, n=nombre, f=origenes[0]:
+                                     _par(copiar_inserts(dd, n, o, f, lote=lote), lote, dd)))
+    for nombre, x in plan["midi"].items():
+        colores.append(color(nombre, x["fuentes"][0]))
+    for grupo in (colores, insertos):
+        d, av = en_lote(d, grupo)
         avisos += av
     for nombre, x in plan["midi"].items():
         try:
-            d = copiar_color(d, nombre, o, x["fuentes"][0])
             d, av = copiar_midi(d, nombre, o, x["fuentes"][0])
             avisos += av
         except Exception as e:
-            avisos.append(f"{nombre}: no se copió la salida MIDI o el color ({e})")
+            avisos.append(f"{nombre}: no se copió la salida MIDI ({e})")
+    rutas_lote = [salida_de(nombre, x["categoria"].get("salida") or principal)
+                  for nombre, x in plan["nuevas"].items()]
     for a in reglas.get("auxiliares") or []:
         entrada = pistas[a["plantilla"]]["mezcla"]["entrada"]
-        d, av = copiar_ruteo(d, a["nombre"], d, a["plantilla"], renombrar={entrada: a["bus"]},
-                             salida=principal, envios=False)
-        avisos += av
+        rutas_lote.append(salida_de(a["nombre"], principal, a["plantilla"], {entrada: a["bus"]}))
     for r in reglas.get("rutas") or []:
         for nombre in r["pistas"]:
             if nombre not in pistas or nombre in fuera:
                 avisos.append(f"rutas: la pista {nombre!r} no está")
                 continue
-            if not r.get("bus"):
-                continue
-            d, av = copiar_ruteo(d, nombre, d, nombre, salida=r["bus"], envios=False)
-            avisos += av
+            if r.get("bus"):
+                rutas_lote.append(salida_de(nombre, r["bus"]))
+    d, av = en_lote(d, rutas_lote)
+    avisos += av
     paso2 = tmp / "paso2.ptx"
     paso2.write_bytes(cifrar(d))
 

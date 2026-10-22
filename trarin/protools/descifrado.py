@@ -34,19 +34,16 @@ def descifrar(datos: bytes) -> bytes:
     else:
         raise ErrorDescifrado(f"tipo de cifrado desconocido: 0x{tipo:02x}")
     clave = bytes((i * delta) & 0xFF for i in range(256))
-    salida = bytearray(datos)
+    n = len(datos)
     if tipo == 0x01:
-        for i in range(0x14, len(datos)):
-            salida[i] ^= clave[i & 0xFF]
+        # el byte i se combina con clave[i & 0xFF]: la clave repetida a lo largo del archivo
+        flujo = (clave * (n // 256 + 1))[:n]
     else:
-        # Pro Tools 10+: la clave cambia cada 4096 bytes.
-        inicio = 0x14
-        while inicio < len(datos):
-            fin = min(len(datos), (inicio // 4096 + 1) * 4096)
-            k = clave[(inicio >> 12) & 0xFF]
-            salida[inicio:fin] = bytes(x ^ k for x in salida[inicio:fin])
-            inicio = fin
-    return bytes(salida)
+        # Pro Tools 10+: la clave cambia cada 4096 bytes (bloque j: clave[j & 0xFF])
+        flujo = b"".join(bytes([clave[j & 0xFF]]) * 4096 for j in range(n // 4096 + 1))[:n]
+    # el XOR de todo el archivo de una vez, como números enteros grandes
+    cuerpo = (int.from_bytes(datos[0x14:], "little") ^ int.from_bytes(flujo[0x14:], "little"))
+    return bytes(datos[:0x14]) + cuerpo.to_bytes(n - 0x14, "little")
 
 
 def leer_descifrado(ruta) -> bytes:

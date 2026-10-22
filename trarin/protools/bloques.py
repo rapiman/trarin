@@ -87,8 +87,25 @@ def _parsear(d: bytes, pos: int, maximo: int):
     return b
 
 
+_MEMO = []          # [(bytes, desde, árbol)]: los últimos árboles armados
+
+
 def arbol(d: bytes, desde: int = 0x1F) -> list:
-    """Bloques de primer nivel, con sus hijos."""
+    """Bloques de primer nivel, con sus hijos. Los bytes no cambian, así que el
+    árbol de los mismos bytes (el mismo objeto) se reutiliza: varias
+    operaciones sobre la misma sesión lo arman una sola vez."""
+    if isinstance(d, bytes):
+        for x, de, a in _MEMO:
+            if x is d and de == desde:
+                return a
+    a = _armar(d, desde)
+    if isinstance(d, bytes):
+        _MEMO.insert(0, (d, desde, a))
+        del _MEMO[4:]
+    return a
+
+
+def _armar(d, desde):
     salida, i = Arbol(), desde
     while i < len(d) - 8:
         if d[i] != ZMARK:

@@ -90,11 +90,14 @@ def _registros(d, bloques):
     return lista, [h for h in lista.hijos if h.tipo_contenido == 0x2064]
 
 
-def copiar_inserts(d, pista, d_origen, pista_origen):
+def copiar_inserts(d, pista, d_origen, pista_origen, lote=None):
     """Devuelve d con los inserts de 'pista' reemplazados por los de
     'pista_origen' de la sesión d_origen (ambas descifradas). Los plugins y los
     registros de ajustes (0x2064) que falten se agregan al final de sus listas
-    y cada insert pasa a apuntar a su registro en esta sesión."""
+    y cada insert pasa a apuntar a su registro en esta sesión.
+
+    lote: ver ruteo.en_lote (si hay que agregar plugins o registros a las
+    listas de la sesión, no se puede agrupar)."""
     b = arbol(d)
     bo = arbol(d_origen)
     sb, ins, ancho = _canal(d, b, pista, True)
@@ -145,6 +148,9 @@ def copiar_inserts(d, pista, d_origen, pista_origen):
                 and _nombre(d_origen, ajenos, orden_k[pos - 1]) > nom:
             pos -= 1
         orden.insert(pos, e)
+    if lote is not None and (agregar_pl or agregar_reg):
+        from .ruteo import NoAgrupable
+        raise NoAgrupable()
     viejo_a_nuevo = {i: orden.index(c) for i, (c, _) in enumerate(propios)}
     reemplazos_2615 = []
     if agregar_pl:
@@ -189,6 +195,9 @@ def copiar_inserts(d, pista, d_origen, pista_origen):
         reemplazos.append((lst.inicio + 2, lst.inicio + 6, struct.pack("<I", cant + len(extra))))
         punto = lst.hijos[-1].fin if lst.hijos else lst.inicio + 6
         reemplazos.append((punto, punto, b"".join(extra), lst.pos))
+    if lote is not None:
+        lote += reemplazos
+        return None
     return reconstruir(d, reemplazos)
 
 
