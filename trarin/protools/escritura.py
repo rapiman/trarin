@@ -979,7 +979,7 @@ def _estructura_marcador(tb):
     return e, n1, q, n2
 
 
-def _marcador_nuevo(tb, numero, nombre, tick, comentario, fin_tick=None):
+def _marcador_nuevo(tb, numero, nombre, tick, comentario, fin_tick=None, n_pistas=None):
     """Bloque 0x2077 nuevo a partir de la plantilla tb (un marcador común, o
     una selección si lleva fin_tick)."""
     e, n1, q, n2 = _estructura_marcador(tb)
@@ -994,6 +994,15 @@ def _marcador_nuevo(tb, numero, nombre, tick, comentario, fin_tick=None):
     out = bytearray(tb[:p] + struct.pack("<H", numero) + tb[p + 2:p + 6]
                     + struct.pack("<I", len(nombre)) + nombre + medio + com
                     + tb[e + 84 + n1:q] + com + tb[q + 4 + n2:-16] + os.urandom(16))
+    if fin_tick is not None and n_pistas is not None:
+        # una selección lleva una entrada 0x2506 por pista, tras «FEFF u32 cantidad»
+        blq = _parsear(bytes(out), 0, len(out))
+        hijos = [h for h in blq.hijos if h.tipo_contenido == 0x2506] if blq else []
+        if hijos and hijos[-1].fin - hijos[0].pos == sum(h.fin - h.pos for h in hijos) \
+                and struct.unpack_from("<I", out, hijos[0].pos - 4)[0] == len(hijos):
+            uno = bytes(out[hijos[0].pos:hijos[0].fin])
+            out = (out[:hijos[0].pos - 4] + struct.pack("<I", n_pistas) + uno * n_pistas
+                   + out[hijos[-1].fin:])
     struct.pack_into("<I", out, 3, len(out) - 7)
     return bytes(out)
 
@@ -1031,8 +1040,10 @@ def _altas_bajas_marcadores(d, bloques, nuevos, borrados):
         if m.get("fin_tick") is not None:
             if m["fin_tick"] < m["tick"]:
                 raise ErrorEscritura(f"selección {m['nombre']!r}: el fin va antes del inicio")
+            L = _primero(bloques, 0x2519)
+            n_pistas = len([h for h in L.hijos if h.tipo_contenido == 0x251A]) // 2 if L else None
             bloques_nuevos += _marcador_nuevo(plantilla_sel, siguiente, m["nombre"], m["tick"],
-                                              m.get("comentario"), m["fin_tick"])
+                                              m.get("comentario"), m["fin_tick"], n_pistas)
         else:
             bloques_nuevos += _marcador_nuevo(plantilla, siguiente, m["nombre"], m["tick"], m.get("comentario"))
         m["numero"] = siguiente

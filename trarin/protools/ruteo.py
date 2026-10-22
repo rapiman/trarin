@@ -185,12 +185,14 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
         par = _par_estereo(d_origen, bo, nom)
         if par:
             par_d = destino(ident, par)[1]
-            if par_d not in nuevos_buses and tabla.buscar(2, par_d) is None:
-                nuevos_buses.append(par_d)
+            if par_d not in [n for n, _ in nuevos_buses] and tabla.buscar(2, par_d) is None:
+                nuevos_buses.append((par_d, 2))
+        elif _es_bus_mono(d_origen, bo, nom) and nom_d not in [n for n, _ in nuevos_buses]:
+            nuevos_buses.append((nom_d, 1))
     if nuevos_buses:
-        for n in nuevos_buses:
-            d = crear_bus(d, n)
-            avisos.append(f"{pista}: se creó el bus «{n}»")
+        for n, canales in nuevos_buses:
+            d = crear_bus(d, n, canales)
+            avisos.append(f"{pista}: se creó el bus {'mono ' if canales == 1 else ''}«{n}»")
         b = arbol(d)
         sb, tabla = _canal(d, b, pista), _Tabla(d, b)
 
@@ -332,6 +334,17 @@ def _par_estereo(d, bloques, nombre):
         if e.get((n, 1)) == 2 and (n + ".L", 0) in e and (n + ".R", 0) in e:
             return n
     return None
+
+
+def _es_bus_mono(d, bloques, nombre):
+    """True si 'nombre' es un bus mono propio (no la mitad de un par) en 0x1022."""
+    L = _primero(bloques, 0x1022)
+    for h in (L.hijos if L else []):
+        if h.tipo_contenido == 0x1021 and d[h.inicio + 2] == 2 and d[h.inicio + 3] == 0:
+            n, _, nch, _, b = _campos(d, h)
+            if n == nombre:
+                return nch == 1 and b == 0xFFFF
+    return False
 
 
 def _corrida(puntos, desde):
@@ -521,7 +534,29 @@ def _entrada_nueva(d, h, nombre, a, b, ids):
     return bytes(cuerpo)
 
 
-def crear_bus(d, nombre):
+def _entrada_mono(d, h, nombre, a, ident_viejo, ident):
+    """Entrada de bus mono a partir de la del par de un bus estéreo (h): una
+    sola entrada con 1 canal; tras el u32 canales va u16 a y FFFF (el par lleva
+    a, b y FFFF), bandera 0 y, en 0x1021, el nombre corto termina en 00."""
+    viejo, p, _, _, _ = _campos(d, h)
+    x = bytearray(d[h.pos:h.fin])
+    off = h.pos
+    cola = bytearray(x[p - off:])
+    if bytes(cola[8:10]) != b"\xff\xff" or struct.unpack_from("<I", cola, 0)[0] != 2:
+        raise ErrorPista("el bus de plantilla no es un par estéreo")
+    cola = bytearray(struct.pack("<IHH", 1, a, 0xFFFF)) + cola[10:]
+    cola = cola.replace(b"\x2a\x00\x00\x00" + ident_viejo, b"\x2a\x00\x00\x00" + ident)
+    vb, nb = viejo.encode("utf-8"), nombre.encode("utf-8")
+    k = cola.rfind(struct.pack("<I", len(vb)) + vb)
+    if k > 0:                                     # nombre corto al final (0x1021): termina en 00 00
+        cola = cola[:k] + struct.pack("<I", len(nb)) + nb + b"\x00" + cola[k + 4 + len(vb) + 1:]
+    cuerpo = bytearray(x[:h.inicio + 4 - off]) + struct.pack("<I", len(nb)) + nb + cola
+    cuerpo[h.inicio + 3 - off] = 0                  # sin mitades
+    struct.pack_into("<I", cuerpo, 3, struct.unpack_from("<I", cuerpo, 3)[0] + len(cuerpo) - len(x))
+    return bytes(cuerpo)
+
+
+def crear_bus(d, nombre, canales=2):
     """Devuelve d con un bus estéreo nuevo 'nombre' (con sus mitades
     'nombre.L' y 'nombre.R'), como lo crea Pro Tools 12 (v5_plugin → v6_envio):
 
@@ -567,24 +602,32 @@ def crear_bus(d, nombre):
     a1 = max(_campos(d, h)[3] for h in e2) + 1
     b_mitad = dif + len(e2)
     par = _id_nuevo(d, ids_t[0])
-    izq = _id_nuevo(d, ids_t[1], (par,))
-    der = _id_nuevo(d, ids_t[2], (par, izq))
-    ids = {ids_t[0]: par, ids_t[1]: izq, ids_t[2]: der}
-    nombres = [nombre, nombre + ".L", nombre + ".R"]
-    ab = [(a1, a1 + 1), (a1, b_mitad), (a1 + 1, b_mitad)]
-    nuevos1 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t1, nombres, ab))
-    nuevos2 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t2, nombres, ab))
+    if canales == 1:
+        # bus mono (Pro Tools 12, v13_antes_mono → v14_bus_mono): una entrada
+        # en cada lista y, en las mitades de los inserts, b sube en 1
+        nuevos1 = _entrada_mono(d, t1[0], nombre, a1, ids_t[0], par)
+        nuevos2 = _entrada_mono(d, t2[0], nombre, a1, ids_t[0], par)
+        n_nuevas = 1
+    else:
+        izq = _id_nuevo(d, ids_t[1], (par,))
+        der = _id_nuevo(d, ids_t[2], (par, izq))
+        ids = {ids_t[0]: par, ids_t[1]: izq, ids_t[2]: der}
+        nombres = [nombre, nombre + ".L", nombre + ".R"]
+        ab = [(a1, a1 + 1), (a1, b_mitad), (a1 + 1, b_mitad)]
+        nuevos1 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t1, nombres, ab))
+        nuevos2 = b"".join(_entrada_nueva(d, h, n, a, b, ids) for h, n, (a, b) in zip(t2, nombres, ab))
+        n_nuevas = 3
     # tras el último bus de 0x1022
     ultimo = max(i for i, h in enumerate(e1) if d[h.inicio + 2] == 2)
-    reemplazos = [(L1.inicio + 2, L1.inicio + 6, struct.pack("<I", len(e1) + 3)),
+    reemplazos = [(L1.inicio + 2, L1.inicio + 6, struct.pack("<I", len(e1) + n_nuevas)),
                   (e1[ultimo].fin, e1[ultimo].fin, nuevos1, L1.pos),
-                  (L2.inicio + 2, L2.inicio + 6, struct.pack("<I", len(e2) + 3)),
+                  (L2.inicio + 2, L2.inicio + 6, struct.pack("<I", len(e2) + n_nuevas)),
                   (e2[-1].fin, e2[-1].fin, nuevos2, L2.pos)]
     for h in e1[ultimo + 1:]:
         if d[h.inicio + 3] == 0:                     # mitad: b es el número de su par
             _, p, _, _, b = _campos(d, h)
-            if b > ultimo:
-                reemplazos.append((p + 6, p + 8, struct.pack("<H", b + 3)))
+            if b > ultimo and b != 0xFFFF:
+                reemplazos.append((p + 6, p + 8, struct.pack("<H", b + n_nuevas)))
     return reconstruir(d, reemplazos)
 
 

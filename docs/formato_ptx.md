@@ -460,6 +460,12 @@ corpus de 145 sesiones]:
   2010.pos − 11: u32 n, u16 1, u32 n, u8 1 (n entre los canales MIDI e instrumento). El canal hace
   de `0x261B`: lista de identificadores tras el fader, sin entrada de audio.
 - Color de pista: i16 en el byte 25 de los bytes propios del `0x2015` del canal (−1 = sin color).
+- Bus mono (Pro Tools 12, v13_antes_mono → v14_bus_mono): una sola entrada en cada lista (bandera
+  0, 1 canal, u16 a y FFFF donde el par lleva a, b y FFFF; en `0x1021` el nombre corto termina en
+  00); en las mitades de los inserts b sube en 1. `ruteo.crear_bus(..., canales=1)` reproduce las
+  listas byte a byte salvo el identificador.
+- Selección nueva: además de inicio y fin, lleva una entrada `0x2506` por pista tras `FEFF` y u32
+  cantidad (Pro Tools la ajusta al guardar si no coincide).
 - Salida MIDI: u32 en +14 del `0x2036` del canal MIDI (`0x2611`), número desde 1 de una entrada
   `0x2005` de `0x2004` (0 = ninguna). Cada canal tiene la suya: si dos la comparten, Pro Tools se
   cae al cerrar la sesión.
