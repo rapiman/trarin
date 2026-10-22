@@ -5,6 +5,13 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Grupos (Pro Tools)
+- `trarin grupos sesion.ptx reglas.json -o salida.ptx`: crea grupos de pistas
+  según patrones sobre los nombres (una pista puede ir en varios grupos), más un
+  grupo con todas las pistas MIDI. Mezcla y edición, o solo mezcla. Verificado en
+  Pro Tools 12: los bytes del grupo son los mismos que los de un grupo creado en
+  Pro Tools, y la sesión abre y guarda bien.
+
 ### Audio
 - `trarin bpm`: calcula el tempo de un audio (pulso, primer pulso, acento y
   tempo por tramos).

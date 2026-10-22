@@ -54,6 +54,7 @@ python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als
 python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan compatibles son antes de juntarlas
 python -m trarin show plan show.json      # cómo quedarían las canciones juntas (solo lee)
 python -m trarin show armar show.json     # escribe la sesión del show
+python -m trarin grupos show.ptx grupos.json -o show_grupos.ptx   # grupos de pistas por nombre
 python -m trarin bpm bombo.wav            # calcula el tempo de un audio (requiere trarin[audio])
 python -m trarin convertir-audio voz.wav voz48 --frecuencia 48000 --mono   # voz48.L.wav y voz48.R.wav
 ```
