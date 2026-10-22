@@ -3,6 +3,26 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-10-22
+
+### Audio
+- `trarin bpm`: calcula el tempo de un audio (pulso, primer pulso, acento y
+  tempo por tramos).
+- `trarin convertir-audio`: cambia la frecuencia de un WAV (soxr), con opción de
+  un archivo mono por canal. Extra opcional `audio` (numpy y soxr).
+- Lector de archivos MIDI estándar (`trarin/midi_smf.py`).
+
+### Armador de shows
+- Canciones con otra frecuencia de muestreo (`"frecuencia"` del show): el audio
+  se convierte y se recalculan posiciones, fundidos, clip gain y automatización.
+- `fin_compas` corta la canción: no se copia lo posterior (clips recortados con
+  un fundido corto de salida).
+- Tempo y compás que no empiezan en el tick 0 (rige el primero desde el inicio).
+- `cambio_tempo` por canción y modo `"fin"`.
+- `pistas_extra`: pistas desde archivos WAV o MIDI; canciones sin sesión.
+- `buses_show`: buses y auxiliares propios del show, con la salida de cada pista
+  según su nombre.
+
 ## 2026-10-21
 
 ### Armador de shows (Pro Tools)

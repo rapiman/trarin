@@ -64,6 +64,29 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   y la automatización copiados, Pro Tools guarda de nuevo las mismas entradas, salidas y puntos. Aún no:
   nada conocido; falta la prueba con las cinco canciones.
 - Los fundidos de los clips son obligatorios.
+- Frecuencia del show (`"frecuencia"`): las canciones con otra se convierten. Su audio pasa a
+  archivos mono nuevos en «Audio Files» junto al show (`audio.py`, soxr) y todas las posiciones en
+  muestras (clips, fundidos, clip gain, automatización) se multiplican por la razón de frecuencias.
+- Corte (`"fin_compas"`): lo posterior al inicio de ese compás no se copia; un clip que cruza el
+  corte se recorta y lleva un fundido de salida de 10 ms; la automatización queda con su último valor.
+- Pistas desde archivos (`"pistas_extra"`): audio WAV ubicado en segundos de la canción (por ejemplo
+  el arreglo de un proyecto de Live: tiempo = posición en el arreglo − desplazamiento) y MIDI de un
+  .mid leído con un tempo dado. Una canción puede no tener sesión: `"sesion"` es entonces un modelo
+  común con tempo y compás, y sus pistas vienen todas de `pistas_extra`.
+- Buses del show (`"buses_show"`):
+
+  ```json
+  {"buses": [{"bus": "Bus 1", "aux": "Aux 1", "patron": "kultr|cultr"},
+             {"bus": "Bus 2", "aux": "Aux 2", "patron": "pif|puf"}],
+   "salida_principal": "Windows 1-2",
+   "plantilla_aux": {"sesion": "…/I3000.ptx", "pista": "Aux Percuciones"},
+   "quitar_pistas": ["Audio 1", "Audio 2", "Aux 1", "Aux 2", "MIDI 1"]}
+  ```
+
+  Cada pista de audio va al bus cuyo patrón (expresión regular sobre el nombre en minúsculas y sin
+  tildes) calza, o a la salida principal; no lleva envíos. Los auxiliares de las canciones no se
+  copian. Cada bus tiene un auxiliar estéreo con su entrada, copiado de `plantilla_aux` (un auxiliar
+  cuya entrada es un bus). `quitar_pistas` quita al final las pistas de la plantilla que no se usan.
 
 ## Principios
 

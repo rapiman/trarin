@@ -151,15 +151,22 @@ def _contenido_260a(d, a, puntos):
     return bytes(cab) + cuerpo
 
 
-def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="", sufijo_buses=""):
+def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="", sufijo_buses="",
+                 escala=1.0, hasta=None, renombrar=None, salida=None, envios=True):
     """Devuelve (d, avisos): d con la entrada, el fader (salida, valores y
     automatización) y los envíos de 'pista' reemplazados por los de
     'pista_origen' de la sesión d_origen. La automatización se corre
-    'desplazamiento' muestras. Las rutas se buscan por clase y nombre en d.
+    'desplazamiento' muestras (ver _corrida para 'escala' y 'hasta'). Las rutas
+    se buscan por clase y nombre en d.
 
     sufijo_buses: si no está vacío, cada bus de la pista de origen va a un bus
     propio con ese sufijo en el nombre («Aux 1» → «Aux 1 (Sombra)»), que se
-    crea si no existe; si está vacío, al bus del mismo nombre."""
+    crea si no existe; si está vacío, al bus del mismo nombre.
+
+    renombrar: {nombre de ruta en el origen: nombre en d} (p. ej. el bus de
+    entrada de un auxiliar). salida: nombre de la ruta de d (bus o salida) a la
+    que va el fader del canal, en vez de la del origen. envios=False: no se
+    copian los envíos."""
     b, bo = arbol(d), arbol(d_origen)
     sb, sb_o = _canal(d, b, pista), _canal(d_origen, bo, pista_origen)
     tabla, tabla_o = _Tabla(d, b), _Tabla(d_origen, bo)
@@ -169,6 +176,8 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
     def destino(ident, nom):
         """(clase, nombre) de la ruta en d para la ruta 'nom' de origen."""
         clase = tabla_o.clase(ident)
+        if renombrar and nom in renombrar:
+            return clase, renombrar[nom]
         if clase == 2 and sufijo_buses:
             par = _par_estereo(d_origen, bo, nom)
             if par:
@@ -178,7 +187,7 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
 
     # buses estéreo que usa la pista de origen y no existen en d: se crean
     nuevos_buses = []
-    for ident, nom in _referencias(d_origen, sb_o):
+    for ident, nom in _referencias(d_origen, sb_o, solo_entrada=salida is not None and not envios):
         clase, nom_d = destino(ident, nom)
         if clase != 2 or tabla.buscar(2, nom_d) is not None:
             continue
@@ -244,6 +253,21 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
         if e is None:
             raise ErrorPista(f"{pista_origen}: fader sin destino (0x260E)")
         lugar = None if j == 0 else bytes(d_origen[f.pos - 2:f.pos])
+        if j and not envios:
+            continue
+        if j == 0 and salida is not None:
+            nid, clase_e = tabla.buscar(2, salida), 0x43
+            if nid is None:
+                nid, clase_e = next((i for c, n, i in tabla.rutas if n == salida and c >= 0x100), None), 0x13
+            if nid is None:
+                raise ErrorPista(f"{pista}: no existe la salida o bus «{salida}»")
+            e_d = next(h for h in fs_d[0].hijos if h.tipo_contenido == 0x260E)
+            if _destino_260e(d_origen, e)[1] is not None:
+                nuevo_e = _e_con_destino(d_origen, e, nid, salida, clase_e)
+            else:                                   # el origen no tiene salida: la de la plantilla
+                nuevo_e = _e_con_destino(d, e_d, nid, salida, clase_e)
+            piezas.append((lugar, _fader_con_destino(d_origen, f, e, None, None, nuevo_e)))
+            continue
         _, ident, nom = _destino_260e(d_origen, e)
         if ident is None:
             piezas.append((lugar, bytes(d_origen[f.pos:f.fin])))
@@ -262,21 +286,30 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
     tramo = piezas[0][1] + struct.pack("<H", len(piezas) - 1) + b"".join(l + x for l, x in piezas[1:])
     reemplazos.append((di, df, tramo, sb.pos))
     d = reconstruir(d, reemplazos)
-    return (_correr(d, pista, desplazamiento) if desplazamiento else d), avisos
+    cambia = desplazamiento or escala != 1 or hasta is not None
+    return (_correr(d, pista, desplazamiento, escala, hasta) if cambia else d), avisos
+
+
+def _e_con_destino(d, e, ident, nombre, clase=None):
+    """Bytes del 0x260E e (de d) apuntando a la ruta 'ident' de nombre 'nombre'
+    (y con otra clase: 0x13 salida, 0x43 bus, si se indica)."""
+    x = bytearray(d[e.pos:e.fin])
+    x[e.inicio + 14 - e.pos:e.inicio + 22 - e.pos] = ident
+    _, _, viejo = _destino_260e(d, e)
+    vb, nb = viejo.encode("utf-8"), nombre.encode("utf-8")
+    k = len(x) - 1 - len(vb) - 4                      # u32 largo, nombre y 01 al final
+    x = x[:k] + struct.pack("<I", len(nb)) + nb + x[k + 4 + len(vb):]
+    struct.pack_into("<I", x, 3, struct.unpack_from("<I", x, 3)[0] + len(nb) - len(vb))
+    if clase is not None:
+        struct.pack_into("<H", x, e.inicio + 2 - e.pos, clase)
+    return bytes(x)
 
 
 def _fader_con_destino(d, f, e, ident, nombre, entero=None):
     """Bytes del fader f (bloque 0x260D de d) con su 0x260E (e) apuntando a la
     ruta 'ident' de nombre 'nombre', o reemplazado entero por 'entero'."""
     if entero is None:
-        x = bytearray(d[e.pos:e.fin])
-        x[e.inicio + 14 - e.pos:e.inicio + 22 - e.pos] = ident
-        _, _, viejo = _destino_260e(d, e)
-        vb, nb = viejo.encode("utf-8"), nombre.encode("utf-8")
-        k = len(x) - 1 - len(vb) - 4                      # u32 largo, nombre y 01 al final
-        x = x[:k] + struct.pack("<I", len(nb)) + nb + x[k + 4 + len(vb):]
-        struct.pack_into("<I", x, 3, struct.unpack_from("<I", x, 3)[0] + len(nb) - len(vb))
-        entero = bytes(x)
+        entero = _e_con_destino(d, e, ident, nombre)
     delta = len(entero) - (e.fin - e.pos)
     y = bytearray(d[f.pos:e.pos]) + entero + bytearray(d[e.fin:f.fin])
     struct.pack_into("<I", y, 3, struct.unpack_from("<I", y, 3)[0] + delta)
@@ -301,7 +334,7 @@ def _numero_ruta(d, bloques, ident):
     return difs.pop() + j
 
 
-def _referencias(d, sb):
+def _referencias(d, sb, solo_entrada=False):
     """[(identificador, nombre)] de las rutas que usa un canal: su entrada y los
     destinos de sus faders (salida y envíos)."""
     out = []
@@ -315,6 +348,8 @@ def _referencias(d, sb):
         nombre, p = _cadena(d, oi)
         if d[p + 4:p + 8] == b"\x2a\x00\x00\x00":
             out.append((bytes(d[p + 8:p + 16]), nombre))
+    if solo_entrada:
+        return out
     for f in _faders(d, sb)[0]:
         e = next((h for h in f.hijos if h.tipo_contenido == 0x260E), None)
         if e is not None:
@@ -347,16 +382,34 @@ def _es_bus_mono(d, bloques, nombre):
     return False
 
 
-def _corrida(puntos, desde):
-    """Puntos de una lista corridos 'desde' muestras. La lista empieza siempre en
-    la muestra 0 (Pro Tools descarta una que no, y deja solo su primer valor):
-    se agrega el primer valor en 0; una lista de un solo punto queda igual."""
+def _transformar(puntos, escala=1.0, hasta=None):
+    """Puntos (en muestras de origen) hasta la muestra 'hasta' (excluida; ahí se
+    agrega un punto con el último valor) y con las muestras multiplicadas por
+    'escala' (cambio de frecuencia de muestreo)."""
+    if hasta is not None:
+        antes = [x for x in puntos if x[0] < hasta]
+        if len(antes) < len(puntos) and antes:
+            antes.append((hasta, antes[-1][1]))
+        puntos = antes or puntos[:1]
+    if escala != 1:
+        puntos = [(int(round(m * escala)), v) for m, v in puntos]
+    return puntos
+
+
+def _corrida(puntos, desde, escala=1.0, hasta=None):
+    """Puntos de una lista corridos 'desde' muestras (antes se aplican 'hasta' y
+    'escala', ver _transformar). La lista empieza siempre en la muestra 0 (Pro
+    Tools descarta una que no, y deja solo su primer valor): se agrega el primer
+    valor en 0; una lista de un solo punto queda igual."""
+    if len(puntos) <= 1:
+        return list(puntos)
+    puntos = _transformar(puntos, escala, hasta)
     if len(puntos) <= 1:
         return list(puntos)
     return [(0, puntos[0][1])] + [(m + desde, v) for m, v in puntos]
 
 
-def _correr(d, pista, desde):
+def _correr(d, pista, desde, escala=1.0, hasta=None):
     """d con la automatización del canal de 'pista' corrida 'desde' muestras."""
     b = arbol(d)
     sb = _canal(d, b, pista)
@@ -364,13 +417,13 @@ def _correr(d, pista, desde):
     for f in _faders(d, sb)[0]:
         for a in buscar([f], 0x260A):
             _, pts = _puntos(d, a)
-            nuevos = _corrida(pts, desde)
+            nuevos = _corrida(pts, desde, escala, hasta)
             if nuevos != pts:
                 reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
     return reconstruir(d, reemplazos) if reemplazos else d
 
 
-def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion=""):
+def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion="", escala=1.0, hasta=None):
     """Devuelve (d, avisos): en cada lista de automatización del fader del
     canal de 'pista' (y de los envíos al mismo destino) quedan los puntos
     anteriores a la muestra 'desde' y, desde ahí, los de 'pista_origen' de
@@ -406,7 +459,7 @@ def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion=""):
             w_o, po = _puntos(d_origen, o)
             if w != w_o:
                 continue
-            nuevos = [x for x in pa if x[0] < desde] + [(m + desde, v) for m, v in po]
+            nuevos = [x for x in pa if x[0] < desde] + [(m + desde, v) for m, v in _transformar(po, escala, hasta)]
             if not nuevos or nuevos[0][0] != 0:            # la lista empieza en la muestra 0
                 nuevos = [(0, (pa or po)[0][1])] + nuevos
             if len({v for _, v in nuevos}) <= 1 and len(pa) == 1:
@@ -427,7 +480,7 @@ def _canal_bloque(d, bloques, nombre):
     return raiz.hijos[i]
 
 
-def copiar_midi(d, pista, d_origen, pista_origen, desplazamiento=0, cancion=""):
+def copiar_midi(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="", escala=1.0, hasta=None):
     """Devuelve (d, avisos): d con el canal MIDI (0x2611: valores 0x2036 y
     automatización) de 'pista' reemplazado por el de 'pista_origen' de
     d_origen, y la salida MIDI de la pista de origen.
@@ -482,13 +535,13 @@ def copiar_midi(d, pista, d_origen, pista_origen, desplazamiento=0, cancion=""):
                 reemplazos.append((x.inicio + 14, x.inicio + 18, struct.pack("<I", v - 1)))
     reemplazos.append((m.pos, m.fin, bytes(nuevo), c.pos))
     d = reconstruir(d, reemplazos)
-    if desplazamiento:
+    if desplazamiento or escala != 1 or hasta is not None:
         b = arbol(d)
         m = next(h for h in _canal_bloque(d, b, pista).hijos if h.tipo_contenido == 0x2611)
         r = []
         for a in buscar([m], 0x260A):
             _, pts = _puntos(d, a)
-            nuevos = _corrida(pts, desplazamiento)
+            nuevos = _corrida(pts, desplazamiento, escala, hasta)
             if nuevos != pts:
                 r.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
         if r:

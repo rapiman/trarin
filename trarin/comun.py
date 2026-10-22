@@ -630,6 +630,8 @@ def _fundidos_nuevos_pt(pista, fundidos, nativo, fs):
             pre = dur
         elif f["tipo"] == "cruzado":
             dentro = [m for m in inicios if ini < m < ini + dur]
+            if not dentro:                  # cruzado que empieza o termina justo en el inicio del clip
+                dentro = [m for m in inicios if m in (ini, ini + dur)]
             if len(dentro) != 1:
                 raise ErrorComun(f"Pro Tools: el fundido cruzado en {ini} de {pista['id']!r} debe abarcar "
                                  f"el inicio de un clip")

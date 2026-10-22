@@ -1,6 +1,6 @@
 # Hoja de ruta
 
-Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado en Pro Tools 12.
+Estado al 2026-10-22 (noche). Lo marcado ✅ está hecho y verificado en Pro Tools 12.
 
 ## Armador de shows
 
@@ -8,6 +8,11 @@ Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado en Pro Tools 12.
 - ⏳ **Prueba con las cinco canciones de I3000** (Bailando en el paradero, Guerra,
   Sin Tierra, Sombra en el Desierto y Viaje a Cunco), con separación negativa y
   cambios de tempo. Es lo siguiente pendiente del armador.
+- ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
+  archivos WAV y MIDI, buses propios del show.
+- ⏳ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): armado; falta revisarlo en
+  Pro Tools, agregar las grabaciones de Live que quedaron en el Mac («Dime si ves
+  mas alla Project») y decidir los cortes de eluwün.
 - Investigar por qué un show grande (Sombra + Sombra) tarda varios minutos en cerrarse
   en Pro Tools, aunque abre y guarda bien.
 
@@ -46,3 +51,9 @@ Preguntas abiertas antes de construir:
   de shows ya las copia).
 - Pendiente: automatización de pistas MIDI (no hay ejemplos en las sesiones de prueba)
   y de parámetros de plugins.
+
+## Audio
+
+- ✅ Detector de bpm (`trarin bpm`) y conversor de frecuencia (`trarin convertir-audio`).
+- Pendiente: usar el detector para proponer el tempo de una sesión (grilla de Pro
+  Tools alineada al primer pulso).

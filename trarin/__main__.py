@@ -103,7 +103,40 @@ def main(argv=None):
     sh.add_argument("archivo", help="descripción del show (.json, o .yaml con pyyaml)")
     sh.add_argument("--json", action="store_true")
     sub.add_parser("mcp", help="servidor MCP por stdio (requiere: pip install \"trarin[mcp]\")")
+    bp = sub.add_parser("bpm", help="calcula el tempo de un audio WAV (mejor una pista de percusión; requiere trarin[audio])")
+    bp.add_argument("audios", nargs="+")
+    bp.add_argument("--desde", type=float, default=0.0, help="segundo desde el que se mide")
+    bp.add_argument("--hasta", type=float, help="segundo hasta el que se mide")
+    bp.add_argument("--minimo", type=float, default=30.0)
+    bp.add_argument("--maximo", type=float, default=240.0)
+    bp.add_argument("--tramo", type=float, default=30.0, help="largo de los tramos en segundos (0 = sin tramos)")
+    bp.add_argument("--json", action="store_true")
+    cv = sub.add_parser("convertir-audio", help="cambia la frecuencia de muestreo de un WAV (requiere trarin[audio])")
+    cv.add_argument("entrada")
+    cv.add_argument("salida", help="archivo nuevo (con --mono: nombre base para .L.wav y .R.wav)")
+    cv.add_argument("--frecuencia", type=int, required=True)
+    cv.add_argument("--bits", type=int, help="16, 24, 32 o -32 (flotante); por defecto los del original")
+    cv.add_argument("--mono", action="store_true", help="un archivo mono por canal, como los usa Pro Tools")
     a = p.parse_args(argv)
+    if a.orden in ("bpm", "convertir-audio"):
+        from . import audio
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            if a.orden == "bpm":
+                from . import bpm
+                res = [bpm.medir(x, a.minimo, a.maximo, a.desde, a.hasta, a.tramo) for x in a.audios]
+                print(json.dumps(res, ensure_ascii=False, indent=2) if a.json
+                      else "\n".join(bpm.texto(r) for r in res))
+            else:
+                from pathlib import Path
+                if Path(a.salida).exists():
+                    p.error(f"{a.salida} ya existe")
+                for r in audio.convertir(a.entrada, a.salida, a.frecuencia, a.bits, a.mono):
+                    print(f"escrito {r}")
+        except audio.ErrorAudio as e:
+            p.error(str(e))
+        return
     if a.orden == "mcp":
         from .servidor_mcp import main as servidor
         servidor()

@@ -54,13 +54,39 @@ python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als
 python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan compatibles son antes de juntarlas
 python -m trarin show plan show.json      # cómo quedarían las canciones juntas (solo lee)
 python -m trarin show armar show.json     # escribe la sesión del show
+python -m trarin bpm bombo.wav            # calcula el tempo de un audio (requiere trarin[audio])
+python -m trarin convertir-audio voz.wav voz48 --frecuencia 48000 --mono   # voz48.L.wav y voz48.R.wav
 ```
+
+`pip install -e ".[audio]"` instala numpy y soxr, que usan `bpm`,
+`convertir-audio` y el armador de shows cuando las canciones tienen otra
+frecuencia de muestreo o se agregan archivos sueltos.
 
 Opciones del show (además de `canciones`, `separacion`, `cambio_tempo`, `base` y
 `match`): `"buses": "juntar"` (por defecto: el bus «Aux 1» de cada canción va al
 «Aux 1» del show) o `"separar"` (cada canción usa buses y auxiliares propios,
 «Aux 1 (canción)»), y `"copiar_solo": true` para copiar el solo de las pistas
 (por defecto no, para que una canción no silencie a las demás).
+
+Más opciones:
+
+* `"frecuencia": 48000`: el show va a esa frecuencia; el audio de las canciones
+  con otra se convierte (a «Audio Files» junto al show) y las posiciones se
+  recalculan.
+* En una canción, `"fin_compas": 65` la corta al inicio de ese compás (clips,
+  notas, automatización, marcadores, tempo y compases posteriores no se copian;
+  `"cortar": false` solo la usa para ubicar la siguiente).
+* En una canción, `"cambio_tempo"` propio; con `{"modo": "fin"}` el tempo de esa
+  canción rige desde que termina la anterior (si la anterior acaba muy lenta).
+* En una canción, `"pistas_extra"`: pistas armadas desde archivos WAV (por
+  ejemplo grabaciones de Live, con su posición en segundos) o desde un .mid (con
+  el tempo con que se leen sus negras y el tramo); ver `_con_extras` en show.py.
+  `"sesion"` también puede ser un modelo común (una canción sin sesión de Pro
+  Tools, armada solo con pistas_extra).
+* `"buses_show"`: buses y auxiliares del show. Cada pista de audio va al bus
+  cuyo patrón calza con su nombre (o a la salida principal), sin envíos, y los
+  auxiliares de las canciones no se copian; cada bus tiene un auxiliar estéreo
+  que lo recibe. Ver el ejemplo en `docs/arquitectura.md`.
 
 ### Servidor MCP
 
