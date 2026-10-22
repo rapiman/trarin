@@ -10,17 +10,26 @@ cambia (tamaño o fecha), su serie se vuelve a calcular.
 
 Por bloque se guarda: RMS, pico, sonoridad con ponderación K (BS.1770, por el
 espectro del bloque), reparto en cinco bandas, centroide y planitud del
-espectro, muestras saturadas y, si hay dos canales, correlación y balance.
+espectro, muestras saturadas, cresta (de la envolvente de 10 ms), posibles
+clics, cortes a cero, frecuencia dominante y, si hay dos canales, correlación
+y balance. Aparte, los golpes (ataques) con su tiempo y nivel.
 
 La ficha de un tramo trae:
 - tiempo: largo, dónde empieza y termina el sonido de verdad, cuánto suena y
   los silencios largos;
 - nivel: pico, RMS de lo que suena, sonoridad integrada (LUFS), rango de
   sonoridad y los momentos más fuertes;
-- problemas: saturación en el archivo, picos sobre 0 dBFS por el clip gain y
-  corriente continua;
-- estéreo: mono, mono duplicado, casi mono, estéreo o abierto; lado y fase;
+- problemas: saturación en el archivo, picos sobre 0 dBFS por el clip gain,
+  corriente continua, posibles clics, cortes a cero y bordes de clip sin
+  fundido que pueden sonar a golpe;
+- estéreo: mono, mono duplicado, casi mono, estéreo o abierto; lado, fase y
+  cuánto pierde (o gana) al sumarse en mono;
 - color: bandas, grave/medio/agudo, brillante u opaco, tonal o ruidoso;
+- altura: la nota que más suena (si es tonal);
+- articulación: golpes por segundo, regularidad y pulso, percusivo o
+  sostenido;
+- forma: la curva de nivel en 20 tramos, su palabra (constante, crescendo…)
+  y dónde cambia el carácter;
 - en palabras: una línea con lo anterior.
 Los tiempos van en segundos (m:ss) y, si se mira desde una sesión, también en
 compás|tiempo."""
@@ -32,13 +41,16 @@ import os
 import re
 from pathlib import Path
 
-VERSION = 1
+VERSION = 4
 BLOQUE_S = 0.1
 BANDAS = (("sub", 0, 60), ("graves", 60, 250), ("medios", 250, 2000), ("presencia", 2000, 6000),
           ("agudos", 6000, None))
 SILENCIO_DB = -55.0          # RMS de bloque bajo esto (o 45 dB bajo el máximo) = no suena
 SATURA = 0.999               # |muestra| desde aquí cuenta como tope
-CAMPOS = ("rms", "pico", "k", "bandas", "centroide", "planitud", "satura", "corr", "bal")
+CAMPOS = ("rms", "pico", "k", "bandas", "centroide", "planitud", "satura", "cresta", "clics", "cortes",
+          "fdom", "fprom", "dcb", "infra", "corr", "bal")
+SUBBLOQUES = 10              # envolvente de 10 ms para golpes y cresta
+NOTAS = ("Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si")
 
 
 class ErrorFicha(Exception):
@@ -94,7 +106,12 @@ def analizar(rutas, registro=None):
     peso_k = _respuesta_k(f, fs)
     idx_bandas = [(f >= lo) & (f < (hi if hi else fs)) for _, lo, hi in BANDAS]
     util = f >= 40
+    tonal = (f >= 50) & (f <= 5000)
+    i_tonal = np.flatnonzero(tonal)
+    sub = n // SUBBLOQUES
+    corte_min = max(int(fs * 0.001), 2)                                # 1 ms de ceros seguidos
     out = {k: [] for k in CAMPOS}
+    golpes, cola, ultimo = [], np.full(3, -150.0), -1.0
     dc = np.zeros(canales)
     por_tanda = 300
     for b0 in range(0, nb, por_tanda):
@@ -109,7 +126,8 @@ def analizar(rutas, registro=None):
         lleno = ax >= SATURA
         sat = (lleno & np.roll(lleno, 1, axis=1)).sum(axis=(1, 2))      # muestras al tope seguidas
         mono = x.mean(axis=2)
-        P = np.abs(np.fft.rfft(mono * ventana, axis=1)) ** 2
+        X = np.fft.rfft(mono * ventana, axis=1)
+        P = np.abs(X) ** 2
         tot = P.sum(axis=1) + 1e-30
         bandas = np.stack([P[:, m].sum(axis=1) / tot for m in idx_bandas], axis=1)
         cent = (P * f).sum(axis=1) / tot
@@ -124,6 +142,40 @@ def analizar(rutas, registro=None):
         out["centroide"].append(cent)
         out["planitud"].append(plan)
         out["satura"].append(sat)
+        # envolvente de 10 ms: cresta del bloque y golpes (subida de más de 6 dB en 30 ms)
+        e = (x[:, :sub * SUBBLOQUES, :] ** 2).reshape(k, SUBBLOQUES, sub, canales).mean(axis=(2, 3), dtype=np.float64)
+        out["cresta"].append(10 * np.log10((e.max(axis=1) + 1e-15) / (e.mean(axis=1) + 1e-15)))
+        ed = np.concatenate([cola, 10 * np.log10(e.ravel() + 1e-15)])
+        previo = np.minimum(np.minimum(ed[:-3], ed[1:-2]), ed[2:-1])
+        actual = ed[3:]
+        for i in np.flatnonzero((actual - previo > 6) & (actual > -50)):
+            tg = (b0 * SUBBLOQUES + i) * sub / fs
+            if tg - ultimo >= 0.05:
+                pico_g = actual[i:i + 3].max()
+                despues = actual[min(i + 15, len(actual) - 1)]                  # 150 ms después
+                golpes.append((tg, pico_g, min(pico_g - despues, 60.0)))                 # tope: 60 dB
+                ultimo = tg
+        cola = ed[-3:]
+        # clics: un salto entre muestras grande y muy por sobre lo normal del bloque
+        dx = np.abs(np.diff(x, axis=1))
+        lim = np.maximum(0.25, 25 * dx.mean(axis=1, keepdims=True))
+        out["clics"].append((dx > lim).sum(axis=(1, 2)))
+        # cortes: 1 ms o más de ceros exactos en todos los canales
+        z = np.concatenate([np.zeros((k, 1), np.int32), (x == 0).all(axis=2).cumsum(axis=1, dtype=np.int32)], axis=1)
+        out["cortes"].append(((z[:, corte_min:] - z[:, :-corte_min]) == corte_min).any(axis=1).astype(np.int8))
+        # frecuencia dominante (pico más alto entre 50 Hz y 5 kHz, afinado con una parábola)
+        Pt = P[:, tonal] + 1e-30
+        im = Pt.argmax(axis=1)
+        lp = np.log(P + 1e-30)
+        j0 = i_tonal[im]
+        a, b_, c_ = lp[np.arange(k), j0 - 1], lp[np.arange(k), j0], lp[np.arange(k), np.minimum(j0 + 1, len(f) - 1)]
+        den = a - 2 * b_ + c_
+        delta = np.where(np.abs(den) > 1e-12, 0.5 * (a - c_) / np.where(den == 0, 1, den), 0)
+        out["fdom"].append((j0 + np.clip(delta, -0.5, 0.5)) * fs / n)
+        out["fprom"].append(10 * np.log10(Pt.max(axis=1) / Pt.mean(axis=1)))
+        # continua por bloque (el soplo o el viento en el micrófono la mueven) e infrasonido
+        out["dcb"].append(X[:, 0].real / ventana.sum())      # media con ventana: lo grave no se cuela
+        out["infra"].append(P[:, f < 20].sum(axis=1) / tot)
         if canales == 2:
             L, R = x[:, :, 0], x[:, :, 1]
             out["corr"].append((L * R).sum(axis=1, dtype=np.float64)
@@ -135,6 +187,7 @@ def analizar(rutas, registro=None):
     for c, v in out.items():
         if v:
             series[c] = np.concatenate(v).astype(np.float32)
+    series["golpes"] = np.array(golpes, dtype=np.float32).reshape(-1, 3)
     meta = {"frecuencia": fs, "canales": canales, "bloques": int(nb), "muestras_bloque": n,
             "duracion_s": round(total / fs, 3), "dc": [round(float(v), 5) for v in dc / max(total, 1)]}
     return series, meta
@@ -226,6 +279,7 @@ class Tramo:
 
     def __init__(self):
         self.partes = []          # (series, meta, b0, b1, ganancia_db, t0)
+        self.bordes = []          # (segundo, "inicio" | "fin") de clips que empiezan o terminan sin fundido
 
     def agregar(self, series, meta, b0, b1, ganancia_db=0.0, t0=0.0):
         b0, b1 = max(int(b0), 0), min(int(b1), meta["bloques"])
@@ -236,24 +290,31 @@ class Tramo:
         import numpy as np
         if not self.partes:
             return None
-        cols, ts = {}, []
+        cols, ts, gs = {}, [], []
         for s, m, b0, b1, g, t0 in self.partes:
             ts.append(t0 + np.arange(b1 - b0) * BLOQUE_S)
+            if "golpes" in s and len(s["golpes"]):
+                gp = s["golpes"].astype(np.float64)
+                gp = gp[(gp[:, 0] >= b0 * BLOQUE_S) & (gp[:, 0] < b1 * BLOQUE_S)]
+                gs.append(np.stack([t0 + gp[:, 0] - b0 * BLOQUE_S, gp[:, 1] + g, gp[:, 2]], axis=1))
             for c in CAMPOS:
                 if c in s:
                     v = s[c][b0:b1].astype(np.float64)
                     if c in ("rms", "pico", "k"):
                         v = v + g
                     cols.setdefault(c, []).append(v)
-                elif c in ("corr", "bal"):
-                    cols.setdefault(c, []).append(np.full(b1 - b0, np.nan))
+                else:
+                    cols.setdefault(c, []).append(np.full((b1 - b0,) + s["bandas"].shape[1:] if c == "bandas"
+                                                          else b1 - b0, np.nan))
         out = {c: np.concatenate(v) for c, v in cols.items()}
         out["t"] = np.concatenate(ts)
         orden = np.argsort(out["t"], kind="stable")
         out = {c: v[orden] for c, v in out.items()}
         out["canales"] = max(m["canales"] for _, m, *_ in self.partes)
         out["dc"] = max((abs(x) for _, m, *_ in self.partes for x in m.get("dc") or [0]), default=0)
-        out["satura_archivo"] = None
+        g = np.concatenate(gs) if gs else np.zeros((0, 3))
+        out["golpes"] = g[np.argsort(g[:, 0], kind="stable")]
+        out["bordes"] = sorted(self.bordes)
         return out
 
 
@@ -285,6 +346,19 @@ class Reloj:
         from .protools import tiempo as T
         pos = T.compas_tiempo(T.tick_de_segundos(t + 1e-6, self.mapa), self.compases)
         return f"{_reloj(t)} (c. {pos.rsplit('|', 1)[0]})"
+
+    def compas_de(self, t):
+        """Número de compás en el segundo t."""
+        from .protools import tiempo as T
+        return int(T.compas_tiempo(T.tick_de_segundos(t + 1e-6, self.mapa), self.compases).split("|")[0])
+
+    def segundo_de_compas(self, num):
+        """Segundo en que empieza el compás 'num'."""
+        from .protools import tiempo as T
+        c = [x for x in self.compases if x["compas"] <= num]
+        c = c[-1] if c else self.compases[0]
+        largo = T.TICKS_NEGRA * 4 // c["denominador"] * c["numerador"]
+        return T.segundos(c["tick"] + (num - c["compas"]) * largo, self.mapa)
 
 
 def resumir(j, reloj=None):
@@ -350,8 +424,34 @@ def resumir(j, reloj=None):
         eventos = _eventos(t, sobre)
         prob["sobre_0dbfs"] = {"veces": len(eventos), "donde": [reloj(e) for e in eventos[:5]],
                                "pico_dbfs": round(float(pico.max()), 1)}
-    if j["dc"] > 0.01:
-        prob["corriente_continua"] = round(float(j["dc"]), 3)
+    dcb = np.abs(j["dcb"][suena])
+    dc_fijo = float(j["dc"])
+    dc_mov = float(np.percentile(dcb, 90)) if len(dcb) else 0.0
+    if dc_fijo > 0.005 or dc_mov > 0.01:
+        prob["continua"] = {"fija": round(dc_fijo, 4), "por_momentos_p90": round(dc_mov, 4),
+                            "tipo": "fija (desplazamiento constante)" if dc_fijo > 0.005 and dc_mov < 2 * dc_fijo
+                            else "variable (sube y baja: típico de soplo, viento o golpes de aire en el micrófono)"}
+    infra = float((j["infra"][suena] * ms).sum() / ms.sum())
+    if infra > 0.1:
+        prob["infrasonido"] = {"pct": round(100 * infra),
+                               "nota": "energía bajo 20 Hz, que no se oye pero gasta nivel y mueve los parlantes"}
+    clics = j["clics"] * suena
+    if clics.sum() > 0:
+        eventos = _eventos(t, clics > 0)
+        prob["posibles_clics"] = {"veces": len(eventos), "donde": [reloj(e) for e in eventos[:5]]}
+    vecinos = np.zeros(len(t), bool)
+    vecinos[1:-1] = suena[:-2] & suena[2:]
+    cortes = (j["cortes"] > 0) & vecinos
+    if cortes.any():
+        eventos = _eventos(t, cortes)
+        prob["cortes"] = {"veces": len(eventos), "donde": [reloj(e) for e in eventos[:5]]}
+        if len(eventos) > 20:
+            prob["cortes"]["nota"] = "frecuentes: probablemente una puerta (gate), un efecto o una edición a propósito"
+    bordes = [(tb, q) for tb, q in j.get("bordes") or []]
+    if bordes:
+        prob["bordes_sin_fundido"] = {"veces": len(bordes),
+                                      "donde": [f"{'inicio' if q == 'inicio' else 'final'} de clip en {reloj(tb)}"
+                                                for tb, q in bordes[:5]]}
     out["problemas"] = prob
 
     # estéreo
@@ -362,6 +462,12 @@ def resumir(j, reloj=None):
         c = float(np.average(corr[np.isfinite(corr)], weights=pesos))
         b = float(np.average(j["bal"][suena][np.isfinite(corr)], weights=pesos))
         est.update({"correlacion": round(c, 2), "balance_db": round(b, 1)})
+        ok = np.isfinite(j["corr"]) & suena
+        r = 10 ** (j["bal"][ok] / 10)
+        msb = 10 ** (rms[ok] / 10)
+        L, R = 2 * msb * r / (1 + r), 2 * msb / (1 + r)
+        cruz = (j["corr"][ok] * np.sqrt(L * R)).sum()
+        est["suma_mono_db"] = round(float(10 * np.log10(max(1 + 2 * cruz / (L.sum() + R.sum()), 1e-6))), 1)
         if c > 0.995 and abs(b) < 0.5:
             est["tipo"] = "mono duplicado"
         elif c > 0.9:
@@ -392,7 +498,155 @@ def resumir(j, reloj=None):
              "centroide_hz": round(cent), "planitud": round(plan, 3)}
     color["palabras"] = _color(bandas, cent, plan)
     out["color"] = color
+    out["altura"] = _altura(j, suena, ms) if "ruidoso" not in color["palabras"] else {}
+    out["articulacion"] = _articulacion(j, suena, umbral, reloj)
+    out["forma"] = _forma(j, suena, st, reloj)
     out["palabras"] = _palabras(out)
+    return out
+
+
+def _nota(fr):
+    m = int(round(69 + 12 * math.log2(fr / 440)))
+    return f"{NOTAS[m % 12]}{m // 12 - 1}"
+
+
+def _altura(j, suena, ms):
+    """La nota que más suena, contando los bloques con un pico claro (tonales)."""
+    import numpy as np
+    ok = (j["fprom"][suena] > 20) & (j["fdom"][suena] > 50)
+    if ok.sum() < 5 or ok.mean() < 0.3:
+        return {"tonal_pct": round(100 * float(ok.mean())) if len(ok) else 0}
+    fr, w = j["fdom"][suena][ok], ms[ok]
+    midi = np.round(69 + 12 * np.log2(fr / 440)).astype(int)
+    pesos = {}
+    for m_, w_ in zip(midi, w):
+        pesos[m_] = pesos.get(m_, 0) + w_
+    tot = sum(pesos.values())
+    orden = sorted(pesos.items(), key=lambda x: -x[1])[:4]
+    notas = [{"nota": f"{NOTAS[m_ % 12]}{m_ // 12 - 1}", "hz": round(float(440 * 2 ** ((m_ - 69) / 12)), 1),
+              "pct": round(float(100 * w_ / tot))} for m_, w_ in orden]
+    return {"tonal_pct": round(100 * float(ok.mean())), "notas": notas}
+
+
+def _articulacion(j, suena, umbral, reloj=None):
+    """Golpes por segundo, si es percusivo (el sonido cae rápido después de
+    cada golpe) o sostenido, regularidad y, en una sesión, cuántos golpes caen
+    en la grilla de semicorcheas del tempo."""
+    import numpy as np
+    t = j["t"]
+    zona = np.convolve(suena.astype(float), np.ones(21), mode="same") > 0      # lo que suena ±1 s
+    activo_s = float(zona.sum()) * BLOQUE_S
+    g = j["golpes"]
+    if len(g):
+        idx = np.clip(np.searchsorted(t, g[:, 0], side="right") - 1, 0, len(t) - 1)
+        g = g[suena[idx] & (g[:, 1] > umbral + 6)]
+    out = {"golpes": int(len(g)), "golpes_por_s": round(len(g) / activo_s, 2) if activo_s else 0,
+           "cresta_db": round(float(np.median(j["cresta"][suena])), 1)}
+    caida = float(np.median(g[:, 2])) if len(g) >= 5 else 0.0
+    out["caida_db"] = round(caida, 1)
+    if len(g) < 5 or out["golpes_por_s"] < 0.2 or caida < 4:
+        out["ataque"] = "sostenido"
+    elif caida > 9:                       # calibrado: kultrun 10-12 dB, cascabeles 6-7, sintes < 4
+        out["ataque"] = "percusivo"
+    else:
+        out["ataque"] = "mixto"
+    if len(g) >= 8:
+        ioi = np.diff(g[:, 0])
+        ioi = ioi[(ioi > 0.06) & (ioi < 2.0)]
+        if len(ioi) >= 6:
+            med = float(np.median(ioi))
+            cv = float(np.median(np.abs(ioi - med)) / med)          # dispersión robusta
+            out["regularidad"] = "regular" if cv < 0.08 else "bastante regular" if cv < 0.2 else "irregular"
+            if cv < 0.08:
+                bpm = 60 / med
+                while bpm < 70:
+                    bpm *= 2
+                while bpm >= 180:
+                    bpm /= 2
+                out["pulso_bpm"] = round(bpm)
+        if reloj is not None and getattr(reloj, "comun", None):
+            from .protools import tiempo as T
+            semi = T.TICKS_NEGRA // 4
+            dev = []
+            for tg in g[:, 0]:
+                tk = T.tick_de_segundos(float(tg), reloj.mapa)
+                r = tk % semi
+                dev.append(min(r, semi - r) / semi)
+            dev = np.array(dev)
+            out["en_grilla_pct"] = round(100 * float((dev < 0.15).mean()))     # al azar daría ~30 %
+    return out
+
+
+def _forma(j, suena, st, reloj):
+    """Curva de nivel en 20 tramos (dB respecto del más fuerte), su palabra y
+    los momentos donde cambia el carácter (nivel o brillo)."""
+    import numpy as np
+    t = j["t"]
+    n = len(t)
+    if n < 40:
+        return {}
+    cortes = np.linspace(0, n, 21).astype(int)
+    kms = 10 ** (j["k"] / 10)
+    niv = []
+    for a, b in zip(cortes, cortes[1:]):
+        x = kms[a:b][suena[a:b]]
+        niv.append(-0.691 + 10 * math.log10(x.mean()) if len(x) and b - a and suena[a:b].mean() > 0.2 else None)
+    vivos = [v for v in niv if v is not None]
+    tope = max(vivos) if vivos else 0
+    curva = [None if v is None else round(v - tope) for v in niv]
+    out = {"curva_db": curva}
+    pal = []
+    huecos = sum(1 for v in niv if v is None)
+    if len(vivos) >= 3:
+        rango = max(vivos) - min(vivos)
+        x = np.array([i for i, v in enumerate(niv) if v is not None], float)
+        y = np.array(vivos)
+        pend = float(np.polyfit(x, y, 1)[0]) * 20 if len(x) > 2 else 0
+        tercio = len(vivos) // 3 or 1
+        ini, fin = np.mean(vivos[:tercio]), np.mean(vivos[-tercio:])
+        if huecos >= 5 and suena.mean() < 0.6:
+            pal.append("intermitente")
+        if rango < 4:
+            pal.append("constante")
+        elif pend > 6 and fin > ini + 4:
+            pal.append("crescendo")
+        elif pend < -6 and fin < ini - 4:
+            pal.append("decrescendo")
+        else:
+            final = [v for v in niv[-3:] if v is not None]
+            resto = [v for v in niv[:-3] if v is not None]
+            if final and resto:
+                if np.mean(final) > np.mean(resto) + 4:
+                    pal.append("crece al final")
+                elif np.mean(final) < np.mean(resto) - 6:
+                    pal.append("se apaga al final")
+            if not pal:
+                pal.append("con subidas y bajadas")
+    out["palabra"] = ", ".join(pal)
+    # cambios de carácter: ventanas de 5 s comparadas con la anterior
+    v = 50
+    cambios = []
+    if n >= 3 * v:
+        prev = None
+        for a in range(0, n - v + 1, v):
+            sel = suena[a:a + v]
+            if sel.mean() < 0.5:
+                prev = None
+                continue
+            nivel = -0.691 + 10 * math.log10(kms[a:a + v][sel].mean())
+            brillo = math.log2(float(np.median(j["centroide"][a:a + v][sel])) + 1)
+            if prev:
+                d_niv, d_bri = nivel - prev[0], brillo - prev[1]
+                que = []
+                if abs(d_niv) > 6:
+                    que.append(f"{'sube' if d_niv > 0 else 'baja'} {abs(d_niv):.0f} dB")
+                if abs(d_bri) > 0.8:
+                    que.append("más brillante" if d_bri > 0 else "más opaco")
+                if que:
+                    cambios.append({"en": reloj(float(t[a])), "cambio": ", ".join(que)})
+            prev = (nivel, brillo)
+    if cambios:
+        out["cambios"] = cambios[:6]
     return out
 
 
@@ -436,26 +690,52 @@ def _color(b, cent, plan):
 
 
 def _palabras(f):
+    """Una línea: color y ataque; golpes; nota; cuándo suena; forma; nivel;
+    problemas; estéreo."""
     t, n, pr, e = f["tiempo"], f["nivel"], f["problemas"], f["estereo"]
-    partes = [f["color"]["palabras"]]
+    a, h, fo = f.get("articulacion") or {}, f.get("altura") or {}, f.get("forma") or {}
+    partes = [f["color"]["palabras"] + (f", {a['ataque']}" if a.get("ataque") else "")]
+    if a.get("ataque") in ("percusivo", "mixto") and a.get("golpes_por_s"):
+        g = f"{a['golpes_por_s']} golpes/s"
+        if a.get("regularidad"):
+            g += f", {a['regularidad']}" + (f" (~{a['pulso_bpm']} bpm)" if a.get("pulso_bpm") else "")
+        if a.get("en_grilla_pct") is not None:
+            p_ = a["en_grilla_pct"]
+            g += (", cuadra con la grilla" if p_ >= 70 else ", cuadra a medias con la grilla" if p_ >= 45
+                  else ", suelto respecto de la grilla") + f" ({p_} % de los golpes)"
+        partes.append(g)
+    if h.get("notas"):
+        partes.append(f"nota más presente {h['notas'][0]['nota']}")
     if t["suena_pct"] >= 95:
         partes.append("suena todo el tramo")
     else:
         partes.append(f"suena el {t['suena_pct']} % (de {t['sonido_desde']} a {t['sonido_hasta']})")
+    if fo.get("palabra"):
+        partes.append(fo["palabra"])
     nivel = f"{n['lufs']} LUFS" if n.get("lufs") is not None else f"{n['rms_dbfs']} dBFS RMS"
     partes.append(f"{nivel}, pico {n['pico_dbfs']} dBFS")
-    if n.get("rango_lu") is not None:
-        partes.append("nivel parejo" if n["rango_lu"] < 4 else "bastante dinámico" if n["rango_lu"] > 12 else "")
     if "saturacion" in pr:
         s = pr["saturacion"]
         partes.append(f"satura {s['veces']} {'vez' if s['veces'] == 1 else 'veces'} (primera en {s['donde'][0]})")
     if "sobre_0dbfs" in pr:
         partes.append(f"con el clip gain pasa 0 dBFS (pico {pr['sobre_0dbfs']['pico_dbfs']}, primera en "
                       f"{pr['sobre_0dbfs']['donde'][0]})")
-    if "corriente_continua" in pr:
-        partes.append("tiene corriente continua")
-    partes.append(e["tipo"] + (f", {e['lado']}" if e.get("lado") else ""))
-    return "; ".join(p for p in partes if p)
+    if "continua" in pr:
+        partes.append("continua " + ("fija" if pr["continua"]["tipo"].startswith("fija") else "variable"))
+    if "infrasonido" in pr:
+        partes.append(f"{pr['infrasonido']['pct']} % de infrasonido")
+    if "posibles_clics" in pr:
+        partes.append(f"{pr['posibles_clics']['veces']} posibles clics (primero en {pr['posibles_clics']['donde'][0]})")
+    if "cortes" in pr:
+        partes.append("cortes a cero frecuentes (¿puerta o efecto?)" if pr["cortes"].get("nota")
+                      else f"{pr['cortes']['veces']} cortes a cero (primero en {pr['cortes']['donde'][0]})")
+    if "bordes_sin_fundido" in pr:
+        partes.append(f"{pr['bordes_sin_fundido']['veces']} bordes de clip sin fundido")
+    est = e["tipo"] + (f", {e['lado']}" if e.get("lado") else "")
+    if e.get("suma_mono_db") is not None and e["suma_mono_db"] <= -1:
+        est += f", pierde {-e['suma_mono_db']} dB en mono"
+    partes.append(est)
+    return "; ".join(x for x in partes if x)
 
 
 # ------------------------------------------------------------------ archivo suelto
@@ -596,6 +876,8 @@ class Sesion:
         """(Tramo de la pista, clips sin serie). rango: (desde_s, hasta_s) de la sesión."""
         from .consolidar import _ganancia
         tr, sin = Tramo(), 0
+        bordes_pista = [(c["segundos"], c["segundos"] + c["largo_muestras"] / self.fs)
+                        for c in pista.get("clips") or [] if c.get("segundos") is not None and c.get("largo_muestras")]
         for c in pista.get("clips") or []:
             if c.get("tipo") != "audio" or c.get("archivo") is None or c.get("segundos") is None:
                 continue
@@ -615,7 +897,19 @@ class Sesion:
                 a, b = max(a, rango[0]), min(b, rango[1])
             b0 = (desde + (a - ini) * self.fs) / n
             b1 = (desde + (b - ini) * self.fs) / n
-            tr.agregar(s, m, math.floor(b0), math.ceil(b1), _ganancia(c), ini + (math.floor(b0) * n - desde) / self.fs)
+            g = _ganancia(c)
+            tr.agregar(s, m, math.floor(b0), math.ceil(b1), g, ini + (math.floor(b0) * n - desde) / self.fs)
+            # bordes que pueden sonar a golpe: el clip empieza o termina con sonido, sin fundido
+            # y sin otro clip pegado
+            tipos = {fd.get("tipo") for fd in c.get("fundidos") or []}
+            rms = s["rms"]
+            i0, i1 = int(desde / n), int((desde + c["largo_muestras"]) / n) - 1
+            if a == ini and "entrada" not in tipos and 0 <= i0 < len(rms) and rms[i0] + g > -40 \
+                    and not any(abs(f_ - ini) < 0.002 for _, f_ in bordes_pista):
+                tr.bordes.append((ini, "inicio"))
+            if b == fin and "salida" not in tipos and 0 <= i1 < len(rms) and rms[i1] + g > -40 \
+                    and not any(abs(i_ - fin) < 0.002 for i_, _ in bordes_pista):
+                tr.bordes.append((fin, "fin"))
         return tr, sin
 
     def ficha(self, nombre, cancion=None):
@@ -654,4 +948,135 @@ class Sesion:
             j = tr.juntar()
             if j is not None:
                 out[p["nombre"]] = resumir(j, self.reloj)["palabras"]
+        return out
+
+    # -------------------------------------------------------------- canción
+
+    def _pistas_en(self, rango):
+        """[(pista, tramo juntado, umbral de sonido)] de las pistas de audio con
+        sonido en el rango."""
+        out = []
+        for p in self.comun["pistas"]:
+            if p["tipo"] != "audio":
+                continue
+            j = self.tramo(p, rango)[0].juntar()
+            if j is None or not len(j["rms"]):
+                continue
+            umbral = max(SILENCIO_DB, float(j["rms"].max()) - 45)
+            if (j["rms"] > umbral).any():
+                out.append((p, j, umbral))
+        return out
+
+    @staticmethod
+    def _en_ventana(j, umbral, ta, tb):
+        """(fracción del tiempo que suena, potencia K media) de la pista entre ta y tb."""
+        import numpy as np
+        sel = (j["t"] >= ta) & (j["t"] < tb)
+        if not sel.any():
+            return 0.0, 0.0
+        suena = j["rms"][sel] > umbral
+        frac = float(suena.sum()) * BLOQUE_S / max(tb - ta, BLOQUE_S)
+        return frac, float((10 ** (j["k"][sel] / 10)).mean())
+
+    def mapa(self, cancion, compases_por_tramo=4):
+        """La canción por tramos de N compases: qué pistas suenan, cuáles entran
+        y salen, sonoridad aproximada de la suma; los tramos iguales seguidos se
+        juntan en secciones y se proponen los lugares donde cambia mucho."""
+        cn, a, b = _ventana_cancion(self.comun, cancion)
+        pistas = self._pistas_en((a, b))
+        if not pistas:
+            raise ErrorFicha(f"no hay audio con ficha en {cn} (¿falta fichas_calcular?)")
+        b = min(b, max(float(j["t"][-1]) + BLOQUE_S for _, j, _ in pistas))
+        primero = self.reloj.compas_de(a)
+        N = max(int(compases_por_tramo), 1)
+        tramos, k = [], primero
+        while True:
+            ta, tb = max(self.reloj.segundo_de_compas(k), a), min(self.reloj.segundo_de_compas(k + N), b)
+            if ta >= b:
+                break
+            suenan = []
+            total = 0.0
+            for p, j, u in pistas:
+                frac, pot = self._en_ventana(j, u, ta, tb)
+                total += pot
+                if frac > 0.3:
+                    suenan.append((pot, p["nombre"]))
+            tramos.append({"k": k, "ta": ta, "tb": tb, "suenan": [n for _, n in sorted(suenan, reverse=True)],
+                           "lufs": round(-0.691 + 10 * math.log10(total), 1) if total > 0 else None})
+            k += N
+        secciones = []
+        for tr in tramos:
+            if secciones and set(secciones[-1]["suenan"]) == set(tr["suenan"]):
+                s_ = secciones[-1]
+                s_["hasta_k"], s_["tb"] = tr["k"] + N - 1, tr["tb"]
+                s_["niveles"].append(tr["lufs"])
+            else:
+                secciones.append({**tr, "hasta_k": tr["k"] + N - 1, "niveles": [tr["lufs"]]})
+        out, previo, propuestas = [], set(), []
+        for i, s_ in enumerate(secciones):
+            actual = set(s_["suenan"])
+            entran = [n for n in s_["suenan"] if n not in previo]
+            salen = sorted(previo - actual)
+            niv = [x for x in s_["niveles"] if x is not None]
+            lufs = round(sum(niv) / len(niv), 1) if niv else None
+            fila = {"compases": f"{s_['k']}–{s_['hasta_k']}",
+                    "en_cancion": f"{s_['k'] - primero + 1}–{s_['hasta_k'] - primero + 1}",
+                    "desde": self.reloj(s_["ta"]), "suenan": s_["suenan"], "lufs": lufs}
+            if i:
+                fila["entran"], fila["salen"] = entran, salen
+                cambio_nivel = (lufs is not None and out[-1]["lufs"] is not None and abs(lufs - out[-1]["lufs"]) >= 6)
+                if len(entran) + len(salen) >= 2 or cambio_nivel:
+                    propuestas.append({"compas": s_["k"], "en_cancion": s_["k"] - primero + 1,
+                                       "por": (f"entran {len(entran)}, salen {len(salen)}"
+                                               + (f", nivel {lufs - out[-1]['lufs']:+.0f} dB" if cambio_nivel else ""))})
+            out.append(fila)
+            previo = actual
+        texto = []
+        for f_ in out:
+            linea = f"c. {f_['compases']} (compás {f_['en_cancion']} de la canción, {f_['desde'].split(' ')[0]})"
+            linea += f": {len(f_['suenan'])} pistas"
+            if f_.get("lufs") is not None:
+                linea += f", {f_['lufs']} LUFS"
+            if f_.get("entran"):
+                linea += "; entran " + ", ".join(f_["entran"])
+            if f_.get("salen"):
+                linea += "; salen " + ", ".join(f_["salen"])
+            if "entran" not in f_:
+                linea += ("; suenan " + ", ".join(f_["suenan"])) if f_["suenan"] else "; silencio"
+            texto.append(linea)
+        return {"cancion": cn, "primer_compas": primero, "compases_por_tramo": N, "secciones": out,
+                "posibles_secciones": propuestas, "texto": texto,
+                "nota": "Suma aproximada: con el clip gain, sin fader, plugins ni fundidos."}
+
+    def que_suena(self, compas=None, segundo=None, cancion=None):
+        """Las pistas que suenan en un compás (de la sesión o, con 'cancion', contado
+        desde el inicio de la canción) o en el compás que contiene 'segundo', de la
+        más fuerte a la más suave, con su color en ese momento."""
+        import numpy as np
+        primero = None
+        if cancion:
+            cn, a, _ = _ventana_cancion(self.comun, cancion)
+            primero = self.reloj.compas_de(a)
+        if compas is not None:
+            num = (primero + compas - 1) if primero is not None else compas
+        elif segundo is not None:
+            num = self.reloj.compas_de(segundo)
+        else:
+            raise ErrorFicha("indicar compas o segundo")
+        ta, tb = self.reloj.segundo_de_compas(num), self.reloj.segundo_de_compas(num + 1)
+        filas = []
+        for p, j, u in self._pistas_en((ta, tb)):
+            frac, pot = self._en_ventana(j, u, ta, tb)
+            if frac < 0.2:
+                continue
+            sel = (j["t"] >= ta) & (j["t"] < tb) & (j["rms"] > u)
+            ms = 10 ** (j["rms"][sel] / 10)
+            bandas = (j["bandas"][sel] * ms[:, None]).sum(axis=0) / ms.sum()
+            color = _color(bandas, float(np.median(j["centroide"][sel])), float(np.median(j["planitud"][sel])))
+            filas.append({"pista": p["nombre"], "lufs": round(-0.691 + 10 * math.log10(pot), 1),
+                          "suena_pct": round(100 * min(frac, 1)), "color": color})
+        filas.sort(key=lambda x: -x["lufs"])
+        out = {"compas": num, "desde": self.reloj(ta), "hasta": self.reloj(tb), "suenan": filas}
+        if primero is not None:
+            out["cancion"], out["en_cancion"] = cn, num - primero + 1
         return out
