@@ -117,7 +117,33 @@ def main(argv=None):
     cv.add_argument("--frecuencia", type=int, required=True)
     cv.add_argument("--bits", type=int, help="16, 24, 32 o -32 (flotante); por defecto los del original")
     cv.add_argument("--mono", action="store_true", help="un archivo mono por canal, como los usa Pro Tools")
+    gr = sub.add_parser("grupos", help="crea grupos de pistas en una copia de una sesión .ptx según los nombres")
+    gr.add_argument("sesion")
+    gr.add_argument("reglas", help='JSON: {"grupos": [{"nombre", "patron", "tipo": "ambos"|"mezcla"}], "grupo_midi": "MIDI"}')
+    gr.add_argument("-o", "--salida", required=True)
+    gr.add_argument("--plan", action="store_true", help="solo muestra qué pistas irían a cada grupo")
     a = p.parse_args(argv)
+    if a.orden == "grupos":
+        from pathlib import Path
+        from .comun import leer_comun
+        from .protools.grupos import agregar_grupos, grupos_por_nombre
+        from .protools.descifrado import leer_descifrado
+        from .protools.reconstruccion import cifrar
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        reglas = json.loads(Path(a.reglas).read_text(encoding="utf-8-sig"))
+        pistas = [(x["nombre"], x["tipo"]) for x in leer_comun(a.sesion)["pistas"]]
+        grupos = grupos_por_nombre(pistas, reglas["grupos"], reglas.get("grupo_midi"))
+        for g in grupos:
+            print(f"{g['nombre']} ({len(g['pistas'])}): " + ", ".join(g["pistas"]))
+        sueltas = sorted({n for n, t in pistas if t in ("audio", "midi", "0x0007")} - {x for g in grupos for x in g["pistas"]})
+        print(f"sin grupo ({len(sueltas)}): " + ", ".join(sueltas))
+        if not a.plan:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            Path(a.salida).write_bytes(cifrar(agregar_grupos(leer_descifrado(a.sesion), grupos)))
+            print(f"escrito {a.salida}")
+        return
     if a.orden in ("bpm", "convertir-audio"):
         from . import audio
         if hasattr(sys.stdout, "reconfigure"):

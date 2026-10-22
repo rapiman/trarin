@@ -243,6 +243,13 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     `0x258A` (u32 cantidad justo antes de las tiras; u16 número de pista en +2);
   - en el índice: las posiciones nuevas en las listas, una entrada `(0x2519, 1, n+1) + 0x251A` antes
     de la de `0x2716` (cuyo número pasa a n+1) y una entrada para el canal.
+- **Crear grupos de pistas** [verificado en Pro Tools 12, comparado byte a byte con grupos creados
+  en Pro Tools]: `0x202B` lleva u32 cantidad y un `0x202A` por grupo (el primero `<ALL>`), y luego
+  otra vez la cantidad y la misma lista. `0x202A`: u32 largo y nombre, u8 tipo (1 mezcla, 2 mezcla y
+  edición), u32 número (`<ALL>` FFFFFFFF; los demás 1, 2, 3…, letras a, b, c…), u8 edición y u8
+  mezcla activos (0101 / 0001; Pro Tools los cambia al usar los grupos), u32 cantidad de pistas y
+  un u16 por pista (su lugar en `0x2519`), `FEFF 1180 0100 0000 0000 FFFF` y un `0x258E` fijo de 61
+  bytes. El índice no apunta a los `0x202A`. Una pista puede estar en varios grupos.
 - **Crear una pista MIDI** [comparado con una pista MIDI creada en Pro Tools 12]: entrada en `0x2519`
   y `0x251A` en cada mitad con tipo 1; una playlist `0x1057` vacía al final de `0x1058` (nombre,
   u32 cantidad de colocaciones en 0 y sus hijos sin `0x1056`); un canal `0x2620` (sin `0x261B` ni
