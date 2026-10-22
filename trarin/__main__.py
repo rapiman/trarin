@@ -127,7 +127,13 @@ def main(argv=None):
     co.add_argument("reglas", help="JSON con canciones, categorías, rutas, auxiliares… (ver trarin/consolidar.py)")
     co.add_argument("-o", "--salida", required=True)
     co.add_argument("--plan", action="store_true", help="solo muestra qué pistas van a cada pista nueva")
+    tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
+    tj.add_argument("carpeta")
     a = p.parse_args(argv)
+    if a.orden == "_trabajo":
+        from .trabajos import correr
+        correr(a.carpeta)
+        return
     if a.orden == "consolidar":
         from pathlib import Path
         from . import consolidar as K

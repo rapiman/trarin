@@ -40,7 +40,7 @@ La tabla siguiente es de Pro Tools.
 | Colores de pista, grupos, playlists alternativas | listo |
 | Significado de cada parámetro en el estado propio de un plugin | no está en el archivo |
 
-Más adelante: escritor de sesiones, servidor MCP y soporte para Ableton.
+Ver la hoja de ruta en `ROADMAP.md`.
 
 ## Uso
 
@@ -97,13 +97,32 @@ pip install -e ".[mcp]"
 python -m trarin mcp          # servidor MCP por stdio
 ```
 
-Herramientas: `leer_sesion`, `compatibilidad`, `planear_show`, `armar_show` y
-`escribir_sesion`. Las que escriben piden un archivo de salida que no exista.
-Para un cliente MCP (por ejemplo Claude Desktop):
+Herramientas (23), pensadas para que la IA sepa lo necesario sin leer la sesión
+entera:
+
+| Grupo | Herramientas |
+|---|---|
+| Mirar (solo leen) | `resumen_sesion` (una línea por pista, filtrable por nombre o canción), `detalle_pista`, `rutas_sesion`, `archivos_audio`, `comparar_sesiones`, `leer_sesion`, `paneo_live` |
+| Notas del proyecto | `notas`, `anotar` |
+| Shows | `compatibilidad`, `planear_show`, `armar_show` |
+| Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `escribir_sesion` |
+| Audio | `medir_bpm`, `convertir_audio` |
+| Trabajos | `trabajo_esperar`, `trabajo_estado`, `trabajo_matar`, `trabajos_recientes` |
+
+- Las que escriben piden un archivo de salida que no exista, vuelven a leer lo
+  escrito, lo comparan con el original y agregan una línea en las notas.
+- Lo que tarda (armar y consolidar, bpm, convertir audio) corre como **trabajo**
+  en un proceso aparte: la herramienta devuelve un id y `trabajo_esperar`
+  entrega el avance (solo las líneas nuevas) hasta 40 s por llamada. Los
+  trabajos quedan en `%LOCALAPPDATA%\trarin\trabajos` (o `TRARIN_TRABAJOS`).
+- **Notas del proyecto**: `trarin/notas.md` junto a la sesión, con decisiones,
+  lo hecho y lo pendiente, para retomar en otra conversación.
+
+Para Claude Desktop (`claude_desktop_config.json`, dentro de `mcpServers`):
 
 ```json
-{"mcpServers": {"trarin": {"command": "python", "args": ["-m", "trarin", "mcp"],
-                           "cwd": "D:\\Proyectos\\Personal\\trarin"}}}
+"trarin": {"command": "C:\\...\\python.exe", "args": ["-m", "trarin", "mcp"],
+           "env": {"PYTHONPATH": "D:\\Proyectos\\Personal\\trarin", "PYTHONIOENCODING": "utf-8"}}
 ```
 
 `escribir` aplica el JSON editado sobre una copia del archivo original y nunca

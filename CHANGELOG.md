@@ -5,6 +5,20 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Servidor MCP completo (fase 1)
+- 23 herramientas: vistas acotadas (`resumen_sesion`, `detalle_pista`,
+  `rutas_sesion`, `archivos_audio`, `comparar_sesiones`), notas del proyecto
+  (`notas`, `anotar`), consolidar y grupos con su plan, bpm, conversión de audio
+  y paneo de Live, además de las de antes.
+- Trabajos largos en un proceso aparte (`trarin/trabajos.py`): id, avance por
+  líneas nuevas, espera con tope de 40 s, matar y lista de recientes.
+- Al escribir: se relee el resultado, se compara con el original y se anota en
+  `trarin/notas.md` junto a la sesión (`trarin/notas.py`, `trarin/vistas.py`).
+- `consolidar` busca los sets de Live por su cuenta con `live_carpeta` y
+  `live_buscar` en las reglas (antes lo hacía un script aparte). Consolidar el
+  show por MCP da la misma sesión que la v2 (mismo modelo leído; solo cambian
+  los identificadores aleatorios de las pistas nuevas).
+
 ### Más rápido en sesiones grandes
 - Leer una sesión: el mapa de tempo se prepara una vez (`MapaTempo`, búsqueda
   binaria) en vez de recorrerse en cada conversión, y el descifrado se hace de
