@@ -375,10 +375,7 @@ def _instrumentos_nuevos(plan, canciones, desde, pistas, match):
 def _armar(show, salida, plan, canciones, base, desde, tmp):
     from .comun import leer_comun, aplicar
     from .protools.descifrado import leer_descifrado
-    from .protools.inserts import copiar_inserts, plugins_de
-    from .protools.pistas_nuevas import agregar_auxiliares, agregar_instrumento
-    from .protools.ruteo import (copiar_color, copiar_midi, copiar_ruteo, juntar_automatizacion,
-                                 poner_solo, solo)
+    from .protools.pistas_nuevas import agregar_instrumento
     from .protools.reconstruccion import cifrar
     avisos = []
     # opciones: buses "juntar" (el bus «Aux 1» de cada canción va al «Aux 1» del
@@ -497,62 +494,9 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
     if buses_show:
         d = _crear_buses(d, buses_show)
     ctx_de = {plan["canciones"][i]["nombre"]: plan["_temas"][i].get("_ctx", {}) for i in range(len(canciones))}
-    for nueva, nombre, sesion, pista, tipo, ini_m, cancion, *propio in copias:
-        if sesion is None:                          # pista armada desde archivos (sin sesión de origen)
-            continue
-        o = origen(sesion)
-        cx = propio[0] if propio else ctx_de.get(cancion, {})
-        esc, hasta = cx.get("escala", 1.0), cx.get("corte_m")
-        forzar = {}
-        if buses_show and nombre in salidas_show:
-            forzar = {"salida": salidas_show[nombre] or buses_show.get("salida_principal"), "envios": False}
-        if nueva and tipo != "retorno_externo":
-            try:
-                d = copiar_color(d, nombre, o, pista)
-                d = poner_solo(d, nombre, copiar_solo and solo(o, pista))
-            except Exception as e:
-                avisos.append(f"{nombre}: no se copió el color o el solo ({e})")
-        if tipo == "midi":
-            if nueva:                               # salida MIDI, valores y automatización
-                try:
-                    d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion, esc, hasta)
-                    avisos += av
-                except Exception as e:
-                    avisos.append(f"{nombre}: no se copió la salida MIDI ni la automatización ({e})")
-            continue
-        if tipo == "retorno_externo":
-            try:
-                d = agregar_auxiliares(d, [(nombre, externos[nombre])], externa=(o, pista))
-            except Exception as e:
-                avisos.append(f"{cancion}: el auxiliar {pista!r} no se copia ({e})")
-                continue
-        if tipo == "retorno_externo":
-            d = copiar_color(d, nombre, o, pista)
-            d = poner_solo(d, nombre, copiar_solo and solo(o, pista))
-        if not nueva:
-            try:
-                d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion, esc, hasta)
-                avisos += av
-            except Exception as e:
-                avisos.append(f"{nombre}: no se copió la automatización de {cancion} ({e})")
-            continue
-        try:
-            if plugins_de(o, pista):
-                d = copiar_inserts(d, nombre, o, pista)
-        except Exception as e:                      # se avisa y se sigue sin esos plugins
-            avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
-        try:
-            d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion,
-                                 f" ({cancion})" if separar_buses else "", esc, hasta, **forzar)
-            avisos += av
-        except Exception as e:                      # se avisa y se sigue con el de la plantilla
-            avisos.append(f"{nombre}: no se copió el ruteo ni la automatización ({e})")
-        if tipo == "instrumento":                   # además, su canal MIDI y salida MIDI
-            try:
-                d, av = copiar_midi(d, nombre, o, pista, ini_m, cancion, esc, hasta)
-                avisos += av
-            except Exception as e:
-                avisos.append(f"{nombre}: no se copió la salida MIDI ({e})")
+    d, av = _copiar_de_canciones(d, copias, origen, ctx_de, externos, salidas_show, buses_show,
+                                 separar_buses, copiar_solo)
+    avisos += av
     if buses_show:
         d, av = _ruteo_show(d, buses_show, salidas_show, copias, origen, tmp)
         avisos += av
@@ -561,6 +505,150 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
         _quitar_y_renombrar(salida, buses_show)
     return salida, avisos
 
+
+
+def _copiar_de_canciones(d, copias, origen, ctx_de, externos, salidas_show, buses_show, separar_buses,
+                         copiar_solo):
+    """Color, solo, plugins, ruteo, automatización y MIDI de cada pista del show
+    desde su pista de origen. Lo que toca un solo canal va en lotes (un
+    reconstruir por fase en vez de uno por pista y operación); el resultado es
+    el mismo que haciéndolo pista por pista. Devuelve (d, avisos).
+
+    Fases: 0) auxiliares copiados de las canciones; 1) color y solo; 2) plugins;
+    3) ruteo y, aparte, el corrimiento de su automatización al inicio de la
+    canción; 4) salida MIDI; 5) automatización de las canciones que caen en una
+    pista que ya existía (en rondas: una canción por pista y ronda, en orden)."""
+    from .protools.inserts import copiar_inserts, plugins_de
+    from .protools.pistas_nuevas import agregar_auxiliares
+    from .protools.reconstruccion import reconstruir
+    from .protools.ruteo import (NoAgrupable, copiar_color, copiar_midi, copiar_ruteo, correr_reemplazos,
+                                 en_lote, juntar_automatizacion, poner_solo, solo)
+    avisos = []
+
+    def avisando(etq, f):
+        """f(dd, lote) → avisos (en lote) o (d, avisos); un error se avisa y se sigue."""
+        def g(dd, lote):
+            propio = [] if lote is not None else None
+            try:
+                r = f(dd, propio)
+            except NoAgrupable:
+                raise
+            except Exception as e:
+                avisos.append(f"{etq} ({e})")
+                return [] if lote is not None else (dd, [])
+            if lote is not None:
+                lote += propio
+            return r
+        return g
+
+    items = []
+    for nueva, nombre, sesion, pista, tipo, ini_m, cancion, *propio in copias:
+        if sesion is None:                          # pista armada desde archivos (sin sesión de origen)
+            continue
+        cx = propio[0] if propio else ctx_de.get(cancion, {})
+        forzar = {}
+        if buses_show and nombre in salidas_show:
+            forzar = {"salida": salidas_show[nombre] or buses_show.get("salida_principal"), "envios": False}
+        items.append({"nueva": nueva, "nombre": nombre, "o": origen(sesion), "pista": pista, "tipo": tipo,
+                      "ini_m": ini_m, "cancion": cancion, "esc": cx.get("escala", 1.0), "hasta": cx.get("corte_m"),
+                      "forzar": forzar})
+
+    # 0) auxiliares de las canciones sin plantilla en la base
+    for it in items:
+        if it["tipo"] == "retorno_externo":
+            try:
+                d = agregar_auxiliares(d, [(it["nombre"], externos[it["nombre"]])], externa=(it["o"], it["pista"]))
+            except Exception as e:
+                avisos.append(f"{it['cancion']}: el auxiliar {it['pista']!r} no se copia ({e})")
+                it["fuera"] = True
+    items = [it for it in items if not it.get("fuera")]
+
+    # 1) color y solo de las pistas nuevas
+    def color_solo(it):
+        def f(dd, lote):
+            r = copiar_color(dd, it["nombre"], it["o"], it["pista"], lote=lote)
+            dd = dd if lote is not None else r
+            r = poner_solo(dd, it["nombre"], copiar_solo and solo(it["o"], it["pista"]), lote=lote)
+            return [] if lote is not None else (r, [])
+        return f
+    lote1 = []
+    for it in items:
+        if it["nueva"]:
+            etq = (f"{it['nombre']}: no se copió el color o el solo" if it["tipo"] != "retorno_externo"
+                   else f"{it['nombre']}: no se copió el color")
+            lote1.append(avisando(etq, color_solo(it)))
+    d, av = en_lote(d, lote1)
+    avisos += av
+
+    # 2) plugins
+    lote2 = []
+    for it in items:
+        if it["nueva"] and it["tipo"] not in ("midi",):
+            try:
+                con = bool(plugins_de(it["o"], it["pista"]))
+            except Exception as e:
+                avisos.append(f"{it['nombre']}: no se copiaron los plugins ({e})")
+                con = False
+            if con:
+                lote2.append(avisando(f"{it['nombre']}: no se copiaron los plugins",
+                                      lambda dd, lote, it=it: (lambda r: [] if lote is not None else (r, []))(
+                                          copiar_inserts(dd, it["nombre"], it["o"], it["pista"], lote=lote))))
+    d, av = en_lote(d, lote2)
+    avisos += av
+
+    # 3) ruteo (sin corrimiento, en lote) y después el corrimiento de la automatización
+    por_correr = []
+
+    def ruteo(it):
+        def f(dd, lote):
+            sufijo = f" ({it['cancion']})" if separar_buses else ""
+            if lote is None:                        # de a una: el ruteo con su corrimiento
+                return copiar_ruteo(dd, it["nombre"], it["o"], it["pista"], it["ini_m"], it["cancion"], sufijo,
+                                    it["esc"], it["hasta"], **it["forzar"])
+            av = copiar_ruteo(dd, it["nombre"], it["o"], it["pista"], 0, it["cancion"], sufijo, 1.0, None,
+                              lote=lote, **it["forzar"])
+            if it["ini_m"] or it["esc"] != 1 or it["hasta"] is not None:
+                por_correr.append(it)
+            return av
+        return f
+    lote3 = [avisando(f"{it['nombre']}: no se copió el ruteo ni la automatización", ruteo(it))
+             for it in items if it["nueva"] and it["tipo"] != "midi"]
+    d, av = en_lote(d, lote3)
+    avisos += av
+    reemplazos = []
+    for it in por_correr:
+        reemplazos += correr_reemplazos(d, it["nombre"], it["ini_m"], it["esc"], it["hasta"])
+    if reemplazos:
+        d = reconstruir(d, reemplazos)
+
+    # 4) salida MIDI (pistas MIDI nuevas y pistas de instrumento)
+    for it in items:
+        if it["nueva"] and it["tipo"] in ("midi", "instrumento"):
+            try:
+                d, av = copiar_midi(d, it["nombre"], it["o"], it["pista"], it["ini_m"], it["cancion"],
+                                    it["esc"], it["hasta"])
+                avisos += av
+            except Exception as e:
+                avisos.append(f"{it['nombre']}: no se copió " + ("la salida MIDI ni la automatización"
+                                                                 if it["tipo"] == "midi" else "la salida MIDI")
+                              + f" ({e})")
+
+    # 5) automatización de las canciones en pistas que ya existían, por rondas
+    rondas, vistas = [], {}
+    for it in items:
+        if not it["nueva"] and it["tipo"] != "midi":
+            k = vistas.get(it["nombre"], 0)
+            vistas[it["nombre"]] = k + 1
+            while len(rondas) <= k:
+                rondas.append([])
+            rondas[k].append(avisando(
+                f"{it['nombre']}: no se copió la automatización de {it['cancion']}",
+                lambda dd, lote, it=it: juntar_automatizacion(dd, it["nombre"], it["o"], it["pista"], it["ini_m"],
+                                                              it["cancion"], it["esc"], it["hasta"], lote=lote)))
+    for ronda in rondas:
+        d, av = en_lote(d, ronda)
+        avisos += av
+    return d, avisos
 
 def _clip_al_show(c, i, plan, ini_m, archivos, sesion, comun, ctx=None):
     """Clip de la canción i como clip nuevo del show (sin 'id'), o None si queda

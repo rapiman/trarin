@@ -266,8 +266,12 @@ def _calcular_guardar(rutas, carpeta, registro=None):
 
 
 def carpeta_fichas(ruta):
-    """`trarin/fichas` junto a la sesión o al archivo."""
+    """`trarin/fichas` junto a la sesión o al archivo (o la de la carpeta
+    `trarin` que ya lo contiene, p. ej. para una escucha)."""
     from .notas import carpeta
+    for padre in Path(ruta).resolve().parents:
+        if padre.name == "trarin" and (padre / "notas.md").exists():
+            return padre / "fichas"
     return carpeta(ruta) / "fichas"
 
 
@@ -970,7 +974,6 @@ class Sesion:
     @staticmethod
     def _en_ventana(j, umbral, ta, tb):
         """(fracción del tiempo que suena, potencia K media) de la pista entre ta y tb."""
-        import numpy as np
         sel = (j["t"] >= ta) & (j["t"] < tb)
         if not sel.any():
             return 0.0, 0.0
@@ -1080,3 +1083,148 @@ class Sesion:
         if primero is not None:
             out["cancion"], out["en_cancion"] = cn, num - primero + 1
         return out
+
+    # -------------------------------------------------------------- mezcla y niveles
+
+    def ganancia_mezcla(self, pista, t):
+        """dB que suma la mezcla de la pista en los segundos t: fader (o su
+        automatización de volumen, interpolada entre puntos) y mute (fijo o
+        automatizado; en mute: -150 dB)."""
+        import numpy as np
+        m = pista.get("mezcla") or {}
+        auto = pista.get("automatizacion") or {}
+        t = np.asarray(t, dtype=float)
+        vol = auto.get("volumen_db") or []
+        if len(vol) > 1 or (vol and len({p["valor"] for p in vol}) > 1):
+            xs = np.array([p["muestra"] for p in vol], float) / self.fs
+            g = np.interp(t, xs, np.array([p["valor"] for p in vol], float))
+        else:
+            g = np.full(len(t), float(m.get("volumen_db") or 0.0))
+        mute = auto.get("mute") or []
+        if mute:
+            xs = np.array([p["muestra"] for p in mute], float) / self.fs
+            k = np.searchsorted(xs, t, side="right") - 1
+            v = np.array([p["valor"] for p in mute], float)
+            g = np.where(v[np.clip(k, 0, len(v) - 1)] > 0.5, -150.0, g)
+        elif m.get("mute"):
+            g = np.full(len(t), -150.0)
+        return g
+
+    def con_mezcla(self, pista, j):
+        """El tramo juntado de la pista con la mezcla sumada (ver ganancia_mezcla)."""
+        g = self.ganancia_mezcla(pista, j["t"])
+        j = dict(j)
+        for c in ("rms", "pico", "k"):
+            j[c] = j[c] + g
+        if len(j["golpes"]):
+            gg = self.ganancia_mezcla(pista, j["golpes"][:, 0])
+            j["golpes"] = j["golpes"].copy()
+            j["golpes"][:, 1] += gg
+        return j
+
+    def revisar_niveles(self, cancion=None):
+        """Picos sobre 0 dBFS por pista con clip gain, fader y su automatización
+        (no ve plugins ni la suma en buses) y la sonoridad aproximada de cada
+        canción con la mezcla (suma de las pistas sin mute)."""
+        import numpy as np
+        rango = None
+        if cancion:
+            _, a, b = _ventana_cancion(self.comun, cancion)
+            rango = (a, b)
+        pistas = []
+        for p in self.comun["pistas"]:
+            if p["tipo"] != "audio":
+                continue
+            j = self.tramo(p, rango)[0].juntar()
+            if j is None:
+                continue
+            jm = self.con_mezcla(p, j)
+            sobre = jm["pico"] > 0.05
+            if sobre.any():
+                eventos = _eventos(jm["t"], sobre)
+                solo_clip = float(j["pico"].max()) > 0.05
+                fader = float(self.ganancia_mezcla(p, jm["t"][sobre]).max())
+                causa = ("clip gain" if solo_clip and fader <= 0.05 else "fader" if not solo_clip
+                         else "clip gain y fader")
+                pistas.append({"pista": p["nombre"], "pico_dbfs": round(float(jm["pico"].max()), 1),
+                               "veces": len(eventos), "donde": [self.reloj(e) for e in eventos[:5]],
+                               "causa": causa, "fader_db_max": round(fader, 1)})
+        pistas.sort(key=lambda x: -x["pico_dbfs"])
+        canciones = []
+        nombres = [n for n, _ in _canciones_de(self.comun)] if not cancion else [cancion]
+        for n in nombres:
+            try:
+                cn, a, b = _ventana_cancion(self.comun, n)
+            except ErrorFicha:
+                continue
+            total = None
+            for p in self.comun["pistas"]:
+                if p["tipo"] != "audio":
+                    continue
+                j = self.tramo(p, (a, b))[0].juntar()
+                if j is None:
+                    continue
+                jm = self.con_mezcla(p, j)
+                paso = np.floor((jm["t"] - a) / BLOQUE_S).astype(int)
+                ok = paso >= 0
+                pot = 10 ** (jm["k"][ok] / 10)
+                if total is None or paso[ok].max(initial=0) >= len(total):
+                    largo = int(max(paso[ok].max(initial=0) + 1, 0 if total is None else len(total)))
+                    nuevo = np.zeros(largo)
+                    if total is not None:
+                        nuevo[:len(total)] = total
+                    total = nuevo
+                np.add.at(total, paso[ok], pot)
+            if total is None or not (total > 0).any():
+                continue
+            corto = np.convolve(total, np.ones(4) / 4, mode="same")
+            lu = -0.691 + 10 * np.log10(corto + 1e-15)
+            g = lu > -70
+            rel = -0.691 + 10 * np.log10(corto[g].mean()) - 10
+            g2 = lu > max(-70, rel)
+            st = -0.691 + 10 * np.log10(np.convolve(total, np.ones(30) / 30, mode="same") + 1e-15)
+            canciones.append({"cancion": cn, "lufs": round(float(-0.691 + 10 * np.log10(corto[g2].mean())), 1),
+                              "lufs_3s_max": round(float(st.max()), 1)})
+        return {"sobre_0dbfs": pistas, "canciones": canciones,
+                "nota": "Con clip gain, fader, su automatización y mute; sin plugins, buses ni fader master. "
+                        "La sonoridad de la canción es la suma aproximada de las pistas."}
+
+    def marcadores_de_secciones(self, cancion, compases=None, compases_por_tramo=4):
+        """[(nombre, tick)] de los marcadores de sección de una canción: en los
+        compases pedidos (contados desde el inicio de la canción) o en los que
+        propone el mapa. Se llaman «<canción> B», «<canción> C»… (la canción ya
+        tiene su marcador)."""
+        from .protools import tiempo as T
+        cn, a, _ = _ventana_cancion(self.comun, cancion)
+        primero = self.reloj.compas_de(a)
+        if compases is None:
+            compases = [x["en_cancion"] for x in self.mapa(cancion, compases_por_tramo)["posibles_secciones"]]
+        out = []
+        for i, k in enumerate(sorted(set(int(x) for x in compases if int(x) > 1))):
+            seg = self.reloj.segundo_de_compas(primero + k - 1)
+            letra = chr(ord("B") + i) if i < 25 else f"Z{i - 24}"
+            out.append((f"{cn} {letra}", T.tick_de_segundos(seg + 1e-6, self.reloj.mapa), primero + k - 1, k))
+        return out
+
+
+def _canciones_de(comun):
+    from .vistas import _canciones
+    return _canciones(comun)
+
+
+def escribir_marcadores(sesion, salida, cancion, compases=None, compases_por_tramo=4):
+    """Escribe 'salida' (sesión nueva) con los marcadores de sección de la
+    canción agregados. Devuelve la lista de marcadores puestos."""
+    from .comun import aplicar
+    ses = Sesion(sesion)
+    nuevos = ses.marcadores_de_secciones(cancion, compases, compases_por_tramo)
+    if not nuevos:
+        raise ErrorFicha("no hay secciones que marcar")
+    comun = ses.comun
+    existentes = {(m["nombre"], m["tick"]) for m in comun["marcadores"]}
+    for nombre, tick, _, _ in nuevos:
+        if (nombre, tick) not in existentes:
+            comun["marcadores"].append({"nombre": nombre, "tick": tick})
+    aplicar(comun, ses.sesion, str(salida))
+    return [{"marcador": n, "compas": c, "en_cancion": k, "en": ses.reloj(ses.reloj.mapa.segundos(t))}
+            for n, t, c, k in nuevos]
