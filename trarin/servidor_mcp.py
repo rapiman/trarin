@@ -35,6 +35,23 @@ Reglas:
   compás («el compás 40 de Aliwen»). Son aproximadas: describen el audio con el clip gain,
   sin fader, plugins ni fundidos. Al conversar, traducirlas a palabras simples para
   alguien que quizás no conoce los términos técnicos.
+- Cómo habla la gente de un sonido y dónde mirarlo en la ficha:
+  - grave, agudo, bajo, alto, chillón → color (bandas); brillante, opaco, apagado, oscuro →
+    color (centroide); afinado, qué nota → altura (nota más presente; aproximada, no mide
+    afinación fina).
+  - golpea, pega, suave, ligado, sostenido → articulación (ataque); rápido, lento, cuántos
+    golpes → golpes por segundo; a tiempo, atrasado, suelto, cuadrado → en_grilla_pct.
+  - fuerte, bajito, se pierde, tapa a otro → nivel (LUFS) y `que_suena`; crece, sube, baja,
+    se apaga, entra, sale → forma y `mapa_cancion`.
+  - ancho, hueco, raro en mono, se va a un lado → estéreo (tipo, lado, suma_mono_db).
+  - chasquido, clic, golpe al cortar, se corta → problemas (clics, cortes, bordes sin
+    fundido); satura, revienta, distorsiona → saturación y sobre 0 dBFS; retumba, mueve los
+    parlantes, zumbido grave → infrasonido y continua.
+  - Todavía sin medida: rajado, áspero, vibrante; redoble, trémolo, tiembla; batimientos,
+    pulsa lento; bitonal, multifónico, dos notas a la vez (tarka, pifilka, antara);
+    onda asimétrica (pifilka, antara, trompeta, clarinete). Si la persona habla de eso,
+    decir que la ficha aún no lo mide, ofrecer lo más cercano (ruidoso, golpes regulares
+    rápidos, nota más presente, bandas) y sugerir escucharlo; no inventar el dato.
 """
 
 
