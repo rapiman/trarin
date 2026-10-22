@@ -122,7 +122,30 @@ def main(argv=None):
     gr.add_argument("reglas", help='JSON: {"grupos": [{"nombre", "patron", "tipo": "ambos"|"mezcla"}], "grupo_midi": "MIDI"}')
     gr.add_argument("-o", "--salida", required=True)
     gr.add_argument("--plan", action="store_true", help="solo muestra qué pistas irían a cada grupo")
+    co = sub.add_parser("consolidar", help="junta las pistas del mismo instrumento de un show .ptx en pocas pistas")
+    co.add_argument("sesion")
+    co.add_argument("reglas", help="JSON con canciones, categorías, rutas, auxiliares… (ver trarin/consolidar.py)")
+    co.add_argument("-o", "--salida", required=True)
+    co.add_argument("--plan", action="store_true", help="solo muestra qué pistas van a cada pista nueva")
     a = p.parse_args(argv)
+    if a.orden == "consolidar":
+        from pathlib import Path
+        from . import consolidar as K
+        from .comun import leer_comun
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        reglas = json.loads(Path(a.reglas).read_text(encoding="utf-8-sig"))
+        if a.plan:
+            print(K.texto(K.planear(leer_comun(a.sesion), reglas)))
+            return
+        if Path(a.salida).exists():
+            p.error(f"{a.salida} ya existe")
+        plan, avisos, _ = K.consolidar(a.sesion, reglas, a.salida)
+        print(K.texto(plan))
+        for x in avisos:
+            print(f"aviso: {x}")
+        print(f"escrito {a.salida}")
+        return
     if a.orden == "grupos":
         from pathlib import Path
         from .comun import leer_comun

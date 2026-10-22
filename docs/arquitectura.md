@@ -87,6 +87,17 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   tildes) calza, o a la salida principal; no lleva envíos. Los auxiliares de las canciones no se
   copian. Cada bus tiene un auxiliar estéreo con su entrada, copiado de `plantilla_aux` (un auxiliar
   cuya entrada es un bus). `quitar_pistas` quita al final las pistas de la plantilla que no se usan.
+- Consolidar (`consolidar.py`, `trarin consolidar`): sobre un show ya armado, junta las pistas del
+  mismo instrumento de las distintas canciones. Como en cada canción todos los stems suenan juntos,
+  dos pistas de una misma canción no pueden compartir pista: las mono van a «X L/C/R» según su
+  paneo (el del set de Live si la pista está ahí, si no el de Pro Tools) y, si el lado ya está
+  ocupado en esa canción, a «X C 2»…; las estéreo a «X estéreo», «X estéreo 2»… Cada pista nueva
+  lleva el clip gain llevado a un RMS común (medido por pista de origen y canción, solo en los
+  bloques de 100 ms con sonido), el paneo promedio, el fader en 0 dB, la automatización de volumen
+  (relativa al valor al empezar cada canción) y de mute, los plugins y el color de la primera
+  pista de origen que los tenga y la salida de su categoría. Las pistas MIDI se juntan por
+  categoría en carriles que no se pisan. Los archivos de audio se ubican con la lista de rutas de
+  la sesión (0x103A). Las pistas silenciadas no se tocan.
 
 ## Principios
 
