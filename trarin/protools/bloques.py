@@ -28,9 +28,29 @@ class Bloque:
         return self.inicio + self.tamano
 
     def recorrer(self):
-        yield self
-        for h in self.hijos:
-            yield from h.recorrer()
+        """El bloque y todos sus descendientes, en orden de posición (sin
+        generadores anidados: con miles de niveles de yield era lo más lento)."""
+        pila = [self]
+        while pila:
+            b = pila.pop()
+            yield b
+            if b.hijos:
+                pila.extend(reversed(b.hijos))
+
+
+class Arbol(list):
+    """Bloques de primer nivel. Guarda un índice por tipo de contenido que se
+    arma la primera vez que se busca en el árbol entero."""
+    _por_tipo = None
+
+    def por_tipo(self):
+        if self._por_tipo is None:
+            indice = {}
+            for raiz in self:
+                for b in raiz.recorrer():
+                    indice.setdefault(b.tipo_contenido, []).append(b)
+            self._por_tipo = indice
+        return self._por_tipo
 
 
 def _parsear(d: bytes, pos: int, maximo: int):
@@ -69,7 +89,7 @@ def _parsear(d: bytes, pos: int, maximo: int):
 
 def arbol(d: bytes, desde: int = 0x1F) -> list:
     """Bloques de primer nivel, con sus hijos."""
-    salida, i = [], desde
+    salida, i = Arbol(), desde
     while i < len(d) - 8:
         if d[i] != ZMARK:
             j = d.find(b"\x5a", i, len(d) - 8)
@@ -87,4 +107,6 @@ def arbol(d: bytes, desde: int = 0x1F) -> list:
 
 def buscar(bloques: list, tipo_contenido: int) -> list:
     """Todos los bloques (a cualquier profundidad) con ese tipo de contenido."""
+    if isinstance(bloques, Arbol):
+        return list(bloques.por_tipo().get(tipo_contenido, ()))
     return [b for raiz in bloques for b in raiz.recorrer() if b.tipo_contenido == tipo_contenido]

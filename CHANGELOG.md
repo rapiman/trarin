@@ -5,6 +5,20 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Quitar y agregar varias pistas de una vez
+- `quitar_pistas` con varias pistas hace una sola pasada sobre el archivo (antes,
+  una por pista): 55 pistas del show en 0,7 s en vez de 37 s. Los mismos bytes
+  que quitándolas de a una, comprobado en 275 casos (el show y sesiones de
+  prueba con audio, MIDI y auxiliares mezclados, en distinto orden).
+- `agregar_pistas` con varias pistas de audio (mono o estéreo) arma todo con un
+  solo `reconstruir` y escribe el índice una vez: 20 pistas en 4 s en vez de
+  24 s. Mismos bytes que de a una en 163 casos. Si el lote no se puede armar de
+  una vez (plantilla que no sirve, o varias estéreo en una sesión sin ninguna
+  estéreo) se agregan de a una. El modelo común agrega juntas las pistas de
+  audio seguidas.
+- `buscar` usa un índice por tipo de bloque que se arma una vez por árbol, y
+  recorrer el árbol ya no anida generadores.
+
 ### Consolidar pistas (Pro Tools)
 - `trarin consolidar sesion.ptx reglas.json -o salida.ptx`: sobre la misma
   sesión, las pistas del mismo instrumento de distintas canciones pasan a unas

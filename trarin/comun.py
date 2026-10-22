@@ -549,13 +549,18 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         usados.add(nombre)
         nombres.append((tipo, nombre, canales))
     d = leer_descifrado(plantilla)
-    for tipo, nombre, canales in nombres:
+    audio = []                          # pistas de audio seguidas: en una sola pasada
+    for tipo, nombre, canales in nombres + [(None, None, None)]:
+        if tipo == "audio":
+            audio.append((nombre, canales))
+            continue
+        if audio:
+            d = agregar_pistas(d, audio)
+            audio = []
         if tipo == "midi":
             d = agregar_pistas_midi(d, [nombre])
         elif tipo == "retorno":
             d = agregar_auxiliares(d, [(nombre, canales)])
-        else:
-            d = agregar_pistas(d, [(nombre, canales)])
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
         with os.fdopen(fd, "wb") as f:
