@@ -5,6 +5,23 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Fichas de sonido (fase 2, segunda parte)
+- Articulación: golpes detectados con envolvente de 10 ms, golpes por segundo,
+  regularidad y pulso aproximado; percusivo, mixto o sostenido según la cresta.
+- Altura: la nota que más suena en los momentos tonales (Do…Si con octava,
+  La4 = 440 Hz).
+- Forma: curva de nivel en 20 tramos, su palabra (constante, crescendo,
+  decrescendo, crece al final, se apaga al final, intermitente) y los cambios
+  de carácter (sube o baja de nivel, más brillante u opaco).
+- Problemas: posibles clics, cortes a cero, bordes de clip sin fundido, continua
+  fija o variable (la variable es típica del soplo en el micrófono, por ejemplo
+  en la pifilka) e infrasonido.
+- Estéreo: cuántos dB pierde (o gana) al sumarse en mono.
+- `mapa_cancion`: la canción por tramos de compases, qué entra y sale,
+  sonoridad de la suma y posibles marcadores de sección. `que_suena`: lo que
+  suena en un compás de la sesión o de una canción.
+- Las series cambian de versión: hay que volver a calcular las fichas.
+
 ### Fichas de sonido (fase 2, primera parte)
 - `trarin/fichas.py`: cada fuente (un archivo o los L/R de un clip estéreo) se
   analiza una vez en bloques de 0,1 s y la serie queda en `trarin/fichas/`

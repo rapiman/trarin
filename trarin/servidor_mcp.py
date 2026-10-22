@@ -27,10 +27,12 @@ Reglas:
 - Las que tienen modo plan (plan_consolidar, plan_grupos, planear_show) no escriben nada:
   mostrar el plan a la persona antes de escribir.
 - Fichas de sonido: para hablar del sonido sin escucharlo (grave o agudo, brillante u opaco,
-  dónde empieza a sonar, nivel en LUFS, saturación, mono o estéreo). Se calculan una vez por
-  sesión, solo cuando la persona lo pide (`fichas_calcular`, trabajo); después
-  `resumen_sesion` trae una línea de sonido por pista y `ficha` da el detalle de una pista,
-  de una canción o de un WAV suelto. Son aproximadas: describen el audio con el clip gain,
+  percusivo o sostenido, pulso, nota, dónde empieza a sonar, cómo crece, nivel en LUFS,
+  saturación, clics, mono o estéreo). Se calculan una vez por sesión, solo cuando la persona
+  lo pide (`fichas_calcular`, trabajo); después `resumen_sesion` trae una línea de sonido por
+  pista, `ficha` da el detalle de una pista, de una canción o de un WAV suelto,
+  `mapa_cancion` muestra qué entra y sale por compases y `que_suena` lo que suena en un
+  compás («el compás 40 de Aliwen»). Son aproximadas: describen el audio con el clip gain,
   sin fader, plugins ni fundidos. Al conversar, traducirlas a palabras simples para
   alguien que quizás no conoce los términos técnicos.
 """
@@ -149,8 +151,12 @@ def crear():
         (o del tramo desde_s–hasta_s), calculada en el momento si hace falta.
         Trae tiempo (dónde suena de verdad, silencios), nivel (pico, RMS, LUFS,
         rango, momentos más fuertes), problemas (saturación, picos sobre 0 dBFS
-        por el clip gain, corriente continua), estéreo, color (bandas, grave o
-        agudo, brillante u opaco, tonal o ruidoso) y una línea en palabras.
+        por el clip gain, continua (fija o variable), infrasonido, posibles clics, cortes a cero,
+        bordes de clip sin fundido), estéreo (tipo, lado, cuánto pierde en
+        mono), color (bandas, grave o agudo, brillante u opaco, tonal o
+        ruidoso), altura (nota más presente), articulación (golpes por segundo,
+        regularidad y pulso, percusivo o sostenido), forma (curva en 20 tramos,
+        constante, crescendo…, cambios de carácter) y una línea en palabras.
         Tiempos en m:ss y, en una sesión, también en compás|tiempo."""
         from . import fichas
         r = _existe(ruta)
@@ -166,6 +172,34 @@ def crear():
                 return {"cancion": nombre, "pistas": ses.palabras(cancion)}
             raise ValueError("indicar 'pista', 'cancion' o ambas")
         return fichas.ficha_archivo(r, None if desde_s < 0 else desde_s, None if hasta_s < 0 else hasta_s)
+
+    @herramienta
+    def mapa_cancion(ruta: str, cancion: str, compases_por_tramo: int = 4) -> dict:
+        """El mapa de una canción de la sesión, por tramos de N compases: qué
+        pistas suenan, cuáles entran y salen y la sonoridad aproximada de la
+        suma; los tramos iguales seguidos se juntan en secciones y se proponen
+        los compases donde cambia mucho (posibles marcadores de sección).
+        Compases de la sesión y contados desde el inicio de la canción.
+        Necesita fichas_calcular antes."""
+        from . import fichas
+        ses = fichas.Sesion(_existe(ruta))
+        if not ses.hay():
+            raise ValueError("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular "
+                             "(solo si la persona lo pide)")
+        return ses.mapa(cancion, compases_por_tramo)
+
+    @herramienta
+    def que_suena(ruta: str, compas: int = 0, cancion: str = "", segundo: float = -1) -> dict:
+        """Qué pistas suenan en un compás, de la más fuerte a la más suave, con
+        su color en ese momento. compas: número de compás de la sesión o, si se
+        indica 'cancion', contado desde el inicio de esa canción («el compás 40
+        de Aliwen»). O bien 'segundo' de la sesión. Necesita fichas_calcular."""
+        from . import fichas
+        ses = fichas.Sesion(_existe(ruta))
+        if not ses.hay():
+            raise ValueError("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular "
+                             "(solo si la persona lo pide)")
+        return ses.que_suena(compas or None, None if segundo < 0 else segundo, cancion or None)
 
     @herramienta
     def detalle_pista(ruta: str, pista: str, max_clips: int = 60) -> dict:

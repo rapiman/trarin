@@ -22,8 +22,11 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
   archivo, pista y canción; `fichas_calcular`, `ficha` y la línea de sonido en
   `resumen_sesion`.
 - ✅ Revisión de nivel básica: avisa picos sobre 0 dBFS por el clip gain.
-- Segunda parte: articulación, forma (curva y su palabra), clics y cortes, nota dominante y
-  el mapa de la canción; revisión de nivel con el fader.
+- ✅ Segunda parte: articulación, forma y cambios, clics, cortes, bordes sin fundido,
+  continua fija o variable, infrasonido, nota más presente, pérdida en mono, mapa de la
+  canción y qué suena en un compás.
+- Pendiente: revisión de nivel con el fader y su automatización; proponer los marcadores de
+  sección en la sesión.
 
 Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe describirlo
 («la pifilka que suena aguda al final») sin abrir los archivos.

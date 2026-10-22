@@ -97,7 +97,7 @@ pip install -e ".[mcp]"
 python -m trarin mcp          # servidor MCP por stdio
 ```
 
-Herramientas (25), pensadas para que la IA sepa lo necesario sin leer la sesión
+Herramientas (27), pensadas para que la IA sepa lo necesario sin leer la sesión
 entera:
 
 | Grupo | Herramientas |
@@ -106,7 +106,7 @@ entera:
 | Notas del proyecto | `notas`, `anotar` |
 | Shows | `compatibilidad`, `planear_show`, `armar_show` |
 | Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `escribir_sesion` |
-| Sonido | `fichas_calcular`, `ficha`, `medir_bpm`, `convertir_audio` |
+| Sonido | `fichas_calcular`, `ficha`, `mapa_cancion`, `que_suena`, `medir_bpm`, `convertir_audio` |
 | Trabajos | `trabajo_esperar`, `trabajo_estado`, `trabajo_matar`, `trabajos_recientes` |
 
 - Las que escriben piden un archivo de salida que no exista, vuelven a leer lo
@@ -119,7 +119,9 @@ entera:
   pedido, y quedan en `trarin/fichas/` junto a ella (solo se recalcula lo que
   cambió). Por pista, canción o archivo: dónde suena de verdad, silencios, pico,
   RMS, LUFS (BS.1770), rango, momentos más fuertes, saturación, picos sobre
-  0 dBFS por el clip gain, mono o estéreo, bandas y una línea en palabras
+  0 dBFS por el clip gain, clics, cortes, continua, mono o estéreo (y cuánto
+  pierde en mono), bandas, nota más presente, golpes y pulso, forma de la curva
+  de nivel y una línea en palabras
   («grave, opaco, tonal; suena el 60 % (de 0:05.0 (c. 3|1) a …); -14.6 LUFS…»).
   Aproximadas: con el clip gain, sin fader, plugins ni fundidos.
 - **Notas del proyecto**: `trarin/notas.md` junto a la sesión, con decisiones,
