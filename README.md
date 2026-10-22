@@ -55,6 +55,7 @@ python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan c
 python -m trarin show plan show.json      # cómo quedarían las canciones juntas (solo lee)
 python -m trarin show armar show.json     # escribe la sesión del show
 python -m trarin grupos show.ptx grupos.json -o show_grupos.ptx   # grupos de pistas por nombre
+python -m trarin consolidar show.ptx reglas.json -o show_v2.ptx   # junta pistas del mismo instrumento (--plan: solo muestra)
 python -m trarin bpm bombo.wav            # calcula el tempo de un audio (requiere trarin[audio])
 python -m trarin convertir-audio voz.wav voz48 --frecuencia 48000 --mono   # voz48.L.wav y voz48.R.wav
 ```

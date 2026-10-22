@@ -5,6 +5,22 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Consolidar pistas (Pro Tools)
+- `trarin consolidar sesion.ptx reglas.json -o salida.ptx`: sobre la misma
+  sesión, las pistas del mismo instrumento de distintas canciones pasan a unas
+  pocas pistas (mono por lado L/C/R según el paneo de Live o de Pro Tools,
+  estéreo aparte, una pista más cuando dos suenan juntas), con el clip gain
+  llevado a un RMS común, la automatización de volumen y mute por canción, los
+  plugins y la salida a un bus por categoría; las pistas MIDI se juntan en
+  carriles que no se pisan; crea auxiliares, cambia salidas, borra pistas y
+  arma los grupos. Las pistas silenciadas no se tocan.
+- Lectura del árbol de bloques unas 13 veces más rápida (salta directo al
+  siguiente 0x5A); mismo resultado en las 211 sesiones de prueba.
+- `reconstruir` ya no recorre todos los bloques por cada reemplazo (búsqueda
+  binaria y corrimientos acumulados): quitar una pista de un show de 160
+  pistas pasó de varios minutos a segundos; mismos bytes que antes en 151
+  operaciones de prueba.
+
 ### Grupos (Pro Tools)
 - `trarin grupos sesion.ptx reglas.json -o salida.ptx`: crea grupos de pistas
   según patrones sobre los nombres (una pista puede ir en varios grupos), más un

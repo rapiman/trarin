@@ -42,7 +42,13 @@ def _parsear(d: bytes, pos: int, maximo: int):
         return None
     b = Bloque(pos, contenido, tamano)
     i = 1
+    tope = min(pos + tamano, maximo)
     while i < tamano and pos + i < maximo:
+        if d[pos + i] != ZMARK:             # solo puede empezar un bloque en un 0x5A
+            j = d.find(b"\x5a", pos + i, tope)
+            if j < 0:
+                break
+            i = j - pos
         h = _parsear(d, pos + i, inicio + tamano)
         if h and i == 9 and d[pos + 10:pos + 13] == b"\0\0\0":
             # muchas listas llevan un u32 cantidad tras el tipo de contenido: con
@@ -65,6 +71,11 @@ def arbol(d: bytes, desde: int = 0x1F) -> list:
     """Bloques de primer nivel, con sus hijos."""
     salida, i = [], desde
     while i < len(d) - 8:
+        if d[i] != ZMARK:
+            j = d.find(b"\x5a", i, len(d) - 8)
+            if j < 0:
+                break
+            i = j
         b = _parsear(d, i, len(d))
         if b:
             salida.append(b)

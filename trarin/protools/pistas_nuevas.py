@@ -128,7 +128,21 @@ def agregar_pistas(d, nombres, plantilla=None):
         nombre, canales = (x, 1) if isinstance(x, str) else x
         if canales not in (1, 2):
             raise ErrorPista("solo se pueden crear pistas mono o estéreo")
-        d = _agregar_una(d, nombre, plantilla, canales)
+        try:
+            d = _agregar_una(d, nombre, plantilla, canales)
+        except ErrorPista as e:
+            if plantilla or "de la plantilla no reconocida" not in str(e):
+                raise
+            # la primera pista mono no sirve de plantilla (p. ej. su paneo): se prueban las otras
+            entradas = _lista_2519(d, _primero(arbol(d), 0x2519))[0]
+            for otra in [x[3] for x in entradas if x[2] == 0 and x[4] == 0]:
+                try:
+                    d = _agregar_una(d, nombre, otra, canales)
+                    break
+                except ErrorPista:
+                    continue
+            else:
+                raise
     return d
 
 
