@@ -65,10 +65,11 @@ def a_comun(n):
     else:
         base.update(_desde_flstudio(n))
     compases = n["compases"] if daw != "flstudio" else [{"tick": 0, "compas": 1, **base["compases"][0]}]
+    mapa = T.MapaTempo(n["tempo"])
     for p in base["pistas"]:
         for c in p["clips"]:
             c["posicion"] = T.compas_tiempo(c["tick"], compases)
-            c["segundos"] = round(T.segundos(c["tick"], n["tempo"]), 6)
+            c["segundos"] = round(T.segundos(c["tick"], mapa), 6)
     for m in base["marcadores"]:
         m["posicion"] = T.compas_tiempo(m["tick"], compases)
     return base
@@ -86,6 +87,7 @@ def _marcador(m, id_):
 
 def _desde_protools(n):
     fs = n["origen"].get("frecuencia_muestreo") or 48000
+    mapa = T.MapaTempo(n["tempo"])
     regiones = n["audio"]["regiones"]
     midi = n["midi"]["regiones"]
     mezcla = {m.get("nombre"): m for m in n.get("mezcla", [])}
@@ -108,10 +110,10 @@ def _desde_protools(n):
                 reg = regiones[r["indice_region"]]
                 c = {"id": f"{p['nombre']}#{j}", "tipo": "audio", "nombre": reg["nombre"],
                      "muestra": r["muestra"], "largo_muestras": reg["muestras"],
-                     "tick": T.tick_de_segundos(r["muestra"] / fs, n["tempo"]),
+                     "tick": T.tick_de_segundos(r["muestra"] / fs, mapa),
                      "archivo": reg["archivo"], "desde_muestra": reg["desde_muestra"],
                      "canales": len(ta["canales"])}
-                fin = T.tick_de_segundos((r["muestra"] + reg["muestras"]) / fs, n["tempo"])
+                fin = T.tick_de_segundos((r["muestra"] + reg["muestras"]) / fs, mapa)
                 c["largo_ticks"] = fin - c["tick"]
                 if "clip_gain_db" in reg:
                     c["ganancia_db"] = reg["clip_gain_db"]
@@ -487,13 +489,18 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     if autos:
         from .protools.descifrado import leer_descifrado
         from .protools.reconstruccion import cifrar
-        from .protools.ruteo import escribir_automatizacion
+        from .protools.ruteo import en_lote, escribir_automatizacion
         d = leer_descifrado(str(salida))
-        for nombre, auto in autos.items():
-            try:
-                d = escribir_automatizacion(d, nombre, auto)
-            except Exception as e:
-                raise ErrorComun(f"Pro Tools: automatización de {nombre!r}: {e}") from e
+
+        def una(nombre, auto):
+            def f(dd, lote):
+                try:
+                    r = escribir_automatizacion(dd, nombre, auto, lote=lote)
+                except Exception as e:
+                    raise ErrorComun(f"Pro Tools: automatización de {nombre!r}: {e}") from e
+                return (r, []) if lote is None else None
+            return f
+        d, _ = en_lote(d, [una(n, a) for n, a in autos.items()])     # todas las pistas de una vez
         Path(salida).write_bytes(cifrar(d))
     return res
 
@@ -549,18 +556,19 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         usados.add(nombre)
         nombres.append((tipo, nombre, canales))
     d = leer_descifrado(plantilla)
-    audio = []                          # pistas de audio seguidas: en una sola pasada
+    tramo, tipo_tramo = [], None        # pistas seguidas del mismo tipo: en una sola pasada
     for tipo, nombre, canales in nombres + [(None, None, None)]:
-        if tipo == "audio":
-            audio.append((nombre, canales))
-            continue
-        if audio:
-            d = agregar_pistas(d, audio)
-            audio = []
-        if tipo == "midi":
-            d = agregar_pistas_midi(d, [nombre])
-        elif tipo == "retorno":
-            d = agregar_auxiliares(d, [(nombre, canales)])
+        if tipo != tipo_tramo and tramo:
+            if tipo_tramo == "midi":
+                d = agregar_pistas_midi(d, [n for n, _ in tramo])
+            elif tipo_tramo == "retorno":
+                d = agregar_auxiliares(d, tramo)
+            else:
+                d = agregar_pistas(d, tramo)
+            tramo = []
+        tipo_tramo = tipo
+        if tipo is not None:
+            tramo.append((nombre, canales))
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
         with os.fdopen(fd, "wb") as f:

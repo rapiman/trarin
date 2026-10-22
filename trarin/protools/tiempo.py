@@ -122,12 +122,62 @@ def _leer_marcadores_patron(d, bloques):
 
 # ---------------------------------------------------------------- conversiones
 
+class MapaTempo:
+    """Un mapa de tempo preparado para convertir muchas veces (tick ↔ segundos)
+    con búsqueda binaria en vez de recorrerlo entero en cada conversión. Da
+    exactamente los mismos números que recorrerlo (las sumas van en el mismo
+    orden). Es una foto: si el mapa cambia, hay que armar otro."""
+
+    def __init__(self, tempo):
+        if not tempo:
+            tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
+        self.ev = [(e["tick"], e["bpm"], e.get("pulso_ticks", TICKS_NEGRA)) for e in tempo]
+        t0, b0, p0 = self.ev[0]
+        self.primero = (min(0, t0), b0, p0)
+        self.ticks = [t for t, _, _ in self.ev]
+        self.ordenado = all(a <= b for a, b in zip(self.ticks, self.ticks[1:]))
+        # acumulado[k]: segundos al llegar al evento k (como en el recorrido)
+        acum, previo = [0.0], self.primero
+        for e in self.ev:
+            acum.append(acum[-1] + (e[0] - previo[0]) / previo[2] * 60.0 / previo[1])
+            previo = e
+        self.acum = acum
+        self.monotono = self.ordenado and all(a <= b for a, b in zip(acum, acum[1:]))
+        self.lista = tempo
+
+    def _previo(self, k):
+        return self.primero if k == 0 else self.ev[k - 1]
+
+    def segundos(self, tick):
+        from bisect import bisect_left
+        if not self.ordenado:
+            return _segundos_lento(tick, self.lista)
+        k = bisect_left(self.ticks, tick)              # primer evento con tick >= 'tick'
+        previo = self._previo(k)
+        return self.acum[k] + (tick - previo[0]) / previo[2] * 60.0 / previo[1]
+
+    def tick(self, seg):
+        from bisect import bisect_right
+        if not self.monotono:
+            return _tick_lento(seg, self.lista)
+        k = bisect_right(self.acum, seg, 1) - 1        # primer evento cuyo fin supera 'seg'
+        previo = self._previo(k)
+        return previo[0] + round((seg - self.acum[k]) * previo[1] / 60.0 * previo[2])
+
+
 def segundos(tick, tempo):
     """Segundos desde el cero hasta 'tick', con el mapa de tempo escalonado.
 
     Antes del primer evento rige el BPM del primer evento. 'pulso_ticks' indica
-    la figura que lleva el BPM (960000 = negra, 480000 = corchea).
+    la figura que lleva el BPM (960000 = negra, 480000 = corchea). 'tempo' puede
+    ser la lista de eventos o un MapaTempo (rápido para muchas conversiones).
     """
+    if isinstance(tempo, MapaTempo):
+        return tempo.segundos(tick)
+    return _segundos_lento(tick, tempo)
+
+
+def _segundos_lento(tick, tempo):
     if not tempo:
         tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
     total, previo = 0.0, None
@@ -160,6 +210,12 @@ def compas_tiempo(tick, compases):
 
 def tick_de_segundos(seg, tempo):
     """Inversa de segundos(): el tick que cae en 'seg' (cálculo directo por tramos)."""
+    if isinstance(tempo, MapaTempo):
+        return tempo.tick(seg)
+    return _tick_lento(seg, tempo)
+
+
+def _tick_lento(seg, tempo):
     if not tempo:
         tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
     previo = {**tempo[0], "tick": min(0, tempo[0]["tick"])}

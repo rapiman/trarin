@@ -88,13 +88,14 @@ def leer(ruta) -> dict:
     d = leer_descifrado(ruta)
     bloques = arbol(d)
     tempo = tiempo.leer_tempo(d, bloques)
+    mapa = tiempo.MapaTempo(tempo)              # para las miles de conversiones de abajo
     compases = tiempo.leer_compases(d, bloques)
     marcadores = tiempo.leer_marcadores(d, bloques)
     fs = _frecuencia(d, bloques)
     producto, version, version_completa, plataforma = _producto_version(d, bloques)
 
     def ubicar(ev):
-        s = tiempo.segundos(ev["tick"], tempo)
+        s = tiempo.segundos(ev["tick"], mapa)
         ev["posicion"] = tiempo.compas_tiempo(ev["tick"], compases)
         ev["segundos"] = round(s, 6)
         if fs:
@@ -120,7 +121,7 @@ def leer(ruta) -> dict:
                 if fs:
                     s = r["muestra"] / fs
                     r["segundos"] = round(s, 6)
-                    r["posicion"] = tiempo.compas_tiempo(tiempo.tick_de_segundos(s, tempo), compases)
+                    r["posicion"] = tiempo.compas_tiempo(tiempo.tick_de_segundos(s, mapa), compases)
     for p in pistas_midi:
         for r in p["regiones"]:
             ubicar(r)
@@ -140,7 +141,7 @@ def leer(ruta) -> dict:
         "unidades": {"ticks_por_negra": tiempo.TICKS_NEGRA},
         "tempo": [ubicar(e) for e in tempo],
         "compases": [ubicar(e) for e in compases],
-        "marcadores": [_fin(ubicar(e), tempo, compases) for e in marcadores],
+        "marcadores": [_fin(ubicar(e), mapa, compases) for e in marcadores],
         "audio": {"archivos": archivos, "regiones": regiones},
         "pistas": lista_pistas,
         "pistas_audio": pistas_audio,

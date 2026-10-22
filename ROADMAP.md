@@ -123,7 +123,11 @@ y §24), que se reutiliza:
   a segundos).
 - ✅ Quitar varias pistas en una pasada (55 pistas: de 37 s a 0,7 s) y agregar varias de
   audio en una pasada (20 pistas: de 24 s a 4 s), con los mismos bytes que de a una.
-- Pendiente: lo mismo para agregar varias pistas MIDI y auxiliares (hoy ~0,9 s cada una).
+- ✅ Agregar varias MIDI y auxiliares en una pasada; ruteo, color, plugins y automatización
+  en lote; lectura con el mapa de tempo preparado y descifrado de una vez (leer el show: de
+  8,7 s a 1,1 s; consolidar: de 6,7 min a menos de 2).
+- Pendiente: el armador de shows (`show.py`) todavía copia ruteo, plugins y automatización
+  pista por pista; pasarlo a lotes.
 
 ## Conversión entre programas
 

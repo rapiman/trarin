@@ -151,8 +151,37 @@ def _contenido_260a(d, a, puntos):
     return bytes(cab) + cuerpo
 
 
+class NoAgrupable(Exception):
+    """La operación cambia algo más que su propio canal: no puede ir en un lote."""
+
+
+def en_lote(d, llamadas):
+    """Aplica varias operaciones independientes (cada una sobre su propio canal)
+    con un solo reconstruir. llamadas: funciones f(d, lote) que agregan sus
+    reemplazos a 'lote' (y devuelven avisos o nada) en vez de reescribir. Las
+    que no se pueden agrupar (NoAgrupable) se hacen después, de a una, con
+    f(d, None) devolviendo (d, avisos). Devuelve (d, avisos). El resultado es el
+    mismo que de a una."""
+    avisos, despues, lote = [], [], []
+    for f in llamadas:
+        propio = []
+        try:
+            av = f(d, propio)
+        except NoAgrupable:
+            despues.append(f)
+            continue
+        lote += propio
+        avisos += av or []
+    if lote:
+        d = reconstruir(d, lote)
+    for f in despues:
+        d, av = f(d, None)
+        avisos += av or []
+    return d, avisos
+
+
 def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="", sufijo_buses="",
-                 escala=1.0, hasta=None, renombrar=None, salida=None, envios=True):
+                 escala=1.0, hasta=None, renombrar=None, salida=None, envios=True, lote=None):
     """Devuelve (d, avisos): d con la entrada, el fader (salida, valores y
     automatización) y los envíos de 'pista' reemplazados por los de
     'pista_origen' de la sesión d_origen. La automatización se corre
@@ -166,7 +195,10 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
     renombrar: {nombre de ruta en el origen: nombre en d} (p. ej. el bus de
     entrada de un auxiliar). salida: nombre de la ruta de d (bus o salida) a la
     que va el fader del canal, en vez de la del origen. envios=False: no se
-    copian los envíos."""
+    copian los envíos.
+
+    lote: una lista donde dejar los reemplazos en vez de reescribir (ver
+    en_lote); si hay que crear buses o correr la automatización, NoAgrupable."""
     b, bo = arbol(d), arbol(d_origen)
     sb, sb_o = _canal(d, b, pista), _canal(d_origen, bo, pista_origen)
     tabla, tabla_o = _Tabla(d, b), _Tabla(d_origen, bo)
@@ -198,6 +230,10 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
                 nuevos_buses.append((par_d, 2))
         elif _es_bus_mono(d_origen, bo, nom) and nom_d not in [n for n, _ in nuevos_buses]:
             nuevos_buses.append((nom_d, 1))
+    if nuevos_buses and lote is not None:
+        raise NoAgrupable()
+    if lote is not None and (desplazamiento or escala != 1 or hasta is not None):
+        raise NoAgrupable()
     if nuevos_buses:
         for n, canales in nuevos_buses:
             d = crear_bus(d, n, canales)
@@ -285,6 +321,9 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
             avisos.append(f"{pista}: el envío a «{nom_d}» no existe en el show (no se copia)")
     tramo = piezas[0][1] + struct.pack("<H", len(piezas) - 1) + b"".join(l + x for l, x in piezas[1:])
     reemplazos.append((di, df, tramo, sb.pos))
+    if lote is not None:
+        lote += reemplazos
+        return avisos
     d = reconstruir(d, reemplazos)
     cambia = desplazamiento or escala != 1 or hasta is not None
     return (_correr(d, pista, desplazamiento, escala, hasta) if cambia else d), avisos
@@ -698,9 +737,10 @@ def _pos_propia(b, k):
     raise ErrorPista("bloque más corto de lo esperado")
 
 
-def copiar_color(d, pista, d_origen, pista_origen):
+def copiar_color(d, pista, d_origen, pista_origen, lote=None):
     """d con el color de 'pista' igual al de 'pista_origen' de d_origen: i16
-    en el byte 25 de los bytes propios del 0x2015 del canal (−1 = sin color)."""
+    en el byte 25 de los bytes propios del 0x2015 del canal (−1 = sin color).
+    lote: ver en_lote."""
     b, bo = arbol(d), arbol(d_origen)
     v = buscar([_canal_bloque(d, b, pista)], 0x2015)
     vo = buscar([_canal_bloque(d_origen, bo, pista_origen)], 0x2015)
@@ -708,7 +748,10 @@ def copiar_color(d, pista, d_origen, pista_origen):
         raise ErrorPista(f"{pista}: canal sin 0x2015")
     p, po = _pos_propia(v[0], 25), _pos_propia(vo[0], 25)
     if d[p:p + 2] == d_origen[po:po + 2]:
-        return d
+        return None if lote is not None else d
+    if lote is not None:
+        lote.append((p, p + 2, bytes(d_origen[po:po + 2])))
+        return None
     return reconstruir(d, [(p, p + 2, bytes(d_origen[po:po + 2]))])
 
 
@@ -738,13 +781,13 @@ _LISTAS_AUTO = {"volumen_db": ("directa", 0, 10), "mute": ("directa", 1, 1),
                 "desconocido": ("directa", 2, 1), "paneo_izq": ("paneo", 0, 1), "paneo_der": ("paneo", 1, 1)}
 
 
-def escribir_automatizacion(d, pista, auto):
+def escribir_automatizacion(d, pista, auto, lote=None):
     """d con la automatización del fader de 'pista' reemplazada por 'auto'
     ({"volumen_db"|"mute"|"paneo_izq"|"paneo_der": [{"muestra", "valor"}]},
     como en el modelo común). Una lista que falta en 'auto' queda fija en su
     primer valor. El volumen va en dB (décimas en el archivo), el mute 0/1 y
     el paneo de −100 a 100. Cada lista empieza en la muestra 0: si el primer
-    punto va después, se agrega su valor en 0."""
+    punto va después, se agrega su valor en 0. lote: ver en_lote."""
     desconocidas = set(auto) - set(_LISTAS_AUTO)
     if desconocidas:
         raise ErrorPista(f"{pista}: automatización no soportada: {sorted(desconocidas)}")
@@ -780,4 +823,7 @@ def escribir_automatizacion(d, pista, auto):
             nuevos = pts[:1]
         if nuevos != pts:
             reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
+    if lote is not None:
+        lote += reemplazos
+        return None
     return reconstruir(d, reemplazos) if reemplazos else d
