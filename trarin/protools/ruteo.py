@@ -151,25 +151,42 @@ def _contenido_260a(d, a, puntos):
     return bytes(cab) + cuerpo
 
 
-def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion=""):
+def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="", sufijo_buses=""):
     """Devuelve (d, avisos): d con la entrada, el fader (salida, valores y
     automatización) y los envíos de 'pista' reemplazados por los de
     'pista_origen' de la sesión d_origen. La automatización se corre
-    'desplazamiento' muestras. Las rutas se buscan por clase y nombre en d."""
+    'desplazamiento' muestras. Las rutas se buscan por clase y nombre en d.
+
+    sufijo_buses: si no está vacío, cada bus de la pista de origen va a un bus
+    propio con ese sufijo en el nombre («Aux 1» → «Aux 1 (Sombra)»), que se
+    crea si no existe; si está vacío, al bus del mismo nombre."""
     b, bo = arbol(d), arbol(d_origen)
     sb, sb_o = _canal(d, b, pista), _canal(d_origen, bo, pista_origen)
     tabla, tabla_o = _Tabla(d, b), _Tabla(d_origen, bo)
     avisos = []
     reemplazos = []
 
+    def destino(ident, nom):
+        """(clase, nombre) de la ruta en d para la ruta 'nom' de origen."""
+        clase = tabla_o.clase(ident)
+        if clase == 2 and sufijo_buses:
+            par = _par_estereo(d_origen, bo, nom)
+            if par:
+                return clase, par + sufijo_buses + nom[len(par):]
+            return clase, nom + sufijo_buses
+        return clase, nom
+
     # buses estéreo que usa la pista de origen y no existen en d: se crean
     nuevos_buses = []
     for ident, nom in _referencias(d_origen, sb_o):
-        if tabla_o.clase(ident) != 2 or tabla.buscar(2, nom) is not None:
+        clase, nom_d = destino(ident, nom)
+        if clase != 2 or tabla.buscar(2, nom_d) is not None:
             continue
         par = _par_estereo(d_origen, bo, nom)
-        if par and par not in nuevos_buses and tabla.buscar(2, par) is None:
-            nuevos_buses.append(par)
+        if par:
+            par_d = destino(ident, par)[1]
+            if par_d not in nuevos_buses and tabla.buscar(2, par_d) is None:
+                nuevos_buses.append(par_d)
     if nuevos_buses:
         for n in nuevos_buses:
             d = crear_bus(d, n)
@@ -186,71 +203,82 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="")
             raise
         ei = None
     if ei is not None:
-        campo = bytearray(d_origen[oi:of])
         nombre, p = _cadena(d_origen, oi)
-        if d_origen[p + 4:p + 8] == b"\x2a\x00\x00\x00":
-            ident = bytes(d_origen[p + 8:p + 16])
-            nuevo = tabla.buscar(tabla_o.clase(ident), nombre)
-            if nuevo is None:
-                avisos.append(f"{pista}: la entrada «{nombre}» no existe en el show (queda la de la plantilla)")
-                campo = None
+        cola = bytearray(d_origen[p:of])                  # u32 0, 2A000000, id y 7 bytes
+        nombre_d, nid = nombre, None
+        if cola[4:8] == b"\x2a\x00\x00\x00":
+            ident = bytes(cola[8:16])
+            clase, nombre_d = destino(ident, nombre)
+            nid = tabla.buscar(clase, nombre_d)
+            if nid is None:
+                avisos.append(f"{pista}: la entrada «{nombre_d}» no existe en el show (queda la de la plantilla)")
             else:
-                campo[p - oi + 8:p - oi + 16] = nuevo
-        if campo is not None and bytes(campo) != bytes(d[ei:ef]):
-            reemplazos.append((ei, ef, bytes(campo)))
-            # tras el 0x102D del canal: u8 (1 = entrada de dos canales), u16 número
-            # global de la ruta de entrada (FFFF = ninguna) y u8 1
-            cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
-            cab_o = next(h for h in sb_o.hijos if h.tipo_contenido == 0x102D)
-            ancho, num = d_origen[cab_o.fin], struct.unpack_from("<H", d_origen, cab_o.fin + 1)[0]
-            nid = bytes(campo[p - oi + 8:p - oi + 16]) if campo[p - oi + 4:p - oi + 8] == b"\x2a\x00\x00\x00" else None
-            if nid is not None and num != 0xFFFF:
-                num = _numero_ruta(d, b, nid)
-                if num is None:
-                    raise ErrorPista(f"{pista}: no se reconoce la numeración de la entrada «{nombre}»")
-            reemplazos.append((cab.fin, cab.fin + 3, bytes([ancho]) + struct.pack("<H", num)))
+                cola[8:16] = nid
+        if cola[4:8] != b"\x2a\x00\x00\x00" or nid is not None:
+            nb = nombre_d.encode("utf-8")
+            campo = struct.pack("<I", len(nb)) + nb + bytes(cola)
+            if campo != bytes(d[ei:ef]):
+                reemplazos.append((ei, ef, campo))
+                # tras el 0x102D del canal: u8 (1 = entrada de dos canales), u16
+                # número global de la ruta de entrada (FFFF = ninguna) y u8 1
+                cab = next(h for h in sb.hijos if h.tipo_contenido == 0x102D)
+                cab_o = next(h for h in sb_o.hijos if h.tipo_contenido == 0x102D)
+                ancho, num = d_origen[cab_o.fin], struct.unpack_from("<H", d_origen, cab_o.fin + 1)[0]
+                if nid is not None and num != 0xFFFF:
+                    num = _numero_ruta(d, b, nid)
+                    if num is None:
+                        raise ErrorPista(f"{pista}: no se reconoce la numeración de la entrada «{nombre_d}»")
+                reemplazos.append((cab.fin, cab.fin + 3, bytes([ancho]) + struct.pack("<H", num)))
 
-    # faders: el del canal y los envíos
+    # faders: el del canal, u16 cantidad de envíos y, por envío, u16 lugar y su fader
     fs_o, ti, tf, _ = _faders(d_origen, sb_o)
-    _, di, df, _ = _faders(d, sb)
-    tramo = bytearray(d_origen[ti:tf])
-    quitar = []                                    # envíos sin destino en el show
-    salida_plantilla = False                       # la salida no existe en el show
+    fs_d, di, df, _ = _faders(d, sb)
+    if (struct.unpack_from("<H", d_origen, fs_o[0].fin)[0] != len(fs_o) - 1
+            or tf != fs_o[-1].fin + (2 if len(fs_o) == 1 else 0)):
+        raise ErrorPista(f"{pista_origen}: lista de envíos no reconocida")
+    piezas = []                                    # (lugar o None, bytes del fader)
     for j, f in enumerate(fs_o):
         e = next((h for h in f.hijos if h.tipo_contenido == 0x260E), None)
         if e is None:
             raise ErrorPista(f"{pista_origen}: fader sin destino (0x260E)")
+        lugar = None if j == 0 else bytes(d_origen[f.pos - 2:f.pos])
         _, ident, nom = _destino_260e(d_origen, e)
-        if ident is not None:
-            nuevo = tabla.buscar(tabla_o.clase(ident), nom)
-            if nuevo is not None:
-                tramo[e.inicio + 14 - ti:e.inicio + 22 - ti] = nuevo
-            elif j == 0:
-                salida_plantilla = True
-                avisos.append(f"{pista}: la salida «{nom}» no existe en el show (queda la de la plantilla)")
-            else:
-                quitar.append(j)
-                avisos.append(f"{pista}: el envío a «{nom}» no existe en el show (no se copia)")
-    if quitar:
-        # se rearma el tramo sin esos envíos: u16 cantidad y, por envío, u16 lugar y fader
-        n = struct.unpack_from("<H", d_origen, fs_o[0].fin)[0]
-        if n != len(fs_o) - 1:
-            raise ErrorPista(f"{pista_origen}: lista de envíos no reconocida")
-        quedan = [j for j in range(1, len(fs_o)) if j not in quitar]
-        partes = [bytes(tramo[:fs_o[0].fin - ti]), struct.pack("<H", len(quedan))]
-        partes += [bytes(tramo[fs_o[j].pos - 2 - ti:fs_o[j].fin - ti]) for j in quedan]
-        partes.append(bytes(tramo[fs_o[-1].fin - ti:]))
-        tramo = bytearray(b"".join(partes))
-    if salida_plantilla:
-        e_d = next(h for h in _faders(d, sb)[0][0].hijos if h.tipo_contenido == 0x260E)
-        e_o = next(h for h in fs_o[0].hijos if h.tipo_contenido == 0x260E)
-        viejo = bytes(d[e_d.pos:e_d.fin])
-        tramo = tramo[:e_o.pos - ti] + viejo + tramo[e_o.fin - ti:]
-        delta = len(viejo) - (e_o.fin - e_o.pos)          # cambia el tamaño del 0x260D del canal
-        struct.pack_into("<I", tramo, 3, struct.unpack_from("<I", tramo, 3)[0] + delta)
-    reemplazos.append((di, df, bytes(tramo), sb.pos))
+        if ident is None:
+            piezas.append((lugar, bytes(d_origen[f.pos:f.fin])))
+            continue
+        clase, nom_d = destino(ident, nom)
+        nid = tabla.buscar(clase, nom_d)
+        if nid is not None:
+            piezas.append((lugar, _fader_con_destino(d_origen, f, e, nid, nom_d)))
+        elif j == 0:
+            avisos.append(f"{pista}: la salida «{nom_d}» no existe en el show (queda la de la plantilla)")
+            e_d = next(h for h in fs_d[0].hijos if h.tipo_contenido == 0x260E)
+            _, id_d, nom_p = _destino_260e(d, e_d)
+            piezas.append((lugar, _fader_con_destino(d_origen, f, e, id_d, nom_p, bytes(d[e_d.pos:e_d.fin]))))
+        else:
+            avisos.append(f"{pista}: el envío a «{nom_d}» no existe en el show (no se copia)")
+    tramo = piezas[0][1] + struct.pack("<H", len(piezas) - 1) + b"".join(l + x for l, x in piezas[1:])
+    reemplazos.append((di, df, tramo, sb.pos))
     d = reconstruir(d, reemplazos)
     return (_correr(d, pista, desplazamiento) if desplazamiento else d), avisos
+
+
+def _fader_con_destino(d, f, e, ident, nombre, entero=None):
+    """Bytes del fader f (bloque 0x260D de d) con su 0x260E (e) apuntando a la
+    ruta 'ident' de nombre 'nombre', o reemplazado entero por 'entero'."""
+    if entero is None:
+        x = bytearray(d[e.pos:e.fin])
+        x[e.inicio + 14 - e.pos:e.inicio + 22 - e.pos] = ident
+        _, _, viejo = _destino_260e(d, e)
+        vb, nb = viejo.encode("utf-8"), nombre.encode("utf-8")
+        k = len(x) - 1 - len(vb) - 4                      # u32 largo, nombre y 01 al final
+        x = x[:k] + struct.pack("<I", len(nb)) + nb + x[k + 4 + len(vb):]
+        struct.pack_into("<I", x, 3, struct.unpack_from("<I", x, 3)[0] + len(nb) - len(vb))
+        entero = bytes(x)
+    delta = len(entero) - (e.fin - e.pos)
+    y = bytearray(d[f.pos:e.pos]) + entero + bytearray(d[e.fin:f.fin])
+    struct.pack_into("<I", y, 3, struct.unpack_from("<I", y, 3)[0] + delta)
+    return bytes(y)
 
 
 def _numero_ruta(d, bloques, ident):
@@ -586,3 +614,74 @@ def copiar_color(d, pista, d_origen, pista_origen):
     if d[p:p + 2] == d_origen[po:po + 2]:
         return d
     return reconstruir(d, [(p, p + 2, bytes(d_origen[po:po + 2]))])
+
+
+def _byte_solo(d, bloques, pista):
+    """Posición del byte de solo de una pista: el que sigue al 0x2619 (nombre)
+    del 0x102D de su canal (1 = en solo)."""
+    cab = buscar([_canal_bloque(d, bloques, pista)], 0x102D)
+    if not cab or not cab[0].hijos or cab[0].hijos[0].tipo_contenido != 0x2619:
+        raise ErrorPista(f"{pista}: canal sin nombre (0x102D)")
+    return cab[0].hijos[0].fin
+
+
+def solo(d, pista):
+    return d[_byte_solo(d, arbol(d), pista)] == 1
+
+
+def poner_solo(d, pista, valor):
+    """d con la pista en solo (valor True) o no."""
+    p = _byte_solo(d, arbol(d), pista)
+    nuevo = 1 if valor else 0
+    return d if d[p] == nuevo else reconstruir(d, [(p, p + 1, bytes([nuevo]))])
+
+
+# Listas de automatización del fader del canal, como las lee mezcla._automatizacion:
+# (nombre, lugar entre los 0x260A directos o los de 0x260C, escala del valor)
+_LISTAS_AUTO = {"volumen_db": ("directa", 0, 10), "mute": ("directa", 1, 1),
+                "desconocido": ("directa", 2, 1), "paneo_izq": ("paneo", 0, 1), "paneo_der": ("paneo", 1, 1)}
+
+
+def escribir_automatizacion(d, pista, auto):
+    """d con la automatización del fader de 'pista' reemplazada por 'auto'
+    ({"volumen_db"|"mute"|"paneo_izq"|"paneo_der": [{"muestra", "valor"}]},
+    como en el modelo común). Una lista que falta en 'auto' queda fija en su
+    primer valor. El volumen va en dB (décimas en el archivo), el mute 0/1 y
+    el paneo de −100 a 100. Cada lista empieza en la muestra 0: si el primer
+    punto va después, se agrega su valor en 0."""
+    desconocidas = set(auto) - set(_LISTAS_AUTO)
+    if desconocidas:
+        raise ErrorPista(f"{pista}: automatización no soportada: {sorted(desconocidas)}")
+    b = arbol(d)
+    f = _faders(d, _canal(d, b, pista))[0][0]
+    listas = {"directa": [h for h in f.hijos if h.tipo_contenido == 0x260A],
+              "paneo": [k for h in f.hijos if h.tipo_contenido == 0x260C
+                        for k in h.hijos if k.tipo_contenido == 0x260A]}
+    reemplazos = []
+    for nombre, (cual, i, escala) in _LISTAS_AUTO.items():
+        if i >= len(listas[cual]):
+            if nombre in auto:
+                raise ErrorPista(f"{pista}: el canal no tiene la lista de {nombre}")
+            continue
+        a = listas[cual][i]
+        w, pts = _puntos(d, a)
+        if w != 2:
+            raise ErrorPista(f"{pista}: lista de {nombre} no reconocida")
+        if nombre in auto:
+            nuevos = []
+            for x in sorted(auto[nombre], key=lambda x: x["muestra"]):
+                v = round(float(x["valor"]) * escala)
+                if nombre == "volumen_db":
+                    v = max(v, -1440)
+                if not -32768 <= v <= 32767 or int(x["muestra"]) < 0:
+                    raise ErrorPista(f"{pista}: punto de {nombre} fuera de rango: {x}")
+                nuevos.append((int(x["muestra"]), struct.pack("<h", v)))
+            if not nuevos:
+                nuevos = pts[:1]
+            if nuevos[0][0] != 0:
+                nuevos.insert(0, (0, nuevos[0][1]))
+        else:
+            nuevos = pts[:1]
+        if nuevos != pts:
+            reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
+    return reconstruir(d, reemplazos) if reemplazos else d

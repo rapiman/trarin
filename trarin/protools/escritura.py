@@ -948,6 +948,18 @@ _PLANTILLA_MARCADOR_12 = bytes.fromhex(
     "0000ffff17f61820b440bf4385f83568bb7fadc7")
 
 
+# Selección (ubicación de memoria con inicio y fin) de Pro Tools 12.5 (sesión
+# e12 de las pruebas), para sesiones sin selecciones que sirvan de plantilla.
+_PLANTILLA_SELECCION_12 = bytes.fromhex(
+    "5a0c00ff0000007720020001020000060000005075656e746500401ad5e8000040008c37d5e80000"
+    "40000000000000f0bfffffffffffffffffffffffffffbfffffffffffffffbf000000000000004000"
+    "00000000000040ffffffff04000000e3e3a3a302000000000000000000ffffffff00000000ffffff"
+    "ff000000000000000000000000ffffffff000000000000000000000000feff040000005a03000a00"
+    "0000062500030000610000005a03000a000000062500030000610000005a03000a00000006250003"
+    "0000610000005a03000a000000062500030000610000000000000000000000000000000000000000"
+    "00000000ffff952eb1a5a684e0408cecfcfd35d3b719")
+
+
 def _estructura_marcador(tb):
     """Offsets dentro de los bytes de un bloque 0x2077 completo (cabecera incluida):
     (E, n1, q, n2) o None si el comentario no está en las dos copias esperadas."""
@@ -967,8 +979,9 @@ def _estructura_marcador(tb):
     return e, n1, q, n2
 
 
-def _marcador_nuevo(tb, numero, nombre, tick, comentario):
-    """Bloque 0x2077 nuevo a partir de la plantilla tb (un marcador común)."""
+def _marcador_nuevo(tb, numero, nombre, tick, comentario, fin_tick=None):
+    """Bloque 0x2077 nuevo a partir de la plantilla tb (un marcador común, o
+    una selección si lleva fin_tick)."""
     e, n1, q, n2 = _estructura_marcador(tb)
     p = 9
     nombre = nombre.encode("utf-8")
@@ -977,7 +990,7 @@ def _marcador_nuevo(tb, numero, nombre, tick, comentario):
     pos = (tick + CERO).to_bytes(5, "little")
     medio = bytearray(tb[e:e + 80])
     medio[0:5] = pos
-    medio[8:13] = pos
+    medio[8:13] = pos if fin_tick is None else (fin_tick + CERO).to_bytes(5, "little")
     out = bytearray(tb[:p] + struct.pack("<H", numero) + tb[p + 2:p + 6]
                     + struct.pack("<I", len(nombre)) + nombre + medio + com
                     + tb[e + 84 + n1:q] + com + tb[q + 4 + n2:-16] + os.urandom(16))
@@ -986,7 +999,7 @@ def _marcador_nuevo(tb, numero, nombre, tick, comentario):
 
 
 def _altas_bajas_marcadores(d, bloques, nuevos, borrados):
-    """nuevos: [{"nombre", "tick", "comentario"?}]; borrados: [número].
+    """nuevos: [{"nombre", "tick", "fin_tick"? (selección), "comentario"?}]; borrados: [número].
     Cada marcador va en las dos listas 0x2030 (u32 cantidad en +2, hijos 0x2077 y
     4 bytes finales). Devuelve reemplazos para reconstruir()."""
     listas = [b for b in buscar(bloques, 0x2030)
@@ -1000,17 +1013,28 @@ def _altas_bajas_marcadores(d, bloques, nuevos, borrados):
         if h.tipo_contenido == 0x2077 and not d[h.inicio + 5] & 2 and _estructura_marcador(tb):
             plantilla = tb
             break
-    if plantilla is None and nuevos:
-        if not any(h.tipo_contenido == 0x2077 for h in listas[0].hijos):
+    if plantilla is None and any(m.get("fin_tick") is None for m in nuevos):
+        if not any(h.tipo_contenido == 0x2077 and not d[h.inicio + 5] & 2 for h in listas[0].hijos):
             plantilla = _PLANTILLA_MARCADOR_12
         else:
             raise ErrorEscritura("no hay un marcador que sirva de plantilla en esta sesión")
+    # selecciones (bit 1 de las banderas): copia de una selección de la sesión
+    # o de una de Pro Tools 12.5
+    plantilla_sel = next((d[h.pos:h.fin] for h in listas[0].hijos if h.tipo_contenido == 0x2077
+                          and d[h.inicio + 5] & 2 and _estructura_marcador(d[h.pos:h.fin])),
+                         _PLANTILLA_SELECCION_12)
     numeros = [struct.unpack_from("<H", d, h.inicio + 2)[0] for L in listas for h in L.hijos
                if h.tipo_contenido == 0x2077]
     siguiente = max(numeros, default=0) + 1
     bloques_nuevos = b""
     for m in nuevos:
-        bloques_nuevos += _marcador_nuevo(plantilla, siguiente, m["nombre"], m["tick"], m.get("comentario"))
+        if m.get("fin_tick") is not None:
+            if m["fin_tick"] < m["tick"]:
+                raise ErrorEscritura(f"selección {m['nombre']!r}: el fin va antes del inicio")
+            bloques_nuevos += _marcador_nuevo(plantilla_sel, siguiente, m["nombre"], m["tick"],
+                                              m.get("comentario"), m["fin_tick"])
+        else:
+            bloques_nuevos += _marcador_nuevo(plantilla, siguiente, m["nombre"], m["tick"], m.get("comentario"))
         m["numero"] = siguiente
         siguiente += 1
     reemplazos = []

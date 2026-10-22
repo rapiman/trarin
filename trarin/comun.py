@@ -414,7 +414,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     for p in comun["pistas"]:
         o = orig[p["id"]]
         for k in set(p) | set(o):
-            if k not in ("mezcla", "clips", "nombre") and p.get(k) != o.get(k):
+            if k not in ("mezcla", "clips", "nombre", "automatizacion") and p.get(k) != o.get(k):
                 raise ErrorComun(f"Pro Tools: cambiar '{k}' de la pista {p['id']!r} aún no está soportado")
         if p["nombre"] != o["nombre"]:
             if not p["nombre"] or p["nombre"] in {x["nombre"] for x in comun["pistas"] if x is not p}:
@@ -475,12 +475,27 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                     midi_nuevos.setdefault("bajas", {}).setdefault(p["id"], []).append(int(i.rsplit("#m", 1)[1]))
                     continue
                 clips_borrados.setdefault(p["id"], []).append(int(i.rsplit("#", 1)[1]))
-    return escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
-                            marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
-                            compases=compases, notas=notas, clips_nuevos=clips_nuevos,
-                            clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
-                            regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos,
-                            fundidos_nuevos=fundidos_nuevos)
+    # puntos de automatización cambiados (se escriben después del resto)
+    autos = {p.get("nombre") or p["id"]: p.get("automatizacion") or {} for p in comun["pistas"]
+             if p.get("id") in orig and (p.get("automatizacion") or {}) != (orig[p["id"]].get("automatizacion") or {})}
+    res = escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
+                           marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
+                           compases=compases, notas=notas, clips_nuevos=clips_nuevos,
+                           clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
+                           regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos,
+                           fundidos_nuevos=fundidos_nuevos)
+    if autos:
+        from .protools.descifrado import leer_descifrado
+        from .protools.reconstruccion import cifrar
+        from .protools.ruteo import escribir_automatizacion
+        d = leer_descifrado(str(salida))
+        for nombre, auto in autos.items():
+            try:
+                d = escribir_automatizacion(d, nombre, auto)
+            except Exception as e:
+                raise ErrorComun(f"Pro Tools: automatización de {nombre!r}: {e}") from e
+        Path(salida).write_bytes(cifrar(d))
+    return res
 
 
 def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
@@ -576,11 +591,10 @@ def _cambios_marcadores_pt(nuevos, originales):
     for m in nuevos:
         o = orig.get(m.get("id"))
         if o is None or m.get("id") in vistos:
-            if m.get("fin_tick") is not None:
-                raise ErrorComun("Pro Tools: crear selecciones (marcadores con fin) aún no está soportado")
             if not m.get("nombre") or m.get("tick") is None or m["tick"] < 0:
                 raise ErrorComun("Pro Tools: un marcador nuevo necesita 'nombre' y 'tick'")
-            altas.append({"nombre": m["nombre"], "tick": m["tick"], "comentario": m.get("comentario")})
+            altas.append({"nombre": m["nombre"], "tick": m["tick"], "comentario": m.get("comentario"),
+                          "fin_tick": m.get("fin_tick")})
             continue
         vistos.add(m["id"])
         cambio = {k: m.get(k) for k in ("nombre", "tick", "fin_tick", "comentario") if m.get(k) != o.get(k)}

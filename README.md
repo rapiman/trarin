@@ -52,6 +52,30 @@ python -m trarin leer "Mi canción.ptx" --yaml     # requiere pip install pyyaml
 python -m trarin leer "Mi tema.als" -o tema.json  # también .flp
 python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als"
 python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan compatibles son antes de juntarlas
+python -m trarin show plan show.json      # cómo quedarían las canciones juntas (solo lee)
+python -m trarin show armar show.json     # escribe la sesión del show
+```
+
+Opciones del show (además de `canciones`, `separacion`, `cambio_tempo`, `base` y
+`match`): `"buses": "juntar"` (por defecto: el bus «Aux 1» de cada canción va al
+«Aux 1» del show) o `"separar"` (cada canción usa buses y auxiliares propios,
+«Aux 1 (canción)»), y `"copiar_solo": true` para copiar el solo de las pistas
+(por defecto no, para que una canción no silencie a las demás).
+
+### Servidor MCP
+
+```
+pip install -e ".[mcp]"
+python -m trarin mcp          # servidor MCP por stdio
+```
+
+Herramientas: `leer_sesion`, `compatibilidad`, `planear_show`, `armar_show` y
+`escribir_sesion`. Las que escriben piden un archivo de salida que no exista.
+Para un cliente MCP (por ejemplo Claude Desktop):
+
+```json
+{"mcpServers": {"trarin": {"command": "python", "args": ["-m", "trarin", "mcp"],
+                           "cwd": "D:\\Proyectos\\Personal\\trarin"}}}
 ```
 
 `escribir` aplica el JSON editado sobre una copia del archivo original y nunca
