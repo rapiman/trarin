@@ -17,6 +17,14 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
 
 ## Fase 2 — Ficha de sonido
 
+- ✅ Primera parte: tiempo, nivel (con LUFS), problemas (saturación, sobre 0 dBFS, corriente
+  continua), estéreo, color y la línea en palabras; series guardadas por fuente, fichas por
+  archivo, pista y canción; `fichas_calcular`, `ficha` y la línea de sonido en
+  `resumen_sesion`.
+- ✅ Revisión de nivel básica: avisa picos sobre 0 dBFS por el clip gain.
+- Segunda parte: articulación, forma (curva y su palabra), clics y cortes, nota dominante y
+  el mapa de la canción; revisión de nivel con el fader.
+
 Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe describirlo
 («la pifilka que suena aguda al final») sin abrir los archivos.
 

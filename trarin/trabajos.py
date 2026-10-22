@@ -67,8 +67,13 @@ def _t_bpm(a, registro):
     return {"mediciones": out}
 
 
+def _t_fichas(a, registro):
+    from . import fichas
+    return fichas.calcular_sesion(a["sesion"], a.get("recalcular", False), registro)
+
+
 TAREAS = {"armar_show": _t_armar_show, "consolidar": _t_consolidar,
-          "convertir_audio": _t_convertir_audio, "bpm": _t_bpm}
+          "convertir_audio": _t_convertir_audio, "bpm": _t_bpm, "fichas": _t_fichas}
 
 
 # ------------------------------------------------------------------ lanzar y consultar

@@ -5,6 +5,28 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Fichas de sonido (fase 2, primera parte)
+- `trarin/fichas.py`: cada fuente (un archivo o los L/R de un clip estéreo) se
+  analiza una vez en bloques de 0,1 s y la serie queda en `trarin/fichas/`
+  junto a la sesión; con ella se arma la ficha de un archivo, un clip, una
+  pista o una pista en una canción sin volver a leer el audio.
+- Ficha: tiempo (dónde suena, silencios), nivel (pico, RMS, LUFS integrado,
+  rango, momentos más fuertes), problemas (saturación, picos sobre 0 dBFS por
+  el clip gain, corriente continua), estéreo, color (cinco bandas, centroide,
+  planitud) y una línea en palabras. Tiempos en m:ss y compás|tiempo.
+- LUFS con la ponderación K de BS.1770 aplicada sobre el espectro de cada
+  bloque (coeficientes de la norma a 48 kHz): un seno de 997 Hz a -20 dBFS da
+  -23,0 LUFS en mono y -20,0 en estéreo.
+- MCP: `fichas_calcular` (trabajo, a pedido) y `ficha`; `resumen_sesion` trae
+  una línea de sonido por pista cuando hay fichas.
+- Se calculan varias fuentes a la vez (hasta 4 procesos) y la lectura de WAV
+  de 24 bits es el doble de rápida: el show (124 fuentes) en unos 6 min la
+  primera vez; después solo lo que cambió.
+- Umbrales de «tonal» y «ruidoso» calibrados con el show (pifilkas y sintes
+  tonales, kaskawillas y cascabeles ruidosos; lo grave no se califica).
+- En el show ya avisa de las pistas consolidadas que pasan 0 dBFS por el clip
+  gain (Kultrun C, Kultrun C 3, Kultrun estéreo).
+
 ### Servidor MCP completo (fase 1)
 - 23 herramientas: vistas acotadas (`resumen_sesion`, `detalle_pista`,
   `rutas_sesion`, `archivos_audio`, `comparar_sesiones`), notas del proyecto
