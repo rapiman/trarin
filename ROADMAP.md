@@ -27,6 +27,13 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
   canción y qué suena en un compás.
 - Pendiente: revisión de nivel con el fader y su automatización; proponer los marcadores de
   sección en la sesión.
+- **Timbre de vientos andinos y metales** (a la larga): asimetría de la onda (picos
+  positivos y negativos distintos, armónicos pares; pifilka, antara, trompeta, clarinete),
+  sonido rajado o áspero (modulación de 20 a 150 Hz, riqueza armónica), redoble o trémolo
+  (pulsación periódica de 4 a 15 Hz), batimientos (0,5 a 4 Hz) y multifonía o bitonal
+  (dos o más fundamentales no armónicas, como en la tarka). Necesita una envolvente de
+  1 ms y grabaciones de referencia para calibrar. Mientras tanto, el servidor sabe que no
+  lo mide y no lo inventa.
 
 Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe describirlo
 («la pifilka que suena aguda al final») sin abrir los archivos.
