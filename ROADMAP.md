@@ -3,34 +3,17 @@
 Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
 camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en la anterior.
 
-## Fase 1 — Servidor MCP completo (siguiente)
+## Fase 1 — Servidor MCP completo ✅
 
-Objetivo: usar trarin desde una conversación, sin scripts sueltos, y que la IA sepa lo
-necesario de una sesión sin leerla entera.
-
-- ✅ Servidor por stdio con `leer_sesion`, `compatibilidad`, `planear_show`, `armar_show` y
-  `escribir_sesion`.
-- **Trabajos largos al estilo witral**: lanzar (devuelve un id), consultar el estado con lo
-  nuevo desde la última vez, esperar con tope y matar. Armar y consolidar tardan minutos y el
-  cliente corta las llamadas largas.
-- **Vistas acotadas** en vez del modelo entero (el show son 2,4 MB):
-  - `resumen_sesion`: una línea por pista (tipo, salida, entrada, paneo, volumen, mute,
-    clips, clip gain, automatización, plugins).
-  - Detalle de una pista o de una canción (por marcadores).
-  - `rutas`: buses y salidas que existen.
-  - `archivos_audio`: ruta real de cada archivo (lista 0x103A) y si existe.
-- **Las herramientas que hoy son solo de consola**: `grupos` y `consolidar` (cada una con su
-  modo «plan»), `bpm`, `convertir_audio` y el paneo de un set de Live.
-- **Verificar al escribir**: toda herramienta que escribe vuelve a leer el resultado y
-  entrega su resumen.
-- **Comparar versiones**: qué pistas aparecieron o desaparecieron y qué cambió en salidas,
-  plugins, clips, automatización, tempo y marcadores entre dos sesiones.
-- **Carpeta `trarin/` junto a cada sesión**, con `notas.md`: decisiones del proyecto (buses,
-  categorías, nombres), lo hecho y lo pendiente. Las herramientas que escriben agregan una
-  línea; una conversación nueva parte leyéndolo.
-- Explicar bien cada herramienta: qué hace, si solo lee o escribe (siempre en un archivo
-  nuevo, nunca sobre el original) y un ejemplo de las reglas de `consolidar` y `grupos`.
-- Instalarlo en Claude Desktop del equipo (no en el servidor) y probarlo con el show.
+- ✅ 23 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
+  de audio, comparar versiones), notas del proyecto, consolidar y grupos con su plan, bpm,
+  conversión de audio, paneo de Live, shows y escribir.
+- ✅ Trabajos largos al estilo witral (id, avance por líneas nuevas, espera con tope de 40 s,
+  matar, recientes).
+- ✅ Al escribir: relee, compara con el original y anota en `trarin/notas.md` junto a la
+  sesión.
+- ✅ Instalado en Claude Desktop del equipo y probado con el show (consolidar por MCP da la
+  misma sesión que la v2).
 
 ## Fase 2 — Ficha de sonido
 

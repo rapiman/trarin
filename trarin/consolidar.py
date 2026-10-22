@@ -7,6 +7,9 @@ Reglas (JSON):
     {"canciones": [nombres de marcadores, en orden: cada canción va desde su
                    marcador hasta el de la siguiente],
      "live": {canción: set de Ableton Live (.als) de donde se toma el paneo},
+     "live_carpeta": carpeta donde buscar los sets que falten en "live",
+     "live_buscar": {canción: regex sobre el nombre del .als (sin tildes, en
+                     minúsculas); se ignoran las carpetas Backup},
      "categorias": [{"nombre", "patron" (regex sobre el nombre sin tildes, en
                      minúsculas), "modo": "lcr" | "juntar", "salida": bus o
                      salida, "grupo": nombre del grupo (por defecto el de la
@@ -60,6 +63,28 @@ def _clave(t):
 
 
 # ---------------------------------------------------------------- paneo de Live
+
+def sets_live(reglas):
+    """{canción: ruta del .als}: los de "live" y, para las canciones que falten,
+    el primero que calce con "live_buscar" dentro de "live_carpeta"."""
+    import os
+    out = dict(reglas.get("live") or {})
+    buscar = {c: k for c, k in (reglas.get("live_buscar") or {}).items() if c not in out}
+    carpeta = reglas.get("live_carpeta")
+    if not buscar or not carpeta or not Path(carpeta).is_dir():
+        return out
+
+    def plano(t):
+        return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+
+    for raiz, carpetas, archivos in os.walk(carpeta):
+        carpetas[:] = sorted(d for d in carpetas if "backup" not in d.lower())
+        for f in sorted(archivos):
+            for c, k in buscar.items():
+                if c not in out and re.search(k, plano(f)):
+                    out[c] = os.path.join(raiz, f)
+    return out
+
 
 def paneos_live(ruta):
     """{clave de nombre: paneo (-1..1)} de las pistas de audio de un .als: por
@@ -131,12 +156,13 @@ def planear(comun, reglas):
     MIDI; rutas; avisos."""
     fs = comun["unidades"]["frecuencia_muestreo"]
     ventanas = _ventanas(comun, reglas["canciones"], fs)
-    live = {c: paneos_live(r) for c, r in (reglas.get("live") or {}).items() if Path(r).exists()}
+    live = {c: paneos_live(r) for c, r in sets_live(reglas).items() if Path(r).exists()}
     dejar = set(reglas.get("dejar") or [])
     borrar = set(reglas.get("borrar") or [])
     lado_forzado = reglas.get("lado") or {}
     cats = reglas.get("categorias") or []
-    avisos = []
+    avisos = [f"{c}: no se encontró el set de Live; se usa el paneo de Pro Tools"
+              for c in reglas.get("live_buscar") or {} if c not in live]
     nuevas = {}             # nombre → {categoria, canales, fuentes: [(pista, canción)], paneos: [...]}
     ocupado = {}            # (nombre nuevo, canción) → pista de origen
     quitar = set()
