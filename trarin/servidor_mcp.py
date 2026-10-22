@@ -21,11 +21,18 @@ Reglas:
 - Para conocer una sesión, partir por `resumen_sesion` (una fila por pista, filtrable por
   nombre o por canción) y `detalle_pista`; `leer_sesion` devuelve el modelo entero y en un
   show grande pesa megas: usarlo solo si hace falta.
-- Lo que tarda minutos (armar_show, consolidar, convertir_audio, medir_bpm) corre como
+- Lo que tarda minutos (armar_show, consolidar, convertir_audio, medir_bpm, fichas_calcular) corre como
   trabajo: devuelve un id; después `trabajo_esperar` (hasta 40 s por llamada; repetir con
   'desde' = 'siguiente' para traer solo lo nuevo) o `trabajo_estado`, y `trabajo_matar`.
 - Las que tienen modo plan (plan_consolidar, plan_grupos, planear_show) no escriben nada:
   mostrar el plan a la persona antes de escribir.
+- Fichas de sonido: para hablar del sonido sin escucharlo (grave o agudo, brillante u opaco,
+  dónde empieza a sonar, nivel en LUFS, saturación, mono o estéreo). Se calculan una vez por
+  sesión, solo cuando la persona lo pide (`fichas_calcular`, trabajo); después
+  `resumen_sesion` trae una línea de sonido por pista y `ficha` da el detalle de una pista,
+  de una canción o de un WAV suelto. Son aproximadas: describen el audio con el clip gain,
+  sin fader, plugins ni fundidos. Al conversar, traducirlas a palabras simples para
+  alguien que quizás no conoce los términos técnicos.
 """
 
 
@@ -101,16 +108,64 @@ def crear():
     def resumen_sesion(ruta: str, patron: str = "", cancion: str = "", formato: str = "texto") -> dict:
         """Una fila por pista: tipo, canales, salida, paneo, volumen, mute, clips
         (cuántos y entre qué segundos), clip gain, automatización y plugins;
-        además las canciones (marcadores) con su inicio. Solo lee.
+        además las canciones (marcadores) con su inicio y, si ya se calcularon
+        las fichas de sonido, una línea de sonido por pista. Solo lee.
         patron: expresión regular sobre el nombre (minúsculas, sin tildes), p. ej.
         "pif|puf". cancion: solo las pistas que suenan en esa canción.
         formato: "texto" (una línea por pista, liviano) o "datos" (cada campo)."""
         from .comun import leer_comun
         from .vistas import resumen, texto_resumen
-        r = resumen(leer_comun(_existe(ruta)), patron or None, cancion or None)
+        from . import fichas
+        comun = leer_comun(_existe(ruta))
+        r = resumen(comun, patron or None, cancion or None)
+        sonido = None
+        if str(ruta).lower().endswith(".ptx"):
+            ses = fichas.Sesion(_existe(ruta), comun)
+            if ses.hay():
+                sonido = ses.palabras(cancion or None, {f["pista"] for f in r["pistas"]})
         if formato == "datos":
+            if sonido is not None:
+                r["sonido"] = sonido
             return r
-        return {"total": r["total"], "canciones": r["canciones"], "pistas": texto_resumen(r).splitlines()}
+        out = {"total": r["total"], "canciones": r["canciones"], "pistas": texto_resumen(r).splitlines()}
+        if sonido is not None:
+            out["sonido"] = sonido
+        return out
+
+    @herramienta
+    def fichas_calcular(sesion: str, recalcular: bool = False) -> dict:
+        """Calcula las fichas de sonido de todos los audios de una sesión de Pro
+        Tools y las guarda en trarin/fichas junto a ella. Solo cuando la persona
+        lo pide. Corre como trabajo (en un show, unos minutos); la segunda vez
+        solo calcula lo que falta o cambió, salvo recalcular=True."""
+        from . import trabajos
+        return {"trabajo": trabajos.lanzar("fichas", {"sesion": _existe(sesion), "recalcular": recalcular})}
+
+    @herramienta
+    def ficha(ruta: str, pista: str = "", cancion: str = "", desde_s: float = -1, hasta_s: float = -1) -> dict:
+        """Ficha de sonido. Con una sesión (.ptx): la de una pista (entera o en
+        una canción) o, solo con 'cancion', una línea por pista que suena en
+        ella; necesita fichas_calcular antes. Con un WAV suelto: la del archivo
+        (o del tramo desde_s–hasta_s), calculada en el momento si hace falta.
+        Trae tiempo (dónde suena de verdad, silencios), nivel (pico, RMS, LUFS,
+        rango, momentos más fuertes), problemas (saturación, picos sobre 0 dBFS
+        por el clip gain, corriente continua), estéreo, color (bandas, grave o
+        agudo, brillante u opaco, tonal o ruidoso) y una línea en palabras.
+        Tiempos en m:ss y, en una sesión, también en compás|tiempo."""
+        from . import fichas
+        r = _existe(ruta)
+        if r.lower().endswith(".ptx"):
+            ses = fichas.Sesion(r)
+            if not ses.hay():
+                raise ValueError("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular "
+                                 "(solo si la persona lo pide)")
+            if pista:
+                return ses.ficha(pista, cancion or None)
+            if cancion:
+                nombre, _, _ = fichas._ventana_cancion(ses.comun, cancion)
+                return {"cancion": nombre, "pistas": ses.palabras(cancion)}
+            raise ValueError("indicar 'pista', 'cancion' o ambas")
+        return fichas.ficha_archivo(r, None if desde_s < 0 else desde_s, None if hasta_s < 0 else hasta_s)
 
     @herramienta
     def detalle_pista(ruta: str, pista: str, max_clips: int = 60) -> dict:
@@ -221,7 +276,8 @@ def crear():
         instrumento van a cada pista nueva (L/C/R por paneo, estéreo aparte, una
         más cuando suenan juntas), qué se quita y qué MIDI se junta. 'reglas' es
         el objeto o la ruta de un JSON (ver trarin/consolidar.py: canciones,
-        categorias, rutas, auxiliares, borrar, midi, normalizar_db…)."""
+        categorias, rutas, auxiliares, borrar, midi, normalizar_db; el paneo de
+        Live sale de "live" o de "live_carpeta" + "live_buscar")."""
         from .comun import leer_comun
         from . import consolidar as K
         plan = K.planear(leer_comun(_existe(sesion)), _reglas(reglas))

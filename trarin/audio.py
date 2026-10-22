@@ -72,9 +72,9 @@ def leer(ruta, desde=0, cuantas=None):
     elif bits == 16:
         x = np.frombuffer(crudo, dtype="<i2") / 32768.0
     elif bits == 24:
-        b = np.frombuffer(crudo, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
-        v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
-        x = np.where(v >= 1 << 23, v - (1 << 24), v) / float(1 << 23)
+        b = np.zeros((len(crudo) // 3, 4), dtype=np.uint8)            # 3 bytes → int32 con signo
+        b[:, 1:] = np.frombuffer(crudo, dtype=np.uint8).reshape(-1, 3)
+        x = (b.view("<i4")[:, 0] >> 8) / float(1 << 23)
     elif bits == 32:
         x = np.frombuffer(crudo, dtype="<i4") / float(1 << 31)
     else:
