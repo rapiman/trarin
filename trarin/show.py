@@ -345,9 +345,18 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
     from .protools.descifrado import leer_descifrado
     from .protools.inserts import copiar_inserts, plugins_de
     from .protools.pistas_nuevas import agregar_auxiliares, agregar_instrumento
-    from .protools.ruteo import copiar_color, copiar_midi, copiar_ruteo, juntar_automatizacion
+    from .protools.ruteo import (copiar_color, copiar_midi, copiar_ruteo, juntar_automatizacion,
+                                 poner_solo, solo)
     from .protools.reconstruccion import cifrar
     avisos = []
+    # opciones: buses "juntar" (el bus «Aux 1» de cada canción va al «Aux 1» del
+    # show) o "separar" (cada canción usa los suyos: «Aux 1 (canción)»), y
+    # copiar_solo (por defecto no: una pista en solo callaría a las demás)
+    modo_buses = show.get("buses", "juntar")
+    if modo_buses not in ("juntar", "separar"):
+        raise ErrorShow("'buses' debe ser \"juntar\" o \"separar\"")
+    separar_buses = modo_buses == "separar"
+    copiar_solo = bool(show.get("copiar_solo", False))
     origenes = {}
 
     def origen(sesion):
@@ -394,6 +403,9 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
             if not p["clips"] and p["tipo"] not in ("retorno", "0x0007"):
                 continue
             dest = _destino(p, cancion, None, pistas_show, show.get("match"))
+            if (separar_buses and p["tipo"] == "retorno"
+                    and p["nombre"] not in (show.get("match") or {}).get(cancion, {})):
+                dest = None                     # con buses separados, cada canción lleva sus auxiliares
             if dest is None:
                 nombre = p["nombre"]
                 usados = {q["nombre"] for q in pistas_show} | set(externos)
@@ -427,8 +439,9 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
         if nueva and tipo != "retorno_externo":
             try:
                 d = copiar_color(d, nombre, o, pista)
+                d = poner_solo(d, nombre, copiar_solo and solo(o, pista))
             except Exception as e:
-                avisos.append(f"{nombre}: no se copió el color ({e})")
+                avisos.append(f"{nombre}: no se copió el color o el solo ({e})")
         if tipo == "midi":
             if nueva:                               # salida MIDI, valores y automatización
                 try:
@@ -445,6 +458,7 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
                 continue
         if tipo == "retorno_externo":
             d = copiar_color(d, nombre, o, pista)
+            d = poner_solo(d, nombre, copiar_solo and solo(o, pista))
         if not nueva:
             try:
                 d, av = juntar_automatizacion(d, nombre, o, pista, ini_m, cancion)
@@ -458,7 +472,8 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
         except Exception as e:                      # se avisa y se sigue sin esos plugins
             avisos.append(f"{nombre}: no se copiaron los plugins ({e})")
         try:
-            d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion)
+            d, av = copiar_ruteo(d, nombre, o, pista, ini_m, cancion,
+                                 f" ({cancion})" if separar_buses else "")
             avisos += av
         except Exception as e:                      # se avisa y se sigue con el de la plantilla
             avisos.append(f"{nombre}: no se copió el ruteo ni la automatización ({e})")

@@ -5,6 +5,7 @@
   python -m trarin compatibilidad CANCION1.ptx CANCION2.ptx ... [--json] [-o informe]
   python -m trarin show plan SHOW.json [--json]
   python -m trarin show armar SHOW.json
+  python -m trarin mcp                                   (servidor MCP por stdio)
 """
 
 import argparse
@@ -101,7 +102,12 @@ def main(argv=None):
     sh.add_argument("accion", choices=["plan", "armar"])
     sh.add_argument("archivo", help="descripción del show (.json, o .yaml con pyyaml)")
     sh.add_argument("--json", action="store_true")
+    sub.add_parser("mcp", help="servidor MCP por stdio (requiere: pip install \"trarin[mcp]\")")
     a = p.parse_args(argv)
+    if a.orden == "mcp":
+        from .servidor_mcp import main as servidor
+        servidor()
+        return
     if a.orden == "show":
         from .show import cargar, planear, armar, texto as texto_plan, ErrorShow
         if a.accion == "armar":

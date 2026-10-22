@@ -12,6 +12,7 @@ license = {text = "LGPL-2.1-or-later"}
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6"]
+mcp = ["mcp"]
 
 [project.scripts]
 trarin = "trarin.__main__:main"
