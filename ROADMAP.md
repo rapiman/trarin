@@ -25,8 +25,8 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
 - ✅ Segunda parte: articulación, forma y cambios, clics, cortes, bordes sin fundido,
   continua fija o variable, infrasonido, nota más presente, pérdida en mono, mapa de la
   canción y qué suena en un compás.
-- Pendiente: revisión de nivel con el fader y su automatización; proponer los marcadores de
-  sección en la sesión.
+- ✅ Revisión de nivel con fader, automatización y mute (`revisar_niveles`) y marcadores de
+  sección escritos en la sesión (`marcar_secciones`).
 - **Timbre de vientos andinos y metales** (a la larga): asimetría de la onda (picos
   positivos y negativos distintos, armónicos pares; pifilka, antara, trompeta, clarinete),
   sonido rajado o áspero (modulación de 20 a 150 Hz, riqueza armónica), redoble o trémolo
@@ -67,6 +67,10 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 - Búsquedas por descripción: «qué pistas son agudas y suenan en Aliwen».
 
 ## Fase 4 — Escuchar sin abrir Pro Tools
+
+- ✅ `escuchar`: mezcla rápida de un tramo a WAV de 16 bits (sin plugins, buses ni
+  auxiliares). Pendiente: MP3 u otro formato liviano (en el equipo no hay ffmpeg; se puede
+  agregar un codificador), los auxiliares con su fader y el puente con Pizarrita.
 
 Una mezcla rápida de un tramo (clips, clip gain, fundidos, paneo, fader y su automatización,
 mute; sin plugins) en un archivo liviano para escuchar desde cualquier lado.
@@ -127,8 +131,7 @@ y §24), que se reutiliza:
 - ✅ Agregar varias MIDI y auxiliares en una pasada; ruteo, color, plugins y automatización
   en lote; lectura con el mapa de tempo preparado y descifrado de una vez (leer el show: de
   8,7 s a 1,1 s; consolidar: de 6,7 min a menos de 2).
-- Pendiente: el armador de shows (`show.py`) todavía copia ruteo, plugins y automatización
-  pista por pista; pasarlo a lotes.
+- ✅ Armador de shows en lotes: el show RAPIZUAM de 132 s a 53 s, mismos bytes.
 
 ## Conversión entre programas
 

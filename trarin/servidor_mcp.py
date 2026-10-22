@@ -21,7 +21,8 @@ Reglas:
 - Para conocer una sesión, partir por `resumen_sesion` (una fila por pista, filtrable por
   nombre o por canción) y `detalle_pista`; `leer_sesion` devuelve el modelo entero y en un
   show grande pesa megas: usarlo solo si hace falta.
-- Lo que tarda minutos (armar_show, consolidar, convertir_audio, medir_bpm, fichas_calcular) corre como
+- Lo que tarda minutos (armar_show, consolidar, convertir_audio, medir_bpm, fichas_calcular,
+  escuchar) corre como
   trabajo: devuelve un id; después `trabajo_esperar` (hasta 40 s por llamada; repetir con
   'desde' = 'siguiente' para traer solo lo nuevo) o `trabajo_estado`, y `trabajo_matar`.
 - Las que tienen modo plan (plan_consolidar, plan_grupos, planear_show) no escriben nada:
@@ -31,8 +32,10 @@ Reglas:
   saturación, clics, mono o estéreo). Se calculan una vez por sesión, solo cuando la persona
   lo pide (`fichas_calcular`, trabajo); después `resumen_sesion` trae una línea de sonido por
   pista, `ficha` da el detalle de una pista, de una canción o de un WAV suelto,
-  `mapa_cancion` muestra qué entra y sale por compases y `que_suena` lo que suena en un
-  compás («el compás 40 de Aliwen»). Son aproximadas: describen el audio con el clip gain,
+  `mapa_cancion` muestra qué entra y sale por compases, `que_suena` lo que suena en un
+  compás («el compás 40 de Aliwen»), `revisar_niveles` los picos sobre 0 dBFS con fader y
+  automatización y `marcar_secciones` escribe los marcadores de sección. Para oír lo que dice
+  la ficha, `escuchar` arma una mezcla rápida de un tramo en un WAV. Son aproximadas: describen el audio con el clip gain,
   sin fader, plugins ni fundidos. Al conversar, traducirlas a palabras simples para
   alguien que quizás no conoce los términos técnicos.
 - Cómo habla la gente de un sonido y dónde mirarlo en la ficha:
@@ -217,6 +220,59 @@ def crear():
             raise ValueError("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular "
                              "(solo si la persona lo pide)")
         return ses.que_suena(compas or None, None if segundo < 0 else segundo, cancion or None)
+
+    @herramienta
+    def revisar_niveles(ruta: str, cancion: str = "") -> dict:
+        """Revisión de nivel de una sesión (o de una canción): pistas cuyo pico
+        pasa 0 dBFS con clip gain, fader, su automatización y mute (y si la
+        causa es el clip gain, el fader o ambos), y la sonoridad aproximada de
+        cada canción con la mezcla. No ve plugins, buses ni el master. Solo lee;
+        necesita fichas_calcular."""
+        from . import fichas
+        ses = fichas.Sesion(_existe(ruta))
+        if not ses.hay():
+            raise ValueError("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular "
+                             "(solo si la persona lo pide)")
+        return ses.revisar_niveles(cancion or None)
+
+    @herramienta
+    def marcar_secciones(ruta: str, cancion: str, salida: str, compases: list[int] | None = None,
+                         compases_por_tramo: int = 4) -> dict:
+        """Escribe una sesión nueva (salida) con marcadores de sección en una
+        canción: «<canción> B», «<canción> C»… en los compases pedidos (contados
+        desde el inicio de la canción) o, si no se indican, en los que propone
+        mapa_cancion. Mostrar antes los compases a la persona. Verifica lo
+        escrito y lo anota en las notas del proyecto."""
+        from . import fichas
+        from .vistas import tras_escribir
+        origen = _existe(ruta)
+        sal = _salida_nueva(salida)
+        puestos = fichas.escribir_marcadores(origen, str(sal), cancion, compases or None, compases_por_tramo)
+        out = {"salida": str(sal), "marcadores": puestos}
+        out.update(tras_escribir(origen, str(sal), f"marcadores de sección en {cancion}"))
+        return out
+
+    @herramienta
+    def escuchar(ruta: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
+                 desde_s: float = -1, hasta_s: float = -1, pistas: str = "", frecuencia: int = 0) -> dict:
+        """Mezcla rápida de un tramo de una sesión de Pro Tools en un WAV estéreo
+        de 16 bits (en trarin/escuchas junto a la sesión, siempre un archivo
+        nuevo), para escuchar sin abrir Pro Tools. Tramo: una canción (y, si se
+        indican, sus compases desde_compas–hasta_compas contados desde su
+        inicio), compases de la sesión o segundos. pistas: expresión regular para
+        escuchar solo algunas («pif|kultrun»). frecuencia: p. ej. 22050 para un
+        archivo más liviano. Suma clip gain, fundidos, paneo, fader, su
+        automatización, mute, solo y el fader del master; sin plugins, buses ni
+        auxiliares. Corre como trabajo; el resultado trae la ruta del archivo."""
+        from . import trabajos
+        args = {"sesion": _existe(ruta)}
+        for k, v in (("cancion", cancion or None), ("desde_compas", desde_compas or None),
+                     ("hasta_compas", hasta_compas or None), ("desde_s", None if desde_s < 0 else desde_s),
+                     ("hasta_s", None if hasta_s < 0 else hasta_s), ("pistas", pistas or None),
+                     ("frecuencia", frecuencia or None)):
+            if v is not None:
+                args[k] = v
+        return {"trabajo": trabajos.lanzar("escuchar", args)}
 
     @herramienta
     def detalle_pista(ruta: str, pista: str, max_clips: int = 60) -> dict:

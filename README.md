@@ -97,7 +97,7 @@ pip install -e ".[mcp]"
 python -m trarin mcp          # servidor MCP por stdio
 ```
 
-Herramientas (27), pensadas para que la IA sepa lo necesario sin leer la sesión
+Herramientas (30), pensadas para que la IA sepa lo necesario sin leer la sesión
 entera:
 
 | Grupo | Herramientas |
@@ -105,13 +105,13 @@ entera:
 | Mirar (solo leen) | `resumen_sesion` (una línea por pista, filtrable por nombre o canción), `detalle_pista`, `rutas_sesion`, `archivos_audio`, `comparar_sesiones`, `leer_sesion`, `paneo_live` |
 | Notas del proyecto | `notas`, `anotar` |
 | Shows | `compatibilidad`, `planear_show`, `armar_show` |
-| Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `escribir_sesion` |
-| Sonido | `fichas_calcular`, `ficha`, `mapa_cancion`, `que_suena`, `medir_bpm`, `convertir_audio` |
+| Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `marcar_secciones`, `escribir_sesion` |
+| Sonido | `fichas_calcular`, `ficha`, `mapa_cancion`, `que_suena`, `revisar_niveles`, `escuchar`, `medir_bpm`, `convertir_audio` |
 | Trabajos | `trabajo_esperar`, `trabajo_estado`, `trabajo_matar`, `trabajos_recientes` |
 
 - Las que escriben piden un archivo de salida que no exista, vuelven a leer lo
   escrito, lo comparan con el original y agregan una línea en las notas.
-- Lo que tarda (armar y consolidar, fichas, bpm, convertir audio) corre como **trabajo**
+- Lo que tarda (armar y consolidar, fichas, escuchar, bpm, convertir audio) corre como **trabajo**
   en un proceso aparte: la herramienta devuelve un id y `trabajo_esperar`
   entrega el avance (solo las líneas nuevas) hasta 40 s por llamada. Los
   trabajos quedan en `%LOCALAPPDATA%\trarin\trabajos` (o `TRARIN_TRABAJOS`).

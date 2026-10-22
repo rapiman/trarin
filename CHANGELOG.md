@@ -5,17 +5,48 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-22
 
+### Escuchar sin abrir Pro Tools (fase 4)
+- `trarin/escucha.py`: mezcla rápida de un tramo (canción, compases o
+  segundos) en un WAV estéreo de 16 bits en `trarin/escuchas/` junto a la
+  sesión, siempre un archivo nuevo. Suma clip gain (fijo o curva), fundidos,
+  paneo (ley de potencia constante) y su automatización, fader y su
+  automatización, mute, solo y el fader del master; sin plugins, buses ni
+  auxiliares. Se arma por tramos de 20 s (sirve para un show entero); si la
+  suma pasa 0 dBFS se baja el total lo justo y se avisa. Filtro de pistas y
+  frecuencia de salida opcional (más liviano).
+- MCP: `escuchar` (trabajo).
+
+### Fase 2 cerrada
+- `revisar_niveles`: picos sobre 0 dBFS con clip gain, fader, su automatización
+  y mute (y si la causa es el clip gain, el fader o ambos), y la sonoridad de
+  cada canción con la mezcla.
+- `marcar_secciones`: escribe en una sesión nueva los marcadores de sección de
+  una canción («Aliwen B», «Aliwen C»…), en los compases pedidos o en los que
+  propone `mapa_cancion`; verifica y anota.
+
+### Armador de shows en lotes
+- Color y solo, plugins, ruteo, corrimiento de la automatización y
+  automatización de las canciones que caen en pistas existentes van cada uno
+  en un lote (un solo reconstruir por fase); el ruteo se separa de su
+  corrimiento para poder agruparlo. Mismos bytes que antes en los 10 shows de
+  prueba y en el de RAPIZUAM; el de RAPIZUAM pasó de 132 s a 53 s.
+
 ### Fichas de sonido (fase 2, segunda parte)
 - Articulación: golpes detectados con envolvente de 10 ms, golpes por segundo,
-  regularidad y pulso aproximado; percusivo, mixto o sostenido según la cresta.
+  regularidad y pulso aproximado; percusivo, mixto o sostenido según cuánto cae
+  el sonido 150 ms después de cada golpe (calibrado con el show); en una sesión,
+  qué porcentaje de los golpes cae en la grilla de semicorcheas del tempo.
 - Altura: la nota que más suena en los momentos tonales (Do…Si con octava,
-  La4 = 440 Hz).
+  La4 = 440 Hz); no se informa en sonidos ruidosos.
 - Forma: curva de nivel en 20 tramos, su palabra (constante, crescendo,
   decrescendo, crece al final, se apaga al final, intermitente) y los cambios
   de carácter (sube o baja de nivel, más brillante u opaco).
-- Problemas: posibles clics, cortes a cero, bordes de clip sin fundido, continua
-  fija o variable (la variable es típica del soplo en el micrófono, por ejemplo
-  en la pifilka) e infrasonido.
+- Problemas: posibles clics, cortes a cero (si son muchos, se avisa que puede
+  ser una puerta o un efecto), bordes de clip sin fundido, continua fija o
+  variable (medida bloque a bloque con ventana para que lo grave no se cuele; la
+  variable es típica del soplo o de mover el instrumento cerca del micrófono) e
+  infrasonido bajo 20 Hz. En el show: las pifilkas no tienen continua;
+  ballenas_acordes tiene continua fija de 0,10 y Kaskawilla_Audio2, variable.
 - Estéreo: cuántos dB pierde (o gana) al sumarse en mono.
 - `mapa_cancion`: la canción por tramos de compases, qué entra y sale,
   sonoridad de la suma y posibles marcadores de sección. `que_suena`: lo que

@@ -450,6 +450,13 @@ def _corrida(puntos, desde, escala=1.0, hasta=None):
 
 def _correr(d, pista, desde, escala=1.0, hasta=None):
     """d con la automatización del canal de 'pista' corrida 'desde' muestras."""
+    reemplazos = correr_reemplazos(d, pista, desde, escala, hasta)
+    return reconstruir(d, reemplazos) if reemplazos else d
+
+
+def correr_reemplazos(d, pista, desde, escala=1.0, hasta=None):
+    """Los reemplazos que corren la automatización del canal de 'pista' (para
+    juntar varias pistas en un solo reconstruir)."""
     b = arbol(d)
     sb = _canal(d, b, pista)
     reemplazos = []
@@ -459,15 +466,16 @@ def _correr(d, pista, desde, escala=1.0, hasta=None):
             nuevos = _corrida(pts, desde, escala, hasta)
             if nuevos != pts:
                 reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
-    return reconstruir(d, reemplazos) if reemplazos else d
+    return reemplazos
 
 
-def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion="", escala=1.0, hasta=None):
+def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion="", escala=1.0, hasta=None,
+                          lote=None):
     """Devuelve (d, avisos): en cada lista de automatización del fader del
     canal de 'pista' (y de los envíos al mismo destino) quedan los puntos
     anteriores a la muestra 'desde' y, desde ahí, los de 'pista_origen' de
     d_origen corridos 'desde' muestras. Si ninguna de las dos listas cambia de
-    valor, no se toca."""
+    valor, no se toca. lote: ver en_lote (devuelve solo los avisos)."""
     b, bo = arbol(d), arbol(d_origen)
     sb, sb_o = _canal(d, b, pista), _canal(d_origen, bo, pista_origen)
     fs, _, _, _ = _faders(d, sb)
@@ -505,6 +513,9 @@ def juntar_automatizacion(d, pista, d_origen, pista_origen, desde, cancion="", e
                 continue                            # el mismo valor fijo en las dos
             if nuevos != pa:
                 reemplazos.append((a.inicio + 2, a.fin, _contenido_260a(d, a, nuevos)[2:]))
+    if lote is not None:
+        lote += reemplazos
+        return avisos
     return (reconstruir(d, reemplazos) if reemplazos else d), avisos
 
 
@@ -768,11 +779,16 @@ def solo(d, pista):
     return d[_byte_solo(d, arbol(d), pista)] == 1
 
 
-def poner_solo(d, pista, valor):
-    """d con la pista en solo (valor True) o no."""
+def poner_solo(d, pista, valor, lote=None):
+    """d con la pista en solo (valor True) o no. lote: ver en_lote."""
     p = _byte_solo(d, arbol(d), pista)
     nuevo = 1 if valor else 0
-    return d if d[p] == nuevo else reconstruir(d, [(p, p + 1, bytes([nuevo]))])
+    if d[p] == nuevo:
+        return None if lote is not None else d
+    if lote is not None:
+        lote.append((p, p + 1, bytes([nuevo])))
+        return None
+    return reconstruir(d, [(p, p + 1, bytes([nuevo]))])
 
 
 # Listas de automatización del fader del canal, como las lee mezcla._automatizacion:
