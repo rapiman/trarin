@@ -3,6 +3,12 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-10-26
+
+- `consolidar`: una categoría MIDI con una sola pista de origen también pasa a
+  «MIDI <categoría>» (antes quedaba con su nombre y podía chocar con una pista
+  nueva de audio del mismo nombre, como «Bombo» al cambiar el orden del show).
+
 ## 2026-10-22
 
 ### Escuchar sin abrir Pro Tools (fase 4)

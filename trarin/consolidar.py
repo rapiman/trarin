@@ -239,7 +239,7 @@ def _planear_midi(comun, reglas, avisos):
     for regla in reglas.get("midi") or []:
         fuentes = [p for p in comun["pistas"] if p["tipo"] == "midi" and p["clips"]
                    and re.search(regla["patron"], _normal(p["nombre"]))]
-        if len(fuentes) < 2:
+        if not fuentes:                 # con una sola fuente igual pasa a «MIDI <categoría>»
             continue
         carriles = []           # [(nombres, [(ini, fin)])]
         for p in sorted(fuentes, key=lambda q: min(c["tick"] for c in q["clips"])):
