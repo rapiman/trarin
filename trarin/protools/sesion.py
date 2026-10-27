@@ -87,11 +87,11 @@ def leer(ruta) -> dict:
     ruta = Path(ruta)
     d = leer_descifrado(ruta)
     bloques = arbol(d)
-    tempo = tiempo.leer_tempo(d, bloques)
+    fs = _frecuencia(d, bloques)
+    tempo = tiempo.leer_tempo(d, bloques, fs)
     mapa = tiempo.MapaTempo(tempo)              # para las miles de conversiones de abajo
     compases = tiempo.leer_compases(d, bloques)
     marcadores = tiempo.leer_marcadores(d, bloques)
-    fs = _frecuencia(d, bloques)
     producto, version, version_completa, plataforma = _producto_version(d, bloques)
 
     def ubicar(ev):
