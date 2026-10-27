@@ -29,8 +29,8 @@ Reglas:
   mostrar el plan a la persona antes de escribir.
 - Si la persona dice que las pistas MIDI aparecen vacías en Pro Tools, `revisar_midi` y
   `reparar_midi`: las notas están, pero la región las deja fuera de su ventana.
-- Reordenar pistas no está soportado: Pro Tools guarda referencias a la posición que
-  trarin aún no conoce todas (una prueba cruzó nombres y clips). Ordenar a mano en Pro Tools.
+- Reordenar pistas: `ordenar_pistas` con plan=True muestra el orden (explícito o por
+  grupos de la sesión) sin escribir; mostrarlo a la persona antes de escribir.
 - Fichas de sonido: para hablar del sonido sin escucharlo (grave o agudo, brillante u opaco,
   percusivo o sostenido, pulso, nota, dónde empieza a sonar, cómo crece, nivel en LUFS,
   saturación, clics, mono o estéreo). Se calculan una vez por sesión, solo cuando la persona
@@ -458,6 +458,37 @@ def crear():
         p.write_bytes(cifrar(d))
         return {"salida": str(p), "regiones_reparadas": n, "despues": revisar(str(p)),
                 **tras_escribir(sesion, str(p), f"MIDI: {n} clips vacíos reparados")}
+
+    @herramienta
+    def ordenar_pistas(sesion: str, salida: str = "", orden: list[str] | None = None,
+                       grupos: list[str] | None = None, plan: bool = True) -> dict:
+        """Cambia el orden de las pistas de un .ptx. 'orden': nombres de TODAS las
+        pistas en el orden nuevo; o 'grupos': nombres de grupos de la sesión, y el
+        orden queda master y auxiliares, audio por grupo (y por su primer clip), MIDI
+        por grupo. Con plan=True (por omisión) solo devuelve el orden; con plan=False
+        escribe 'salida' (un .ptx nuevo) y verifica que cada pista conserve sus clips,
+        notas y mezcla."""
+        from .comun import leer_comun
+        from .protools.descifrado import leer_descifrado
+        from .protools.pistas_orden import orden_por_grupos, reordenar, verificar_orden
+        from .protools.reconstruccion import cifrar
+        from .vistas import tras_escribir
+        c = leer_comun(_existe(sesion))
+        if bool(orden) == bool(grupos):
+            raise ValueError("indicar 'orden' o 'grupos' (uno de los dos)")
+        de = {}
+        if grupos:
+            orden, de = orden_por_grupos(c, grupos)
+        filas = [{"pista": n, "grupo": de.get(n)} for n in orden]
+        if plan:
+            return {"orden": filas}
+        p = _salida_nueva(salida)
+        p.write_bytes(cifrar(reordenar(leer_descifrado(sesion), orden)))
+        problemas = verificar_orden(c, leer_comun(str(p)), orden)
+        if problemas:
+            p.unlink()
+            raise ValueError(f"la verificación falló, no se escribió: {problemas}")
+        return {"salida": str(p), "orden": filas, **tras_escribir(sesion, str(p), "pistas reordenadas")}
 
     @herramienta
     def escribir_sesion(comun: dict, plantilla: str, salida: str) -> dict:

@@ -130,13 +130,12 @@ y §24), que se reutiliza:
   abre y guarda bien.
 - Show RAPIZUAM, desde el 2026-10-27 se trabaja sobre una sola sesión,
   `rapizuam_show_v7.ptx`, con respaldo en Session File Backups antes de cada cambio
-  (sin v8, v9…). Ya tiene: la percusión de Sombra desde su propia sesión, los kultrunes
+  (versión nueva solo cuando se pide). Ya tiene: la percusión de Sombra desde su propia sesión, los kultrunes
   de Katrümongen L/R y en vivo, el kultrun de Aliwen desde el stem, sin automatización
   de mute, crossfades en clips pegados, marcadores de canción dos blancas antes del
-  primer sonido y los MIDI reparados.
-- **Reordenar pistas**: falta encontrar la referencia a la posición que cruza nombres y
-  clips (ver `docs/formato_ptx.md`, orden de las pistas). Pista para seguir: mover una
-  sola pista en Pro Tools en una copia y comparar byte a byte.
+  primer sonido y los MIDI reparados. La `rapizuam_show_v8.ptx` es la v7 con las
+  pistas ordenadas por familia (audio y luego MIDI); los MIDI de todas las canciones
+  quedan donde estaban en su sesión original y caen con el kultrun.
 - **Crossfades sobre clips que ya tienen un crossfade al otro lado**: hoy no se puede
   borrar y volver a crear un clip con un fundido cruzado.
 

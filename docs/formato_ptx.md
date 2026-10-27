@@ -188,15 +188,22 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
 
 - **Lista de pistas**: `0x2519` con hijos `0x251A`: u16 tipo en +2 (0 audio, 1 MIDI, 2 auxiliar;
   `0x0B` carpeta según pt_api) y nombre en +4. La lista viene dos veces [verificado].
-- **Orden de las pistas** [incompleto, 2026-10-27]: comparando una sesión antes y después de mover
+- **Orden de las pistas** [verificado, 2026-10-27]: comparando sesiones antes y después de mover
   pistas en Pro Tools 12, el orden en pantalla es el de la lista `0x2519` y Pro Tools renumera en
   ese orden: el número de cada entrada (u16) y de sus dos `0x251A` (u32 en fin − 22) = posición +
   1; los canales `0x2624` en el mismo orden con su `0x2015` = posición + 1; el número de audio (u32
   tras el `0x261B`) correlativo entre las pistas de audio y su playlist igual a ese número (las
-  `0x1014` de `0x1015` en ese orden); los grupos `0x202A` con las posiciones ordenadas; las tiras
-  `0x2589` guardan posiciones pero conservan su propio orden. Permutar todo eso (y las posiciones
-  del índice `0x0002`) no basta: Pro Tools abrió la sesión con nombres cruzados entre pistas y
-  perdió clips. Falta otra referencia a la posición; hasta encontrarla, trarin no reordena.
+  `0x1014` de `0x1015` en ese orden); las entradas `0x1052` del mapa `0x1054` en el orden de las
+  playlists, con los números (u16) de cada `0x1014` renumerados; el número de los canales MIDI
+  (`pistas_quitar._n_midi`) correlativo y sus playlists `0x1057` (en `0x1058`) en ese orden; los
+  grupos `0x202A` con las posiciones ordenadas; las tiras `0x2589` guardan posiciones pero
+  conservan su propio orden. En el índice `0x0002`, las posiciones dentro de cada grupo y los
+  grupos de cada entrada quedan de menor a mayor. Lo que faltaba en los primeros intentos: sin
+  ordenar el índice ni mover las `0x1052`, Pro Tools cruzó las entradas de dos pistas de audio;
+  sin mover las `0x1057`, mostró las pistas MIDI en el orden viejo con la mezcla de otra pista
+  (Pro Tools asocia canal MIDI y playlist por posición). `protools/pistas_orden.reordenar` hace
+  todo esto sin cambiar tamaños; verificado abriendo en Pro Tools una sesión de dos pistas y el
+  show RAPIZUAM (126 pistas, 42 MIDI).
 - **Playlists de audio**: `0x1015` con hijos `0x1014`: nombre, luego una lista de números de canal.
   Cada número indexa una entrada `0x1052` del mapa `0x1054`. Las playlists cuyo nombre no es el de
   una pista activa son alternativas guardadas [verificado].

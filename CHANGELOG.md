@@ -5,6 +5,14 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-27
 
+- **Reordenar pistas**: `protools/pistas_orden.py` con `reordenar` (permuta lista
+  de pistas, canales, playlists de audio y MIDI, mapa de colocaciones, grupos,
+  tiras e índice, sin cambiar tamaños), `orden_por_grupos` (master y auxiliares,
+  audio por grupo y primer clip, MIDI por grupo) y `verificar_orden`. CLI
+  `trarin ordenar sesion.ptx (--lista nombres.txt | --grupos "A,B") [-o salida.ptx]`;
+  MCP `ordenar_pistas` (plan por omisión). Verificado en Pro Tools 12 con dos
+  pistas de audio y con el show RAPIZUAM (v8): cada pista conserva contenido,
+  color, salida y volumen.
 - **Ancla de la línea de tiempo (corregido)**: el primer evento de tempo de
   Pro Tools guarda en qué muestra cae su tick (int64 en TMS+11). trarin la
   ignoraba y suponía el tick 0 en la muestra 0. `leer_tempo` la lee y el primer
@@ -27,9 +35,8 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   (corrige las regiones sin mover notas ni clips; mismo tamaño). CLI
   `trarin midi sesion.ptx [-o salida.ptx]`; MCP `revisar_midi` y `reparar_midi`.
 - Documentado en `docs/formato_ptx.md`: la convención CERO de las notas, lo que
-  Pro Tools cambia al reordenar pistas (incompleto: reordenar todavía no se
-  puede) y el corrimiento al importar un `.mid` en un show con muchos cambios de
-  tempo.
+  Pro Tools cambia al reordenar pistas y el corrimiento al importar un `.mid`
+  en un show con muchos cambios de tempo.
 - `grupos.cambiar_grupos`: agrega o quita pistas de grupos que ya existen
   (cambia las dos copias de la lista 0x202B).
 - Borrar un clip de una pista estéreo cuyos canales tienen clips distintos en

@@ -130,12 +130,44 @@ def main(argv=None):
     mi = sub.add_parser("midi", help="revisa los clips MIDI que Pro Tools muestra vacíos; con -o escribe una copia reparada")
     mi.add_argument("sesion")
     mi.add_argument("-o", "--salida", help="sesión .ptx nueva con los clips reparados")
+    od = sub.add_parser("ordenar", help="cambia el orden de las pistas de una sesión .ptx (copia nueva)")
+    od.add_argument("sesion")
+    od.add_argument("-o", "--salida", help="sesión .ptx nueva; sin -o solo muestra el orden")
+    qo = od.add_mutually_exclusive_group(required=True)
+    qo.add_argument("--lista", help="archivo de texto con los nombres de todas las pistas, uno por línea")
+    qo.add_argument("--grupos", help="grupos de la sesión separados por comas: audio y MIDI quedan por grupo")
     tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
     tj.add_argument("carpeta")
     a = p.parse_args(argv)
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "ordenar":
+        from pathlib import Path
+        from .comun import leer_comun
+        from .protools.descifrado import leer_descifrado
+        from .protools.pistas_orden import orden_por_grupos, reordenar, verificar_orden
+        from .protools.reconstruccion import cifrar
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        c = leer_comun(a.sesion)
+        de = {}
+        if a.grupos:
+            orden, de = orden_por_grupos(c, [g.strip() for g in a.grupos.split(",") if g.strip()])
+        else:
+            orden = [x for x in Path(a.lista).read_text(encoding="utf-8-sig").splitlines() if x.strip()]
+        for n in orden:
+            print(f"{n}" + (f"   [{de[n]}]" if n in de else ""))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            Path(a.salida).write_bytes(cifrar(reordenar(leer_descifrado(a.sesion), orden)))
+            problemas = verificar_orden(c, leer_comun(a.salida), orden)
+            if problemas:
+                Path(a.salida).unlink()
+                p.error("la verificación falló, no se escribió: " + "; ".join(problemas))
+            print(f"escrito {a.salida}")
         return
     if a.orden == "midi":
         from pathlib import Path
