@@ -175,9 +175,16 @@ def _chunks_notas(d, b):
     return out
 
 
-def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana):
+def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana, nuevo=False):
     """Copia del MdChun [ini, fin) con las notas de la ventana [desde,
     desde+largo) reemplazadas por notas_ventana (ticks relativos a 'desde').
+
+    nuevo=True: chunk de una región nueva hecho a partir de otro. No queda
+    ninguna nota del original y las posiciones llevan CERO (10**12), como el
+    desplazamiento de la región nueva (_region_midi). Si el chunk de base no
+    tiene CERO (sesiones que vienen de Pro Tools sin él), escribir las notas sin
+    CERO las deja fuera de la ventana de la región: Pro Tools muestra el clip
+    vacío aunque las notas estén en el archivo. Verificado en Pro Tools 12.
 
     MdChun → MdNLB (versión 3): u32 n, n eventos de 35 bytes (posición 5 bytes,
     00 00 40, nota, largo 5 bytes, 00 00 40, velocidad, y 17 bytes), una copia de
@@ -200,13 +207,16 @@ def _chunk_con_notas(d, ini, fin, notas_ventana, desde, largo_ventana):
     eventos = [d[n0 + 4 + 35 * k:n0 + 39 + 35 * k] for k in range(n)]
     originales = [d[p + 8 + 11 * k:p + 19 + 11 * k] for k in range(n)]
     marcas = [d[p2 + 4 + k:p2 + 5 + k] for k in range(n)]
-    con_cero = any(P._entero(e, 0, 5) >= CERO for e in eventos)
+    con_cero = True if nuevo else any(P._entero(e, 0, 5) >= CERO for e in eventos)
 
     def tick(e):
         return P._sin_cero(P._entero(e, 0, 5))
 
-    dentro = [k for k in range(n) if desde <= tick(eventos[k]) < desde + largo_ventana]
-    libres = list(dentro)
+    if nuevo:
+        dentro, libres = list(range(n)), []
+    else:
+        dentro = [k for k in range(n) if desde <= tick(eventos[k]) < desde + largo_ventana]
+        libres = list(dentro)
     nuevos = [(eventos[k], originales[k], marcas[k]) for k in range(n) if k not in dentro]
     for nota in notas_ventana:
         t = desde + nota["tick"]
@@ -311,7 +321,7 @@ def _cambios_notas(d, bloques, cambios, nuevas=()):
         if any(n["tick"] >= largo for n in notas):
             raise ErrorEscritura("una nota empieza después del final del clip MIDI nuevo")
         indices.append(len(chunks) + len(por_region) + len(indices))
-        insercion += _chunk_con_notas(base, ini, fin, notas, 0, 1 << 39)
+        insercion += _chunk_con_notas(base, ini, fin, notas, 0, 1 << 39, nuevo=True)
     if not insercion:
         return [], out, indices
     reemplazos = [(b.inicio + 2, b.inicio + 6, struct.pack("<I", len(chunks) + len(por_region) + len(nuevas))),

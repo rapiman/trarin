@@ -127,12 +127,30 @@ def main(argv=None):
     co.add_argument("reglas", help="JSON con canciones, categorías, rutas, auxiliares… (ver trarin/consolidar.py)")
     co.add_argument("-o", "--salida", required=True)
     co.add_argument("--plan", action="store_true", help="solo muestra qué pistas van a cada pista nueva")
+    mi = sub.add_parser("midi", help="revisa los clips MIDI que Pro Tools muestra vacíos; con -o escribe una copia reparada")
+    mi.add_argument("sesion")
+    mi.add_argument("-o", "--salida", help="sesión .ptx nueva con los clips reparados")
     tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
     tj.add_argument("carpeta")
     a = p.parse_args(argv)
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "midi":
+        from pathlib import Path
+        from .protools.descifrado import leer_descifrado
+        from .protools.midi_revision import reparar_desplazamientos, revisar_midi
+        from .protools.reconstruccion import cifrar
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        print(json.dumps(revisar_midi(a.sesion), ensure_ascii=False, indent=2))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            d, n = reparar_desplazamientos(leer_descifrado(a.sesion))
+            Path(a.salida).write_bytes(cifrar(d))
+            print(f"{n} regiones reparadas; escrito {a.salida}")
         return
     if a.orden == "consolidar":
         from pathlib import Path

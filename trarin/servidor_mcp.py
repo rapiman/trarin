@@ -27,6 +27,10 @@ Reglas:
   'desde' = 'siguiente' para traer solo lo nuevo) o `trabajo_estado`, y `trabajo_matar`.
 - Las que tienen modo plan (plan_consolidar, plan_grupos, planear_show) no escriben nada:
   mostrar el plan a la persona antes de escribir.
+- Si la persona dice que las pistas MIDI aparecen vacías en Pro Tools, `revisar_midi` y
+  `reparar_midi`: las notas están, pero la región las deja fuera de su ventana.
+- Reordenar pistas no está soportado: Pro Tools guarda referencias a la posición que
+  trarin aún no conoce todas (una prueba cruzó nombres y clips). Ordenar a mano en Pro Tools.
 - Fichas de sonido: para hablar del sonido sin escucharlo (grave o agudo, brillante u opaco,
   percusivo o sostenido, pulso, nota, dónde empieza a sonar, cómo crece, nivel en LUFS,
   saturación, clics, mono o estéreo). Se calculan una vez por sesión, solo cuando la persona
@@ -432,6 +436,28 @@ def crear():
         grupos = grupos_por_nombre(pistas, r["grupos"], r.get("grupo_midi"))
         p.write_bytes(cifrar(agregar_grupos(leer_descifrado(sesion), grupos)))
         return {"salida": str(p), "grupos": [g["nombre"] for g in grupos], **tras_escribir(sesion, str(p), "grupos")}
+
+    @herramienta
+    def revisar_midi(sesion: str) -> dict:
+        """Clips MIDI que Pro Tools muestra vacíos aunque tengan notas (región y
+        notas con distinta convención de posición) y cuántos se pueden reparar.
+        Solo lee."""
+        from .protools.midi_revision import revisar_midi as revisar
+        return revisar(_existe(sesion))
+
+    @herramienta
+    def reparar_midi(sesion: str, salida: str) -> dict:
+        """Escribe en 'salida' (un .ptx nuevo) la sesión con los clips MIDI vacíos
+        reparados (ver revisar_midi). No mueve notas ni clips."""
+        from .protools.descifrado import leer_descifrado
+        from .protools.midi_revision import reparar_desplazamientos, revisar_midi as revisar
+        from .protools.reconstruccion import cifrar
+        from .vistas import tras_escribir
+        p = _salida_nueva(salida)
+        d, n = reparar_desplazamientos(leer_descifrado(_existe(sesion)))
+        p.write_bytes(cifrar(d))
+        return {"salida": str(p), "regiones_reparadas": n, "despues": revisar(str(p)),
+                **tras_escribir(sesion, str(p), f"MIDI: {n} clips vacíos reparados")}
 
     @herramienta
     def escribir_sesion(comun: dict, plantilla: str, salida: str) -> dict:

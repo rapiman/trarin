@@ -126,6 +126,17 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
   cambios de tempo.
 - Investigar por qué un show grande tarda varios minutos en cerrarse en Pro Tools, aunque
   abre y guarda bien.
+- show real, desde el 2026-10-27 se trabaja sobre una sola sesión,
+  `ejemplo_show_v7.ptx`, con respaldo en Session File Backups antes de cada cambio
+  (sin v8, v9…). Ya tiene: la percusión de una canción desde su propia sesión, los kultrunes
+  de una canción L/R y en vivo, el kultrun de una canción desde el stem, sin automatización
+  de mute, crossfades en clips pegados, marcadores de canción dos blancas antes del
+  primer sonido y los MIDI reparados.
+- **Reordenar pistas**: falta encontrar la referencia a la posición que cruza nombres y
+  clips (ver `docs/formato_ptx.md`, orden de las pistas). Pista para seguir: mover una
+  sola pista en Pro Tools en una copia y comparar byte a byte.
+- **Crossfades sobre clips que ya tienen un crossfade al otro lado**: hoy no se puede
+  borrar y volver a crear un clip con un fundido cruzado.
 
 ## Rendimiento
 
