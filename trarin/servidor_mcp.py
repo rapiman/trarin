@@ -29,6 +29,10 @@ Reglas:
   mostrar el plan a la persona antes de escribir.
 - Si la persona dice que las pistas MIDI aparecen vacías en Pro Tools, `revisar_midi` y
   `reparar_midi`: las notas están, pero la región las deja fuera de su ventana.
+- MIDI desde los golpes de una percusión (kultrun, bombo): `golpes_a_midi`; primero el
+  plan, y si dice que muchos golpes caen lejos de la grilla, comentarlo antes de escribir.
+- Crossfades en clips pegados (una pista, varias o todas): `cruces`; primero el plan
+  (por omisión) y mostrarlo antes de escribir.
 - Reordenar pistas: `ordenar_pistas` con plan=True muestra el orden (explícito o por
   grupos de la sesión) sin escribir; mostrarlo a la persona antes de escribir.
 - Fichas de sonido: para hablar del sonido sin escucharlo (grave o agudo, brillante u opaco,
@@ -489,6 +493,60 @@ def crear():
             p.unlink()
             raise ValueError(f"la verificación falló, no se escribió: {problemas}")
         return {"salida": str(p), "orden": filas, **tras_escribir(sesion, str(p), "pistas reordenadas")}
+
+    @herramienta
+    def golpes_a_midi(sesion: str, pista: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
+                      nota: int = 36, grilla: str = "1/16", fase: str = "auto", destino: str = "",
+                      salida: str = "", mid: str = "", plan: bool = True) -> dict:
+        """Golpes de percusión de una pista de audio (kultrun, bombo: ataques claros)
+        → una nota MIDI por golpe, con la fuerza en la velocidad y el largo de lo que
+        suena, cuantizada a 'grilla' ('no' = sin cuantizar; fase 'auto' corre la grilla
+        a los golpes). Tramo: 'cancion' (marcador) y compases, o toda la pista. Con
+        plan=True (por omisión) solo describe lo encontrado; con plan=False escribe
+        'salida' (un .ptx nuevo; las notas van a la pista MIDI 'destino', por omisión
+        «<pista> MIDI», que se crea si no existe) y/o 'mid' (un .mid nuevo)."""
+        from . import golpes as G
+        from .comun import leer_comun
+        from .vistas import tras_escribir
+        pl = G.planear(_existe(sesion), pista, cancion=cancion or None, desde_compas=desde_compas or None,
+                       hasta_compas=hasta_compas or None, nota=nota, grilla=grilla, fase=fase)
+        res = {**G.publico(pl), "texto": G.texto(pl)}
+        if plan:
+            return res
+        if not salida and not mid:
+            raise ValueError("indicar 'salida' (.ptx) o 'mid'")
+        if salida:
+            p = _salida_nueva(salida)
+            res["escrito"] = G.escribir(pl, str(p), destino or None)
+            res.update(tras_escribir(sesion, str(p), f"MIDI desde los golpes de {pista}"))
+        if mid:
+            res["mid"] = G.escribir_mid(pl, str(_salida_nueva(mid)), leer_comun(sesion)["tempo"])
+        return res
+
+    @herramienta
+    def cruces(sesion: str, salida: str = "", pistas: list[str] | None = None, largo_ms: float = 20.0,
+               tolerancia_ms: float = 1.0, curva: str = "potencia", plan: bool = True) -> dict:
+        """Crossfades en los clips de audio pegados (o con un hueco o superposición de
+        hasta tolerancia_ms) de las pistas indicadas (por omisión, todas las de audio):
+        centrados en la unión, curva 'potencia' (Equal Power) o 'lineal' (Equal Gain).
+        No toca uniones que ya tienen un fundido; cruza también clips muteados; en
+        estéreo con cortes distintos por canal, cruza cada canal. Con plan=True (por
+        omisión) solo lista las uniones; con plan=False escribe 'salida' (un .ptx nuevo)
+        y verifica cada cruce."""
+        from .protools import cruces as X
+        from .protools.descifrado import leer_descifrado
+        from .vistas import tras_escribir
+        pl = X.planear(leer_descifrado(_existe(sesion)), pistas, largo_ms, tolerancia_ms, curva=curva)
+        if plan:
+            return {**X.publico(pl), "texto": X.texto(pl)}
+        p = _salida_nueva(salida)
+        n = X.escribir(sesion, str(p), pl)
+        faltan = X.verificar(str(p), pl)
+        if faltan:
+            p.unlink()
+            raise ValueError(f"la verificación falló, no se escribió: {faltan[:10]}")
+        return {"salida": str(p), "cruces": n, "texto": X.texto(pl),
+                **tras_escribir(sesion, str(p), f"{n} crossfades en clips pegados")}
 
     @herramienta
     def escribir_sesion(comun: dict, plantilla: str, salida: str) -> dict:

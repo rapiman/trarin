@@ -5,6 +5,32 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-27
 
+- **MIDI desde los golpes de una percusión**: `golpes.py` (`planear`, `escribir`,
+  `escribir_mid`, `texto`). Para kultrun o bombo: una nota por golpe, con la
+  fuerza en la velocidad y el largo de lo que suena; cuantizada a la grilla
+  (1/16 por omisión, con la fase corrida a los golpes: en el show la grilla de
+  Katrümongen está 36 ms corrida respecto de la de la sesión); el plan avisa si
+  muchos golpes caen lejos de la grilla. Va a una pista MIDI nueva o existente
+  de la sesión (copia nueva) o a un `.mid`. CLI `trarin golpes sesion.ptx pista
+  [--cancion …] [-o salida.ptx] [--mid archivo.mid]`; MCP `golpes_a_midi`.
+  Probado con el kultrun de Katrümongen: las 576 notas del MIDI Bombo (alineado
+  a mano) tienen un golpe detectado a menos de 50 ms.
+- `fichas` (y con eso `escuchar` y los tramos por canción): una canción termina
+  en el siguiente marcador de nombre único; antes terminaba en el primer
+  «Inicio» del show y quedaba de pocos segundos.
+- **Crossfades en clips pegados**: `protools/cruces.py` (`planear`, `escribir`,
+  `verificar`, `texto`). Para una pista, varias o todas las de audio: uniones de
+  clips pegados o con hasta 1 ms de hueco o superposición (el hueco se cierra
+  corriendo el clip de después); cruce de 20 ms centrado en la unión, que se
+  corre a un lado si el otro no tiene audio sobrante; Equal Power (preset de
+  Pro Tools) o lineal (Equal Gain estándar, el de Pro Tools por omisión). No
+  toca uniones con un fundido; cruza también clips muteados; en estéreo con
+  cortes distintos por canal, cada canal lleva sus cruces. Los cruces se agregan
+  como colocaciones de fundido sin borrar ni rehacer clips, así que un clip con
+  un cruce en el otro extremo ya no es problema. CLI `trarin cruces sesion.ptx
+  [--pistas A,B] [--largo-ms 20] [--tolerancia-ms 1] [--lineal] [-o salida.ptx]`;
+  MCP `cruces` (plan por omisión).
+- `escritura`: un fundido nuevo puede ir en un solo canal de la pista (`canal`).
 - **Reordenar pistas**: `protools/pistas_orden.py` con `reordenar` (permuta lista
   de pistas, canales, playlists de audio y MIDI, mapa de colocaciones, grupos,
   tiras e índice, sin cambiar tamaños), `orden_por_grupos` (master y auxiliares,

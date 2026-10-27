@@ -516,8 +516,8 @@ def _altas_fundidos(d, bloques, geometrias):
 
 def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
     """nuevos: [(índices de región por canal, muestra)]; borrados: [índice del
-    clip]; fundidos: [(índice de geometría, ancla)] nuevos, iguales en cada
-    canal. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
+    clip]; fundidos: [(índice de geometría, ancla[, canal])] nuevos: sin canal
+    (o None) van en todos los canales; con canal (desde 0), solo en ese. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
     región o de fundido, +25 muestra, relativos al 0x1050; el byte que sigue al
     0x104F vale 1 en un fundido) dentro del 0x1052 de cada canal,
     que lleva la cantidad (u32) tras su nombre. Un clip borrado se lleva sus
@@ -528,6 +528,7 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
     plantilla = _plantilla_colocacion(d, bloques) if nuevos or fundidos else None
     reemplazos = []
     for k, (e, (regs, fun)) in enumerate(zip(entradas, canales)):
+        fundidos_k = [(x[0], x[1]) for x in fundidos if len(x) < 3 or x[2] is None or x[2] == k]
         quitar = []
         for j in borrados:
             ref = base[j]
@@ -551,7 +552,7 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
         p_cant = e.inicio + 6 + largo_nombre
         cantidad = struct.unpack_from("<I", d, p_cant)[0]
         reemplazos.append((p_cant, p_cant + 4, struct.pack("<I", cantidad - len(quitar) + len(nuevos)
-                                                          + len(fundidos))))
+                                                          + len(fundidos_k))))
         hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
         fin_vacio = p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2) and e.fin - (p_cant + 4) > 2 else 0)
         nuevos_col = []
@@ -565,7 +566,7 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
             col[16 + 17] = 3      # +17 del 0x104F: 3 en las regiones (22 715 de 23 121 en el corpus); con
                                   # 1, Pro Tools descarta al guardar el fundido de salida que termina en ella
             nuevos_col.append((int(muestra), bytes(col)))
-        for indice, ancla in fundidos:
+        for indice, ancla in fundidos_k:
             col = bytearray(plantilla)
             col[18] = 0
             struct.pack_into("<I", col, 20, indice)
@@ -1257,7 +1258,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     midi_nuevos: {"regiones": [{"nombre", "notas", "largo"}], "clips": {pista: [(región, tick)]}}
     (región: índice de una región MIDI existente o ("nueva", k)).
     fundidos_nuevos: {pista: [{"tipo", "pre_roll", "muestras", "pendiente",
-    curvas, "muestra"}]} (muestra = inicio del fundido; ancla = muestra + pre_roll).
+    curvas, "muestra"[, "canal"]}]} (muestra = inicio del fundido; ancla = muestra + pre_roll;
+    canal: desde 0, solo en ese canal de la pista; sin canal, en todos).
     Escribe una copia cifrada en 'salida' (que no debe existir)."""
     salida = Path(salida)
     if salida.exists():
@@ -1301,7 +1303,7 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
         r, indices = _altas_fundidos(d, bloques, [_bytes_geometria(f) for _, f in todos])
         reemplazos += r
         for (pista, f), k in zip(todos, indices):
-            por_pista.setdefault(pista, []).append((k, int(f["muestra"]) + int(f["pre_roll"])))
+            por_pista.setdefault(pista, []).append((k, int(f["muestra"]) + int(f["pre_roll"]), f.get("canal")))
     for pista in set(clips_nuevos or {}) | set(clips_borrados or {}) | set(por_pista):
         reemplazos += _altas_bajas_clips(d, bloques, pista, (clips_nuevos or {}).get(pista, []),
                                          (clips_borrados or {}).get(pista, []), por_pista.get(pista, []))

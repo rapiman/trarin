@@ -136,12 +136,69 @@ def main(argv=None):
     qo = od.add_mutually_exclusive_group(required=True)
     qo.add_argument("--lista", help="archivo de texto con los nombres de todas las pistas, uno por línea")
     qo.add_argument("--grupos", help="grupos de la sesión separados por comas: audio y MIDI quedan por grupo")
+    cr = sub.add_parser("cruces", help="crossfades en los clips de audio pegados de una sesión .ptx (copia nueva)")
+    cr.add_argument("sesion")
+    cr.add_argument("-o", "--salida", help="sesión .ptx nueva; sin -o solo muestra las uniones")
+    cr.add_argument("--pistas", help="pistas separadas por comas (por defecto todas las de audio)")
+    cr.add_argument("--largo-ms", type=float, default=20.0, help="largo del cruce (por defecto 20 ms)")
+    cr.add_argument("--tolerancia-ms", type=float, default=1.0,
+                    help="hueco o superposición máxima para considerar dos clips pegados (por defecto 1 ms)")
+    cr.add_argument("--lineal", action="store_true", help="Equal Gain lineal en vez de Equal Power")
+    go = sub.add_parser("golpes", help="golpes de percusión (kultrun, bombo) de una pista de audio → notas MIDI")
+    go.add_argument("sesion")
+    go.add_argument("pista")
+    go.add_argument("--cancion")
+    go.add_argument("--desde-compas", type=int)
+    go.add_argument("--hasta-compas", type=int)
+    go.add_argument("--nota", type=int, default=36)
+    go.add_argument("--grilla", default="1/16", help="1/4, 1/8, 1/16, 1/32, 1/8t, 1/16t o 'no' (sin cuantizar)")
+    go.add_argument("--fase", default="auto", help="'auto' (grilla corrida a los golpes) o 'sesion'")
+    go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
+    go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
+    go.add_argument("--mid", help="archivo .mid nuevo con las notas")
     tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
     tj.add_argument("carpeta")
     a = p.parse_args(argv)
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "golpes":
+        from pathlib import Path
+        from . import golpes as G
+        from .comun import leer_comun
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        plan = G.planear(a.sesion, a.pista, cancion=a.cancion, desde_compas=a.desde_compas,
+                         hasta_compas=a.hasta_compas, nota=a.nota, grilla=a.grilla, fase=a.fase)
+        print(G.texto(plan))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            r = G.escribir(plan, a.salida, a.destino)
+            print(f"{r['notas']} notas en «{r['pista']}»; escrito {a.salida}")
+        if a.mid:
+            print(G.escribir_mid(plan, a.mid, leer_comun(a.sesion)["tempo"]))
+        return
+    if a.orden == "cruces":
+        from pathlib import Path
+        from .protools import cruces as X
+        from .protools.descifrado import leer_descifrado
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        pistas = [x.strip() for x in a.pistas.split(",") if x.strip()] if a.pistas else None
+        plan = X.planear(leer_descifrado(a.sesion), pistas, a.largo_ms, a.tolerancia_ms,
+                         curva="lineal" if a.lineal else "potencia")
+        print(X.texto(plan))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            n = X.escribir(a.sesion, a.salida, plan)
+            faltan = X.verificar(a.salida, plan)
+            if faltan:
+                Path(a.salida).unlink()
+                p.error("la verificación falló, no se escribió: " + "; ".join(faltan[:10]))
+            print(f"{n} cruces; escrito {a.salida}")
         return
     if a.orden == "ordenar":
         from pathlib import Path

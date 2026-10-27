@@ -858,7 +858,12 @@ def _ventana_cancion(comun, cancion):
     if not cand:
         raise ErrorFicha(f"no hay un marcador que se llame como {cancion!r} (hay: {nombres})")
     k = nombres.index(cand[0])
-    return cand[0], canciones[k][1], (canciones[k + 1][1] if k + 1 < len(canciones) else float("inf"))
+    # la canción termina en el próximo marcador con nombre único: los que se repiten
+    # (p. ej. «Inicio» en cada canción de un show) son marcas dentro de una canción
+    from collections import Counter
+    veces = Counter(m["nombre"] for m in comun.get("marcadores") or [])
+    sig = next((t for n, t in canciones[k + 1:] if veces[n] == 1 and t > canciones[k][1]), float("inf"))
+    return cand[0], canciones[k][1], sig
 
 
 class Sesion:

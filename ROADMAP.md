@@ -136,8 +136,8 @@ y §24), que se reutiliza:
   primer sonido y los MIDI reparados. La `rapizuam_show_v8.ptx` es la v7 con las
   pistas ordenadas por familia (audio y luego MIDI); los MIDI de todas las canciones
   quedan donde estaban en su sesión original y caen con el kultrun.
-- **Crossfades sobre clips que ya tienen un crossfade al otro lado**: hoy no se puede
-  borrar y volver a crear un clip con un fundido cruzado.
+- **Borrar o rehacer un clip que tiene un fundido cruzado** (por `aplicar`): sigue sin
+  poderse. Para agregar crossfades ya no hace falta (`cruces` no toca los clips).
 
 ## Rendimiento
 
