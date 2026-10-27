@@ -3,6 +3,14 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-10-27
+
+- `grupos.cambiar_grupos`: agrega o quita pistas de grupos que ya existen
+  (cambia las dos copias de la lista 0x202B).
+- Borrar un clip de una pista estéreo cuyos canales tienen clips distintos en
+  el mismo lugar (por ejemplo dos clips mono soltados en una pista estéreo):
+  antes fallaba; ahora se borra lo que hay en ese lugar en cada canal.
+
 ## 2026-10-26
 
 - `consolidar`: una categoría MIDI con una sola pista de origen también pasa a

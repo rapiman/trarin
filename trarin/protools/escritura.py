@@ -521,7 +521,12 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
         quitar = []
         for j in borrados:
             ref = base[j]
-            r = next(x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"])
+            r = next((x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"]), None)
+            if r is None:           # canal con otro clip en el mismo lugar (p. ej. dos mono soltados en una estéreo)
+                mismos = [x for x in regs if x["muestra"] == ref["muestra"]]
+                if len(mismos) != 1:
+                    raise ErrorEscritura(f"{pista}#{j}: el clip no está igual en todos los canales")
+                r = mismos[0]
             quitar.append((r["bloque"], r["fin_bloque"]))
             ini, fin = r["muestra"], r["muestra"] + r["largo"]
             for f in fun:
