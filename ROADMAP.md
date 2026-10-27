@@ -1,6 +1,6 @@
 # Hoja de ruta
 
-Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
+Estado al 2026-10-27. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
 camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en la anterior.
 
 ## Fase 1 — Servidor MCP completo ✅
@@ -111,10 +111,18 @@ y §24), que se reutiliza:
 - ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
   archivos WAV y MIDI, buses propios del show.
 - ✅ Grupos por nombre (también MIDI) y consolidar pistas por instrumento.
-- ⏳ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): `rapizuam_show_v2.ptx`
-  consolidado; falta abrirlo y escucharlo en Pro Tools, identificar «track 5 N-Audio» y
-  «mic», agregar las grabaciones de Live que quedaron en el Mac («Dime si ves mas alla
-  Project») y decidir los cortes de eluwün.
+- ⏳ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): versión vigente
+  `rapizuam_show_v5.ptx` (136 pistas), con Sombra en el Desierto al final y las grabaciones
+  de Live que estaban en el Mac (kultrun originario completo, kaska, kaska2 y uñitas en
+  Katrümongen; 11-Audio, 14-Audio 3 y los stems de semillas en Wenu Mapu). Se arma con
+  `_sync\armar_rapizuam7b.py` (`show_v5.json` y `consolidar_rapizuam_v4.json`). Falta:
+  - `5-Audio 0003 [2026-08-09 192432].wav` del Mac (7 tramos de kultrun originario).
+  - Abrirlo y escucharlo en Pro Tools.
+  - Bajar el clip gain de kaskawillas y kultrunes que pasan 0 dBFS; quitar la continua de
+    ballenas_acordes.
+  - Identificar «track 5 N-Audio» y «mic»; renombrar «wenumapu Audio» y
+    «wenumapu 14-Audio 3».
+  - Decidir los cortes de Eluwün.
 - ⏳ **Prueba con las cinco canciones de I3000** (Bailando en el paradero, Guerra,
   Sin Tierra, Sombra en el Desierto y Viaje a Cunco), con separación negativa y
   cambios de tempo.
