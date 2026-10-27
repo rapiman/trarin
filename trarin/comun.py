@@ -54,7 +54,9 @@ def a_comun(n):
         "unidades": {"ticks_por_negra": T.TICKS_NEGRA,
                      "frecuencia_muestreo": n["origen"].get("frecuencia_muestreo")},
         "base_tiempo": "muestras" if daw == "protools" else "ticks",
-        "tempo": [{"tick": t["tick"], "bpm": t["bpm"]} for t in n["tempo"]],
+        "tempo": [{"tick": t["tick"], "bpm": t["bpm"],
+                   **({"inicio_segundos": t["inicio_segundos"]} if t.get("inicio_segundos") else {})}
+                  for t in n["tempo"]],
         "compases": [{"tick": c["tick"], "numerador": c["numerador"], "denominador": c["denominador"]}
                      for c in n["compases"]],
     }

@@ -1143,7 +1143,7 @@ def _renombrar_pistas(d, bloques, nombres):
 
 # ------------------------------------------------------------------- tempo
 
-def _cambios_tempo(d, bloques, tempo):
+def _cambios_tempo(d, bloques, tempo, fs=None):
     """Reescribe el mapa de tempo en las dos copias del bloque 0x2028 (verificado
     agregando un cambio de tempo en Pro Tools 12). Tras 'Tempo' 02 00: u32 largo
     (4 + 61 por evento), u32 cantidad, 4 bytes, eventos de 61 bytes ('Const' …
@@ -1170,10 +1170,22 @@ def _cambios_tempo(d, bloques, tempo):
             otro = bytearray(viejos[0])
             otro[21] = otro[39] = 0
         cuerpo = b""
+        # ancla (int64 en +22): muestra en la que cae el tick del primer evento.
+        # Se escribe la del tick 0 según 'inicio_segundos' del modelo (0 si no
+        # lo trae, como en un show armado por trarin); los demás eventos van en
+        # 0, como los guarda Pro Tools. Antes se conservaba la de la plantilla,
+        # que podía pertenecer a otro tick: el show RAPIZUAM quedó con todo lo
+        # que va en ticks 13 s después que el audio.
+        inicio = float(tempo[0].get("inicio_segundos") or 0.0)
+        if fs is None:
+            from .sesion import _frecuencia
+            fs = _frecuencia(d, bloques) or 48000
+        ancla = max(0, round(inicio * fs))
         for k, t in enumerate(sorted(tempo, key=lambda x: x["tick"])):
             if not 5 <= t["bpm"] <= 500:
                 raise ErrorEscritura(f"BPM fuera de rango (5 a 500): {t['bpm']}")
             ev = bytearray(viejos[k] if k < n else otro)
+            struct.pack_into("<q", ev, 22, ancla if k == 0 else 0)
             struct.pack_into("<q", ev, 30, t["tick"] + CERO)
             struct.pack_into("<d", ev, 40, float(t["bpm"]))
             cuerpo += ev

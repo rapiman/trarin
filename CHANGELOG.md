@@ -5,6 +5,17 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-27
 
+- **Ancla de la línea de tiempo (corregido)**: el primer evento de tempo de
+  Pro Tools guarda en qué muestra cae su tick (int64 en TMS+11). trarin la
+  ignoraba y suponía el tick 0 en la muestra 0. `leer_tempo` la lee y el primer
+  evento del mapa lleva `inicio_segundos` (dónde cae el tick 0); `MapaTempo`,
+  `segundos` y `tick_de_segundos` la usan; el modelo común la conserva; al
+  escribir el tempo se pone la del modelo (0 en un show) en vez de la de la
+  plantilla. El show RAPIZUAM la tenía en 13,09 s (copiada de Katrümongen, donde
+  vale para otro tick): MIDI, marcadores y compases caían 13 s después que el
+  audio. Verificado con los contadores de Pro Tools 12 (antes y después).
+- Armador de shows: el mapa de cada canción lleva su ancla (Katrümongen: tick 0
+  en −2,067 s), así su MIDI queda junto a su audio.
 - **Clips MIDI vacíos en Pro Tools (corregido)**: un clip MIDI nuevo en una sesión
   cuyo primer chunk de notas no lleva CERO (`10**12`) quedaba con las notas fuera
   de la ventana de su región; Pro Tools lo mostraba vacío y no lo tocaba, aunque

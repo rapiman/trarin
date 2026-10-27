@@ -32,19 +32,31 @@ def _tramo(d, bloques, tipo):
     return d[b.pos:b.fin], b.pos
 
 
-def leer_tempo(d, bloques):
+def leer_tempo(d, bloques, fs=None):
+    """Eventos de tempo. El evento marcado como primero (byte en TMS+10 = 1) lleva
+    en TMS+11 (int64) la muestra en la que cae su tick: el ancla de la línea de
+    tiempo. Con 'fs', el primer evento de la lista lleva 'inicio_segundos': los
+    segundos en que cae el tick 0 (puede no ser 0: el show RAPIZUAM lo tenía en
+    13,09 s y todo lo que va en ticks —MIDI, marcadores, compases— caía 13 s
+    después que el audio) [verificado en Pro Tools 12 con los contadores]."""
     t = _tramo(d, bloques, 0x2028)
     if not t:
         return []
     datos, _ = t
-    eventos = []
+    eventos, ancla = [], None
     for m in _EV_TEMPO.finditer(datos):
         p = m.end() - 3  # inicio de 'TMS'
         tick = struct.unpack_from("<q", datos, p + 19)[0] - CERO
         bpm = struct.unpack_from("<d", datos, p + 29)[0]
         pulso = struct.unpack_from("<I", datos, p + 37)[0]
         eventos.append({"tick": tick, "bpm": round(bpm, 6), "pulso_ticks": pulso})
+        if datos[p + 10] == 1 and ancla is None:
+            ancla = (struct.unpack_from("<q", datos, p + 11)[0], tick)
     eventos.sort(key=lambda e: e["tick"])
+    if fs and ancla and eventos:
+        inicio = ancla[0] / fs - MapaTempo(eventos).segundos(ancla[1])
+        if abs(inicio) > 1e-9:
+            eventos[0]["inicio_segundos"] = round(inicio, 9)
     return eventos
 
 
@@ -144,6 +156,7 @@ class MapaTempo:
         self.acum = acum
         self.monotono = self.ordenado and all(a <= b for a, b in zip(acum, acum[1:]))
         self.lista = tempo
+        self.inicio = _inicio(tempo)
 
     def _previo(self, k):
         return self.primero if k == 0 else self.ev[k - 1]
@@ -154,12 +167,13 @@ class MapaTempo:
             return _segundos_lento(tick, self.lista)
         k = bisect_left(self.ticks, tick)              # primer evento con tick >= 'tick'
         previo = self._previo(k)
-        return self.acum[k] + (tick - previo[0]) / previo[2] * 60.0 / previo[1]
+        return self.inicio + self.acum[k] + (tick - previo[0]) / previo[2] * 60.0 / previo[1]
 
     def tick(self, seg):
         from bisect import bisect_right
         if not self.monotono:
             return _tick_lento(seg, self.lista)
+        seg -= self.inicio
         k = bisect_right(self.acum, seg, 1) - 1        # primer evento cuyo fin supera 'seg'
         previo = self._previo(k)
         return previo[0] + round((seg - self.acum[k]) * previo[1] / 60.0 * previo[2])
@@ -177,10 +191,15 @@ def segundos(tick, tempo):
     return _segundos_lento(tick, tempo)
 
 
+def _inicio(tempo):
+    """Segundos en que cae el tick 0 (ancla de la línea de tiempo; 0 si no se conoce)."""
+    return float(tempo[0].get("inicio_segundos") or 0.0) if tempo else 0.0
+
+
 def _segundos_lento(tick, tempo):
     if not tempo:
         tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
-    total, previo = 0.0, None
+    total, previo = _inicio(tempo), None
     for e in tempo:
         if previo is None:
             previo = {**e, "tick": min(0, e["tick"])}
@@ -219,7 +238,7 @@ def _tick_lento(seg, tempo):
     if not tempo:
         tempo = [{"tick": 0, "bpm": 120.0, "pulso_ticks": TICKS_NEGRA}]
     previo = {**tempo[0], "tick": min(0, tempo[0]["tick"])}
-    acumulado = 0.0
+    acumulado = _inicio(tempo)
     for e in tempo:
         pulso = previo.get("pulso_ticks", TICKS_NEGRA)
         dur = (e["tick"] - previo["tick"]) / pulso * 60.0 / previo["bpm"]

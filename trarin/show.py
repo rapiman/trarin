@@ -127,12 +127,21 @@ def planear(show, leer_comun=None):
             if c.get("pistas_extra"):
                 comun = _con_extras(comun, c["pistas_extra"])
             c["_comun"] = comun
-        tempo = [{"tick": e["tick"], "bpm": e["bpm"]} for e in comun["tempo"]] or [{"tick": 0, "bpm": 120.0}]
+        # el ancla de la sesión ('inicio_segundos': dónde cae su tick 0) va con
+        # el mapa: sin ella el MIDI de una canción cuyo tick 0 no cae en la
+        # muestra 0 (Katrümongen: −2,067 s) quedaba corrido respecto de su audio
+        tempo = [{"tick": e["tick"], "bpm": e["bpm"],
+                  **({"inicio_segundos": e["inicio_segundos"]} if e.get("inicio_segundos") else {})}
+                 for e in comun["tempo"]] or [{"tick": 0, "bpm": 120.0}]
         compases = [dict(e) for e in comun["compases"]] or [{"tick": 0, "numerador": 4, "denominador": 4}]
         # antes del primer evento de tempo (o de compás) rige ese mismo: en Pro
         # Tools el primero puede estar más adelante (en el inicio de la canción)
         if tempo[0]["tick"] != 0:
+            primero = {k: v for k, v in tempo[0].items() if k != "inicio_segundos"}
             tempo.insert(0, {"tick": 0, "bpm": tempo[0]["bpm"]})
+            if "inicio_segundos" in tempo[1]:          # el ancla va siempre en el primer evento
+                tempo[0]["inicio_segundos"] = tempo[1]["inicio_segundos"]
+            tempo[1] = primero
         if compases[0]["tick"] != 0:
             compases.insert(0, dict(compases[0], tick=0))
         fin = _compas_desde(compases, int(c["fin_compas"])) if c.get("fin_compas") else _fin_cancion(comun)

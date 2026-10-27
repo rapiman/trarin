@@ -400,6 +400,13 @@ que empieza dentro de él.
   (hasta el 2026-10-27 se copiaba la convención del primer chunk de la sesión: así quedaron vacíos
   94 clips del show RAPIZUAM). `midi_revision.reparar_desplazamientos` corrige regiones ya escritas
   bajando el desplazamiento (mismo ancho de campo, sin correr bloques).
+- **Ancla de la línea de tiempo** [verificado en Pro Tools 12, 2026-10-27]: cada evento de tempo
+  (`Const` … `TMS`) lleva tras `TMS`: +10 u8 (1 en el primer evento) y +11 int64 = la muestra en
+  la que cae el tick de ese primer evento (+19). Pro Tools pone 0 en los demás. El tiempo de un
+  tick es `ancla / fs + segundos(tick) − segundos(tick del primer evento)`. Sesiones vistas:
+  0 en el tick 0 (la mayoría), 648000 en el tick 17 280 000, 628364 en el tick 23 040 000
+  (Katrümongen) y 307200 en el tick 3 840 000. Si el ancla no corresponde, todo lo que va en
+  ticks (MIDI, marcadores, compases, tempo) queda corrido respecto del audio, que va en muestras.
 - Importar un `.mid` en un show con muchos cambios de tempo (File › Import › MIDI, sin importar el
   mapa de tempo) deja las notas corridas varios segundos que crecen a lo largo de la sesión, aunque
   el mapa del archivo sea el mismo de la sesión [visto en Pro Tools 12; causa sin aclarar]. Para
