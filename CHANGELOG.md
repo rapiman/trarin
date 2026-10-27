@@ -5,6 +5,20 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-27
 
+- **Clips MIDI vacíos en Pro Tools (corregido)**: un clip MIDI nuevo en una sesión
+  cuyo primer chunk de notas no lleva CERO (`10**12`) quedaba con las notas fuera
+  de la ventana de su región; Pro Tools lo mostraba vacío y no lo tocaba, aunque
+  trarin leía las notas. Así quedaron 94 clips del show RAPIZUAM. Ahora las notas
+  de un clip nuevo usan la misma convención que su región. Verificado en Pro
+  Tools 12: en una sesión vacía con una nota y en el show.
+- `protools/midi_revision.py`: `revisar_midi` (cuenta los clips que Pro Tools
+  muestra vacíos y cuántos se pueden reparar) y `reparar_desplazamientos`
+  (corrige las regiones sin mover notas ni clips; mismo tamaño). CLI
+  `trarin midi sesion.ptx [-o salida.ptx]`; MCP `revisar_midi` y `reparar_midi`.
+- Documentado en `docs/formato_ptx.md`: la convención CERO de las notas, lo que
+  Pro Tools cambia al reordenar pistas (incompleto: reordenar todavía no se
+  puede) y el corrimiento al importar un `.mid` en un show con muchos cambios de
+  tempo.
 - `grupos.cambiar_grupos`: agrega o quita pistas de grupos que ya existen
   (cambia las dos copias de la lista 0x202B).
 - Borrar un clip de una pista estéreo cuyos canales tienen clips distintos en

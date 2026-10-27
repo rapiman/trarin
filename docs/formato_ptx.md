@@ -188,6 +188,15 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
 
 - **Lista de pistas**: `0x2519` con hijos `0x251A`: u16 tipo en +2 (0 audio, 1 MIDI, 2 auxiliar;
   `0x0B` carpeta según pt_api) y nombre en +4. La lista viene dos veces [verificado].
+- **Orden de las pistas** [incompleto, 2026-10-27]: comparando una sesión antes y después de mover
+  pistas en Pro Tools 12, el orden en pantalla es el de la lista `0x2519` y Pro Tools renumera en
+  ese orden: el número de cada entrada (u16) y de sus dos `0x251A` (u32 en fin − 22) = posición +
+  1; los canales `0x2624` en el mismo orden con su `0x2015` = posición + 1; el número de audio (u32
+  tras el `0x261B`) correlativo entre las pistas de audio y su playlist igual a ese número (las
+  `0x1014` de `0x1015` en ese orden); los grupos `0x202A` con las posiciones ordenadas; las tiras
+  `0x2589` guardan posiciones pero conservan su propio orden. Permutar todo eso (y las posiciones
+  del índice `0x0002`) no basta: Pro Tools abrió la sesión con nombres cruzados entre pistas y
+  perdió clips. Falta otra referencia a la posición; hasta encontrarla, trarin no reordena.
 - **Playlists de audio**: `0x1015` con hijos `0x1014`: nombre, luego una lista de números de canal.
   Cada número indexa una entrada `0x1052` del mapa `0x1054`. Las playlists cuyo nombre no es el de
   una pista activa son alternativas guardadas [verificado].
@@ -381,6 +390,20 @@ que empieza dentro de él.
   Quitar un clip MIDI es borrar su `0x1056` y bajar la cantidad; la región queda en la lista de
   clips, como al borrar en la línea de tiempo [verificado en Pro Tools 12, guardando de nuevo y
   releyendo].
+- **CERO en las posiciones de las notas** [verificado en Pro Tools 12, 2026-10-27]: las
+  posiciones de un chunk pueden llevar CERO (`10**12`) o no; Pro Tools crea chunks con CERO, pero
+  hay sesiones (todas las del disco RAPIZUAM) cuyos chunks no lo llevan y sus regiones tienen
+  desplazamiento sin CERO. La región y las notas de su chunk deben usar la misma convención: si la
+  ventana no contiene ninguna nota, Pro Tools muestra el clip vacío y no lo toca, aunque las notas
+  estén en el archivo (trarin las leía igual porque quita el CERO al leer). Un clip nuevo lleva
+  desplazamiento CERO, así que su chunk se escribe con CERO aunque el chunk de base no lo tenga
+  (hasta el 2026-10-27 se copiaba la convención del primer chunk de la sesión: así quedaron vacíos
+  94 clips del show RAPIZUAM). `midi_revision.reparar_desplazamientos` corrige regiones ya escritas
+  bajando el desplazamiento (mismo ancho de campo, sin correr bloques).
+- Importar un `.mid` en un show con muchos cambios de tempo (File › Import › MIDI, sin importar el
+  mapa de tempo) deja las notas corridas varios segundos que crecen a lo largo de la sesión, aunque
+  el mapa del archivo sea el mismo de la sesión [visto en Pro Tools 12; causa sin aclarar]. Para
+  traer MIDI a un show conviene escribir los clips con trarin o importar datos de sesión.
 - Controladores (en estudio): dentro de `MdChun`, varios `MdCDS`, cada uno con `Mdss` (5 bytes
   que identifican el carril) y `MdCD` (u32 cantidad, eventos de 12 bytes: tick de 5 bytes,
   `00 00 40`, int32 valor). Carriles vistos: `02 07` (volumen, 0–127), `02 0A` (paneo), `02 06`,
