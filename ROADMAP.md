@@ -1,6 +1,6 @@
 # Hoja de ruta
 
-Estado al 2026-10-22. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
+Estado al 2026-10-27. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
 camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en la anterior.
 
 ## Fase 1 — Servidor MCP completo ✅
@@ -110,9 +110,18 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 - ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
   archivos WAV y MIDI, buses propios del show.
 - ✅ Grupos por nombre (también MIDI) y consolidar pistas por instrumento.
-- ⏳ **show real**: `ejemplo_show_v2.ptx`
-  consolidado; falta abrirlo y escucharlo en Pro Tools, identificar «track 5 N-Audio» y
-  «mic», agregar las grabaciones de Live que quedaron en el Mac («un proyecto de Live») y decidir los cortes de una canción.
+- ⏳ **show real**: versión vigente
+  `ejemplo_show_v5.ptx` (136 pistas), con una canción al final y las grabaciones
+  de Live que estaban en el Mac (kultrun originario completo, kaska, kaska2 y uñitas en
+  una canción; 11-Audio, 14-Audio 3 y los stems de semillas en una canción). Se arma con
+  un guion aparte (`show_v5.json` y `consolidar_ejemplo_v4.json`). Falta:
+  - `5-Audio 0003 [2026-08-09 192432].wav` del Mac (7 tramos de kultrun originario).
+  - Abrirlo y escucharlo en Pro Tools.
+  - Bajar el clip gain de kaskawillas y kultrunes que pasan 0 dBFS; quitar la continua de
+    una_pista.
+  - Identificar «track 5 N-Audio» y «mic»; renombrar «cancion Audio» y
+    «cancion 14-Audio 3».
+  - Decidir los cortes de una canción.
 - ⏳ **Prueba con cinco canciones de otro disco**, con separación negativa y
   cambios de tempo.
 - Investigar por qué un show grande tarda varios minutos en cerrarse en Pro Tools, aunque
