@@ -5,6 +5,14 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-10-27
 
+- **Salida MIDI (puerto y canal)**: `protools/salidas_midi.py` (`leer_salidas`,
+  `cambiar_salidas`). El canal se guarda desde 0 tras el nombre del puerto en el
+  0x2006 y el 0x2086 de la entrada 0x2005 de cada pista. Verificado contra lo que
+  muestra Pro Tools en el show (MOTU 1–3, Motu 3, UR242 4). MCP `salidas_midi`.
+- `golpes`: separar los redobles (`separar_redobles`, rachas de golpes a menos
+  de 120 ms), un canal de una pista estéreo (`senal(..., canal)`) y rearme tras
+  cada golpe. En las pifilkas de Katrümongen los golpes del audio coinciden uno a
+  uno con su MIDI (327/327, 240/240, 568/568).
 - **MIDI desde los golpes de una percusión**: `golpes.py` (`planear`, `escribir`,
   `escribir_mid`, `texto`). Para kultrun o bombo: una nota por golpe, con la
   fuerza en la velocidad y el largo de lo que suena; cuantizada a la grilla

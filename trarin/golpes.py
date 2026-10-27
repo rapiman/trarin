@@ -40,9 +40,10 @@ def _np():
     return A._np()
 
 
-def senal(comun, rutas, pista, a, b, fs):
+def senal(comun, rutas, pista, a, b, fs, canal=None):
     """Mezcla mono de los clips de audio no muteados de la pista entre a y b
-    segundos, con su clip gain."""
+    segundos, con su clip gain. canal (desde 0): solo ese canal de una pista
+    estéreo (p. ej. dos pifilkas paneadas)."""
     np = _np()
     p = next((x for x in comun["pistas"] if x["nombre"] == pista), None)
     if p is None or p["tipo"] != "audio":
@@ -59,19 +60,25 @@ def senal(comun, rutas, pista, a, b, fs):
         desde = k.get("desde_muestra", 0) + max(0, -i0)
         cuantas = min(i1, n) - max(i0, 0)
         archivos = k.get("archivos_canales") or [k["archivo"]]
+        if canal is not None and len(archivos) > 1:
+            archivos = [archivos[min(canal, len(archivos) - 1)]]
         x = 0
         for i in archivos:
             r = rutas.get(i)
             if not r:
                 raise ErrorGolpes(f"no se encuentra el audio de un clip de {pista!r}")
             s, _ = A.leer(r, desde, cuantas)
-            x = x + s.mean(axis=1)
+            if canal is not None and s.shape[1] > 1:
+                x = x + s[:, min(canal, s.shape[1] - 1)]
+            else:
+                x = x + s.mean(axis=1)
         x = x / len(archivos) * 10 ** (_ganancia(k) / 20)
         y[max(i0, 0):max(i0, 0) + len(x)] += x
     return y
 
 
-def detectar(y, fs, subida_db=9.0, separacion_ms=60.0, piso_db=-36.0, caida_db=24.0, rango_db=36.0):
+def detectar(y, fs, subida_db=9.0, separacion_ms=60.0, piso_db=-36.0, caida_db=24.0, rango_db=36.0,
+             rearme_db=6.0):
     """Golpes de la señal y: [{"t" (s desde el inicio de y), "db", "largo" (s), "velocidad"}]."""
     np = _np()
     h = max(1, int(fs / 1000))                 # 1 ms
@@ -98,13 +105,37 @@ def detectar(y, fs, subida_db=9.0, separacion_ms=60.0, piso_db=-36.0, caida_db=2
         while fin < lim and e[fin] > pico - caida_db:
             fin += 1
         out.append({"t": j0 * h / fs, "db": pico, "largo": (fin - j0) * h / fs})
+        # rearme: el golpe siguiente necesita que este haya bajado 'rearme_db' bajo su
+        # pico (o que suba más fuerte): el cuerpo áspero de un golpe largo (un bombo
+        # legüero) tiene subidas propias que no son golpes
+        bajo = np.where(e[pico_i:lim] < pico - rearme_db)[0]
+        rearmado = pico_i + int(bajo[0]) if len(bajo) else lim
         i = int(np.searchsorted(cand, j0 + sep))
+        while i < len(cand) and cand[i] < rearmado and e[cand[i]] <= pico + 3:
+            i += 1
     for g1, g2 in zip(out, out[1:]):
         g1["largo"] = min(g1["largo"], g2["t"] - g1["t"])
     dbmax = max((g["db"] for g in out), default=0.0)
     for g in out:
         g["velocidad"] = int(min(127, max(1, round(127 + (g["db"] - dbmax) * 126 / rango_db))))
     return out
+
+
+def separar_redobles(golpes, intervalo_ms=120.0, minimo=3):
+    """(golpes sueltos, golpes de redoble): un redoble es una racha de al menos
+    'minimo' golpes seguidos a menos de 'intervalo_ms' uno de otro (en el bombo
+    de Sombra en el Desierto, unos 13 por segundo)."""
+    sueltos, redobles, racha = [], [], []
+
+    def cerrar():
+        (redobles if len(racha) >= minimo else sueltos).extend(racha)
+    for g in golpes:
+        if racha and (g["t"] - racha[-1]["t"]) * 1000 > intervalo_ms:
+            cerrar()
+            racha = []
+        racha.append(g)
+    cerrar()
+    return sueltos, redobles
 
 
 def _grilla_ticks(grilla):

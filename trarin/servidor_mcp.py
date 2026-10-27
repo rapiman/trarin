@@ -495,6 +495,27 @@ def crear():
         return {"salida": str(p), "orden": filas, **tras_escribir(sesion, str(p), "pistas reordenadas")}
 
     @herramienta
+    def salidas_midi(sesion: str, cambios: dict | None = None, salida: str = "") -> dict:
+        """Puerto y canal de salida de las pistas MIDI. Sin 'cambios' solo los lee.
+        cambios: {pista: {"canal": 1..16, "puerto"?: nombre}} (por omisión el puerto
+        que ya tiene; una pista sin salida toma como plantilla otra con ese puerto);
+        escribe 'salida' (un .ptx nuevo)."""
+        from .protools.descifrado import leer_descifrado
+        from .protools.reconstruccion import cifrar
+        from .protools import salidas_midi as S
+        d = leer_descifrado(_existe(sesion))
+        if not cambios:
+            return {"salidas": S.leer_salidas(d)}
+        p = _salida_nueva(salida)
+        p.write_bytes(cifrar(S.cambiar_salidas(d, cambios)))
+        despues = S.leer_salidas(leer_descifrado(str(p)))
+        mal = [k for k, v in cambios.items() if (despues.get(k) or {}).get("canal") != int(v["canal"])]
+        if mal:
+            p.unlink()
+            raise ValueError(f"la verificación falló, no se escribió: {mal}")
+        return {"salida": str(p), "salidas": {k: despues[k] for k in cambios}}
+
+    @herramienta
     def golpes_a_midi(sesion: str, pista: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
                       nota: int = 36, grilla: str = "1/16", fase: str = "auto", destino: str = "",
                       salida: str = "", mid: str = "", plan: bool = True) -> dict:
