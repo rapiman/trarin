@@ -108,3 +108,42 @@ def grupos_por_nombre(pistas, reglas, grupo_midi=None):
         if midi:
             out.append({"nombre": grupo_midi, "pistas": midi, "tipo": "ambos"})
     return out
+
+
+def cambiar_grupos(d, cambios):
+    """d con los integrantes de grupos que ya existen cambiados. cambios:
+    {nombre del grupo: {"agregar": [pistas], "quitar": [pistas]}}. Cambia las
+    dos copias de la lista (0x202B); el resto del grupo queda igual. Las
+    pistas que no existen se ignoran; un grupo que no existe da un error."""
+    b = arbol(d)
+    raiz = _primero(b, 0x202B)
+    if raiz is None:
+        raise ErrorPista("la sesión no tiene lista de grupos (0x202B)")
+    hijos = [h for h in raiz.hijos if h.tipo_contenido == 0x202A]
+    n = struct.unpack_from("<I", d, raiz.inicio + 2)[0]
+    if len(hijos) != 2 * n:
+        raise ErrorPista("lista de grupos (0x202B) no reconocida")
+    lugar = {}
+    for i, e in enumerate(_lista_2519(d, _primero(b, 0x2519))[0]):
+        lugar.setdefault(e[3], i)
+    pendientes = set(cambios)
+    reemplazos = []
+    for h in hijos:
+        p = h.inicio + 2
+        largo = struct.unpack_from("<I", d, p)[0]
+        nombre = d[p + 4:p + 4 + largo].decode("utf-8", "replace")
+        if nombre not in cambios:
+            continue
+        pendientes.discard(nombre)
+        q = p + 4 + largo + 1 + 4 + 2                      # tipo, número y banderas
+        cant = struct.unpack_from("<I", d, q)[0]
+        actuales = [struct.unpack_from("<H", d, q + 4 + 2 * k)[0] for k in range(cant)]
+        c = cambios[nombre]
+        quitar = {lugar[x] for x in c.get("quitar") or [] if x in lugar}
+        nuevos = sorted((set(actuales) - quitar) | {lugar[x] for x in c.get("agregar") or [] if x in lugar})
+        if nuevos != actuales:
+            reemplazos.append((q, q + 4 + 2 * cant,
+                               struct.pack("<I", len(nuevos)) + b"".join(struct.pack("<H", m) for m in nuevos)))
+    if pendientes:
+        raise ErrorPista(f"no existen los grupos {sorted(pendientes)}")
+    return reconstruir(d, reemplazos) if reemplazos else d
