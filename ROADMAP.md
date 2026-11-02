@@ -63,10 +63,14 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 - **Mapa de la canción**: marcadores, tempo y fichas juntos: «qué suena en el compás 40 de
   Aliwen», «dónde entra el bombo»; proponer marcadores de sección.
 
-## Fase 3 — Comparar sonidos
+## Fase 3 — Comparar sonidos ✅
 
-- Parecido entre fichas: «busca en el show lo que se parezca a este golpe».
-- Búsquedas por descripción: «qué pistas son agudas y suenan en Aliwen».
+- ✅ Parecido entre fichas (`parecidos`): «busca en el show lo que se parezca a este golpe»,
+  con una pista o un WAV de referencia, y en qué difiere cada resultado.
+- ✅ Búsquedas por descripción (`buscar_sonidos`): «qué pistas son agudas y percusivas en
+  Aliwen», «nota la», «que saturen».
+- Pendiente: afinar los pesos de los rasgos con casos reales (hoy calibrados a ojo con el
+  show RAPIZUAM) y comparar tramos (un golpe suelto, no la pista entera).
 
 ## Fase 4 — Escuchar sin abrir Pro Tools
 

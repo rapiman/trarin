@@ -5,6 +5,19 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Comparar sonidos (fase 3)**: `trarin/parecido.py`. `parecidos`: las pistas
+  que más se parecen a una pista de la sesión o a un WAV, por un vector de
+  rasgos de la ficha (bandas, brillo, planitud, ataque, golpes por segundo,
+  caída, cresta, cuánto es tonal, nota, mono/estéreo; sin el nivel), cada rasgo
+  en una escala donde 1 es una diferencia que se nota, y cada resultado con en
+  qué difiere. `buscar`: pistas cuya ficha cumple una descripción en palabras
+  (agudo, grave, brillante, opaco, tonal, ruidoso, percusivo, sostenido,
+  regular, rápido, lento, mono, estéreo, satura, fuerte, suave, crece, se
+  apaga, constante, intermitente, «nota la»…); todos los criterios a la vez,
+  y devuelve las palabras que no entendió. Las dos por sesión, por canción o
+  cada pista en cada canción. Probado con el show: los kultrunes salen juntos,
+  las pifilkas juntas. CLI `trarin parecidos` y `trarin buscar`; MCP
+  `parecidos` y `buscar_sonidos`.
 - **Revisión (lint) de una sesión**: `trarin/revision.py` (`revisar`, `texto`).
   Errores (lo que Pro Tools mostraría roto): regiones de audio con largo cero,
   fuera de su archivo o sin archivo; bloque `0x2628` inconsistente (el inicio
