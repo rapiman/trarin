@@ -5,10 +5,11 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
 
 ## Fase 1 — Servidor MCP completo ✅
 
-- ✅ 37 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
-  de audio, comparar versiones, también por canción, uniones entre canciones), notas del
-  proyecto, consolidar y grupos con su plan, bpm, conversión de audio, paneo de Live, shows,
-  fichas, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
+- ✅ 42 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
+  de audio, comparar versiones, también por canción, uniones entre canciones), revisión
+  (lint), notas del proyecto, consolidar y grupos con su plan, bpm y tempo propuesto,
+  conversión de audio, paneo de Live, shows y su hoja, fichas, parecidos y búsqueda de
+  sonidos, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
   cruces y escribir.
 - ✅ Trabajos largos al estilo witral (id, avance por líneas nuevas, espera con tope de 40 s,
   matar, recientes).
@@ -116,30 +117,14 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 - ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
   archivos WAV y MIDI, buses propios del show.
 - ✅ Grupos por nombre (también MIDI) y consolidar pistas por instrumento.
-- ⏳ **show real**: versión vigente
-  `ejemplo_show_v5.ptx` (136 pistas), con una canción al final y las grabaciones
-  de Live que estaban en el Mac (kultrun originario completo, kaska, kaska2 y uñitas en
-  una canción; 11-Audio, 14-Audio 3 y los stems de semillas en una canción). Se arma con
-  un guion aparte (`show_v5.json` y `consolidar_ejemplo_v4.json`). Falta:
-  - `5-Audio 0003 [2026-08-09 192432].wav` del Mac (7 tramos de kultrun originario).
-  - Abrirlo y escucharlo en Pro Tools.
-  - Bajar el clip gain de kaskawillas y kultrunes que pasan 0 dBFS; quitar la continua de
-    una_pista.
-  - Identificar «track 5 N-Audio» y «mic»; renombrar «cancion Audio» y
-    «cancion 14-Audio 3».
-  - Decidir los cortes de una canción.
+- ✅ **Primer show real**: hecho y tocado.
+  Archivo de trabajo `base_show.ptx`, respaldos en Session File Backups, notas en
+  `trarin/notas.md`.
 - ⏳ **Prueba con cinco canciones de otro disco**, con separación negativa y
   cambios de tempo.
 - Investigar por qué un show grande tarda varios minutos en cerrarse en Pro Tools, aunque
-  abre y guarda bien.
-- show real, desde el 2026-10-27 se trabaja sobre una sola sesión,
-  `ejemplo_show_v7.ptx`, con respaldo en Session File Backups antes de cada cambio
-  (versión nueva solo cuando se pide). Ya tiene: la percusión de una canción desde su propia sesión, los kultrunes
-  de una canción L/R y en vivo, el kultrun de una canción desde el stem, sin automatización
-  de mute, crossfades en clips pegados, marcadores de canción dos blancas antes del
-  primer sonido y los MIDI reparados. La `ejemplo_show_v8.ptx` es la v7 con las
-  pistas ordenadas por familia (audio y luego MIDI); los MIDI de todas las canciones
-  quedan donde estaban en su sesión original y caen con el kultrun.
+  abre y guarda bien (experimento barato: medir con y sin `WaveCache.wfm`, con la mitad de
+  las pistas y sin fundidos).
 - **Borrar o rehacer un clip que tiene un fundido cruzado** (por `aplicar`): sigue sin
   poderse. Para agregar crossfades ya no hace falta (`cruces` no toca los clips).
 
