@@ -5,10 +5,11 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
 
 ## Fase 1 — Servidor MCP completo ✅
 
-- ✅ 37 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
-  de audio, comparar versiones, también por canción, uniones entre canciones), notas del
-  proyecto, consolidar y grupos con su plan, bpm, conversión de audio, paneo de Live, shows,
-  fichas, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
+- ✅ 42 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
+  de audio, comparar versiones, también por canción, uniones entre canciones), revisión
+  (lint), notas del proyecto, consolidar y grupos con su plan, bpm y tempo propuesto,
+  conversión de audio, paneo de Live, shows y su hoja, fichas, parecidos y búsqueda de
+  sonidos, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
   cruces y escribir.
 - ✅ Trabajos largos al estilo witral (id, avance por líneas nuevas, espera con tope de 40 s,
   matar, recientes).
@@ -117,31 +118,15 @@ y §24), que se reutiliza:
 - ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
   archivos WAV y MIDI, buses propios del show.
 - ✅ Grupos por nombre (también MIDI) y consolidar pistas por instrumento.
-- ⏳ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): versión vigente
-  `rapizuam_show_v5.ptx` (136 pistas), con Sombra en el Desierto al final y las grabaciones
-  de Live que estaban en el Mac (kultrun originario completo, kaska, kaska2 y uñitas en
-  Katrümongen; 11-Audio, 14-Audio 3 y los stems de semillas en Wenu Mapu). Se arma con
-  `_sync\armar_rapizuam7b.py` (`show_v5.json` y `consolidar_rapizuam_v4.json`). Falta:
-  - `5-Audio 0003 [2026-08-09 192432].wav` del Mac (7 tramos de kultrun originario).
-  - Abrirlo y escucharlo en Pro Tools.
-  - Bajar el clip gain de kaskawillas y kultrunes que pasan 0 dBFS; quitar la continua de
-    ballenas_acordes.
-  - Identificar «track 5 N-Audio» y «mic»; renombrar «wenumapu Audio» y
-    «wenumapu 14-Audio 3».
-  - Decidir los cortes de Eluwün.
+- ✅ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): hecho y tocado; salió bien.
+  Archivo de trabajo `base_show.ptx`, respaldos en Session File Backups, notas en
+  `trarin/notas.md`.
 - ⏳ **Prueba con las cinco canciones de I3000** (Bailando en el paradero, Guerra,
   Sin Tierra, Sombra en el Desierto y Viaje a Cunco), con separación negativa y
   cambios de tempo.
 - Investigar por qué un show grande tarda varios minutos en cerrarse en Pro Tools, aunque
-  abre y guarda bien.
-- Show RAPIZUAM, desde el 2026-10-27 se trabaja sobre una sola sesión,
-  `rapizuam_show_v7.ptx`, con respaldo en Session File Backups antes de cada cambio
-  (versión nueva solo cuando se pide). Ya tiene: la percusión de Sombra desde su propia sesión, los kultrunes
-  de Katrümongen L/R y en vivo, el kultrun de Aliwen desde el stem, sin automatización
-  de mute, crossfades en clips pegados, marcadores de canción dos blancas antes del
-  primer sonido y los MIDI reparados. La `rapizuam_show_v8.ptx` es la v7 con las
-  pistas ordenadas por familia (audio y luego MIDI); los MIDI de todas las canciones
-  quedan donde estaban en su sesión original y caen con el kultrun.
+  abre y guarda bien (experimento barato: medir con y sin `WaveCache.wfm`, con la mitad de
+  las pistas y sin fundidos).
 - **Borrar o rehacer un clip que tiene un fundido cruzado** (por `aplicar`): sigue sin
   poderse. Para agregar crossfades ya no hace falta (`cruces` no toca los clips).
 
