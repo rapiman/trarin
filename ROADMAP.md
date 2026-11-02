@@ -74,9 +74,9 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 
 ## Fase 4 — Escuchar sin abrir Pro Tools
 
-- ✅ `escuchar`: mezcla rápida de un tramo a WAV de 16 bits (sin plugins, buses ni
-  auxiliares). Pendiente: MP3 u otro formato liviano (en el equipo no hay ffmpeg; se puede
-  agregar un codificador), los auxiliares con su fader y el puente con Pizarrita.
+- ✅ `escuchar`: mezcla rápida de un tramo a WAV de 16 bits o MP3 (lameenc), con el fader de
+  los auxiliares por los que pasa cada pista (sin plugins). Pendiente: el puente con
+  Pizarrita.
 
 Una mezcla rápida de un tramo (clips, clip gain, fundidos, paneo, fader y su automatización,
 mute; sin plugins) en un archivo liviano para escuchar desde cualquier lado.

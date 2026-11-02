@@ -5,6 +5,14 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **`escuchar` con auxiliares y MP3**: se aplica el fader (automatización y
+  mute) de los auxiliares por los que pasa cada pista (pista → bus → retorno →
+  bus…, hasta 4 niveles; el paneo del aux no), y se avisa cuáles y qué plugins
+  de ellos no suenan; `auxiliares=False` lo apaga. En el show, Katrümongen
+  pasa de +4,4 a +1,3 dBFS de pico por los faders de Aux Kultrum (−5,3) y Aux
+  Percuciones (−11,9). `formato="mp3"` escribe MP3 con lameenc (extra
+  `trarin[mp3]`, sin ffmpeg; 16 compases: 711 KB contra 5,7 MB del WAV);
+  `mp3_kbps` (192 por omisión).
 - **Caché del modelo común** (`trarin/cache.py`): `leer_comun` guarda el modelo
   en `~/.trarin/cache` (o `TRARIN_CACHE`) con llave ruta + fecha + tamaño del
   archivo; leer el show pasa de 0,45 s a 0,04 s, y cada herramienta MCP lo

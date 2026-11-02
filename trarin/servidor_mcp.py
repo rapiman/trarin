@@ -293,22 +293,27 @@ def crear():
 
     @herramienta
     def escuchar(ruta: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
-                 desde_s: float = -1, hasta_s: float = -1, pistas: str = "", frecuencia: int = 0) -> dict:
+                 desde_s: float = -1, hasta_s: float = -1, pistas: str = "", frecuencia: int = 0,
+                 formato: str = "wav", mp3_kbps: int = 192, auxiliares: bool = True) -> dict:
         """Mezcla rápida de un tramo de una sesión de Pro Tools en un WAV estéreo
-        de 16 bits (en trarin/escuchas junto a la sesión, siempre un archivo
-        nuevo), para escuchar sin abrir Pro Tools. Tramo: una canción (y, si se
-        indican, sus compases desde_compas–hasta_compas contados desde su
+        de 16 bits o un MP3 (formato="mp3", liviano para mandar o escuchar desde
+        cualquier lado), en trarin/escuchas junto a la sesión, siempre un
+        archivo nuevo, para escuchar sin abrir Pro Tools. Tramo: una canción (y,
+        si se indican, sus compases desde_compas–hasta_compas contados desde su
         inicio), compases de la sesión o segundos. pistas: expresión regular para
         escuchar solo algunas («pif|kultrun»). frecuencia: p. ej. 22050 para un
-        archivo más liviano. Suma clip gain, fundidos, paneo, fader, su
-        automatización, mute, solo y el fader del master; sin plugins, buses ni
-        auxiliares. Corre como trabajo; el resultado trae la ruta del archivo."""
+        WAV más liviano. Suma clip gain, fundidos, paneo, fader, su
+        automatización, mute, solo, el fader de los auxiliares por los que pasa
+        cada pista (auxiliares=False para no aplicarlo) y el fader del master;
+        sin plugins. Corre como trabajo; el resultado trae la ruta del archivo."""
         from . import trabajos
         args = {"sesion": _existe(ruta)}
         for k, v in (("cancion", cancion or None), ("desde_compas", desde_compas or None),
                      ("hasta_compas", hasta_compas or None), ("desde_s", None if desde_s < 0 else desde_s),
                      ("hasta_s", None if hasta_s < 0 else hasta_s), ("pistas", pistas or None),
-                     ("frecuencia", frecuencia or None)):
+                     ("frecuencia", frecuencia or None), ("formato", formato if formato != "wav" else None),
+                     ("mp3_kbps", mp3_kbps if mp3_kbps != 192 else None),
+                     ("auxiliares", False if not auxiliares else None)):
             if v is not None:
                 args[k] = v
         return {"trabajo": trabajos.lanzar("escuchar", args)}

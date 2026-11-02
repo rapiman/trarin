@@ -14,6 +14,7 @@ license = {text = "LGPL-2.1-or-later"}
 yaml = ["pyyaml>=6"]
 mcp = ["mcp"]
 audio = ["numpy", "soxr"]
+mp3 = ["lameenc"]
 
 [project.scripts]
 trarin = "trarin.__main__:main"

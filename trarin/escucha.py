@@ -3,10 +3,13 @@ un WAV estéreo de 16 bits, para oír lo que describe la ficha.
 
 Se suman las pistas de audio con: clip gain (fijo o curva), fundidos de
 entrada, salida y cruzados, paneo (y su automatización), fader (y su
-automatización), mute (fijo o automatizado), solo y el fader del master. No
-hay plugins, buses ni auxiliares (todo va directo a la suma): es una
-referencia, no la mezcla final. Si la suma pasa 0 dBFS se baja el total lo
-justo y se informa.
+automatización), mute (fijo o automatizado), solo, el fader (automatización y
+mute) de los auxiliares por los que pasa cada pista (pista → bus → aux → bus →
+aux…, hasta 4 niveles; el paneo del aux no se aplica) y el fader del master.
+No hay plugins (ni los de los auxiliares): es una referencia, no la mezcla
+final. Si la suma pasa 0 dBFS se baja el total lo justo y se informa.
+Salida WAV de 16 bits o MP3 (formato="mp3", con lameenc: pip install
+"trarin[mp3]").
 
 Como en Pizarrita Edit Pro, el montaje es una lista de datos (clips con su
 pedazo de archivo y su lugar) y el resultado es siempre un archivo nuevo, en
@@ -75,21 +78,66 @@ def _rango(ses, cancion, desde_compas, hasta_compas, desde_s, hasta_s):
     return a, b, nombre
 
 
-def _salida_libre(carpeta, nombre):
+def _salida_libre(carpeta, nombre, ext=".wav"):
     carpeta.mkdir(parents=True, exist_ok=True)
     base = re.sub(r'[<>:"/\\|?*]+', "_", nombre).strip() or "escucha"
-    r = carpeta / f"{base}.wav"
+    r = carpeta / f"{base}{ext}"
     k = 2
     while r.exists():
-        r = carpeta / f"{base} ({k}).wav"
+        r = carpeta / f"{base} ({k}){ext}"
         k += 1
     return r
 
 
+def _cadena_aux(pista, retornos, maximo=4):
+    """Los auxiliares por los que pasa la pista, en orden: su salida va a un bus
+    que es la entrada de un retorno, cuya salida puede ir a otro bus."""
+    out, salida = [], (pista.get("mezcla") or {}).get("salida")
+    while salida and len(out) < maximo:
+        aux = retornos.get(salida)
+        if aux is None or aux in out:
+            break
+        out.append(aux)
+        salida = (aux.get("mezcla") or {}).get("salida")
+    return out
+
+
+def _ganancia_pista(p, xs, n):
+    """(ganancia por muestra del fader con su automatización, muteada: bool fijo)."""
+    import numpy as np
+    mz = p.get("mezcla") or {}
+    au = p.get("automatizacion") or {}
+    vol = au.get("volumen_db") or []
+    if len({q["valor"] for q in vol}) > 1:
+        gv = 10 ** (_curva(xs, vol) / 20)
+    else:
+        gv = np.full(n, 10 ** (float(vol[0]["valor"] if vol else (mz.get("volumen_db") or 0.0)) / 20))
+    if au.get("mute"):
+        gv = np.where(_escalon(xs, au["mute"]) > 0.5, 0.0, gv)
+        return gv, False
+    return gv, bool(mz.get("mute"))
+
+
+def _codificador_mp3(fs, kbps):
+    try:
+        import lameenc
+    except ImportError as e:
+        raise ErrorEscucha('para MP3 hace falta lameenc: pip install "trarin[mp3]"') from e
+    enc = lameenc.Encoder()
+    enc.set_bit_rate(int(kbps))
+    enc.set_in_sample_rate(int(fs))
+    enc.set_channels(2)
+    enc.set_quality(2)
+    return enc
+
+
 def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=None, hasta_s=None,
-            pistas=None, frecuencia=None, salida=None, registro=print):
+            pistas=None, frecuencia=None, salida=None, registro=print, formato="wav", mp3_kbps=192,
+            auxiliares=True):
     """Escribe la mezcla rápida del tramo pedido. Devuelve {salida, desde,
-    hasta, segundos, pistas, bajada_db, avisos}."""
+    hasta, segundos, pistas, bajada_db, avisos}. formato: "wav" (16 bits) o
+    "mp3" (lameenc). auxiliares: aplicar el fader de los auxiliares por los que
+    pasa cada pista."""
     import numpy as np
     from . import audio, fichas
     from .vistas import _normal
@@ -124,13 +172,30 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     if master and master.get("inserts"):
         avisos.append("el master tiene plugins (" + ", ".join(i.get("plugin", "?") for i in master["inserts"])
                       + ") que aquí no se aplican")
+    retornos = {}
+    if auxiliares:
+        for p in ses.comun["pistas"]:
+            if p["tipo"] == "retorno" and (p.get("mezcla") or {}).get("entrada"):
+                retornos.setdefault(p["mezcla"]["entrada"], p)
+    cadenas = {p["nombre"]: _cadena_aux(p, retornos) for p, _ in activas}
+    usados = sorted({a["nombre"] for c in cadenas.values() for a in c})
+    if usados:
+        plugins = sorted({e.get("nombre") or "?" for a in retornos.values() if a["nombre"] in usados
+                          for e in a.get("efectos") or []})
+        avisos.append("con el fader de los auxiliares " + ", ".join(usados)
+                      + (" (sin sus plugins: " + ", ".join(plugins) + ")" if plugins else ""))
 
     rutas = {}
     for ids, rs in ses.fuentes.items():
         for i, r in zip(ids, rs):
             rutas[i] = r
     faltan = set()
-    salida = Path(salida) if salida else _salida_libre(fichas.carpeta_fichas(ses.sesion).parent / "escuchas", nombre)
+    if formato not in ("wav", "mp3"):
+        raise ErrorEscucha("formato: wav o mp3")
+    ext = "." + formato
+    salida = Path(salida) if salida else _salida_libre(fichas.carpeta_fichas(ses.sesion).parent / "escuchas", nombre, ext)
+    if salida.suffix.lower() != ext:
+        salida = salida.with_suffix(ext)
     crudo = salida.with_suffix(".f32.tmp")
     pico = 0.0
     total = m1 - m0
@@ -198,18 +263,18 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
                         hay = True
                     if not hay:
                         continue
-                    # fader, mute y paneo
+                    # fader, mute y paneo; después, el fader de cada auxiliar de su cadena
                     mz = p.get("mezcla") or {}
                     au = p.get("automatizacion") or {}
-                    vol = au.get("volumen_db") or []
-                    if len({q["valor"] for q in vol}) > 1:
-                        gv = 10 ** (_curva(xs, vol) / 20)
-                    else:
-                        gv = np.full(n, 10 ** (float(vol[0]["valor"] if vol else (mz.get("volumen_db") or 0.0)) / 20))
-                    if au.get("mute"):
-                        gv = np.where(_escalon(xs, au["mute"]) > 0.5, 0.0, gv)
-                    elif mz.get("mute"):
+                    gv, muteada = _ganancia_pista(p, xs, n)
+                    if muteada:
                         continue
+                    for aux in cadenas[p["nombre"]]:
+                        ga, muteado = _ganancia_pista(aux, xs, n)
+                        if muteado:
+                            gv = np.zeros(n)
+                            break
+                        gv = gv * ga
                     pan = mz.get("paneo")
                     if can == 1:
                         pa = (_curva(xs, au["paneo_izq"], escala=0.01) if au.get("paneo_izq")
@@ -237,17 +302,26 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
         if fs_sal != fs:
             import soxr
             flujo = soxr.ResampleStream(fs, fs_sal, 2, dtype="float32", quality="HQ")
-        with wave.open(str(salida), "wb") as w, open(crudo, "rb") as fcrudo:
-            w.setnchannels(2)
-            w.setsampwidth(2)
-            w.setframerate(fs_sal)
+        enc = _codificador_mp3(fs_sal, mp3_kbps) if formato == "mp3" else None
+        destino = open(salida, "wb") if enc else wave.open(str(salida), "wb")
+        with destino as w, open(crudo, "rb") as fcrudo:
+            if not enc:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(fs_sal)
             while True:
                 bloque = np.fromfile(fcrudo, dtype="<f4", count=paso * 2)
                 ultimo = len(bloque) < paso * 2
                 y = bloque.reshape(-1, 2) * escala
                 if flujo is not None:
                     y = flujo.resample_chunk(y, last=ultimo)
-                w.writeframes((np.clip(y, -1, 1) * 32767).round().astype("<i2").tobytes())
+                pcm = (np.clip(y, -1, 1) * 32767).round().astype("<i2").tobytes()
+                if enc:
+                    w.write(enc.encode(pcm))
+                    if ultimo:
+                        w.write(enc.flush())
+                else:
+                    w.writeframes(pcm)
                 if ultimo:
                     break
     finally:
@@ -257,6 +331,6 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
         avisos.append(f"faltan {len(faltan)} archivos de audio (esos clips no suenan)")
     if bajada:
         avisos.append(f"la suma pasaba 0 dBFS (pico {20 * math.log10(pico):+.1f} dBFS): se bajó todo {bajada} dB")
-    avisos.append("sin plugins, buses ni auxiliares: es una referencia, no la mezcla final")
+    avisos.append("sin plugins" + ("" if usados else " ni auxiliares") + ": es una referencia, no la mezcla final")
     return {"salida": str(salida), "desde": ses.reloj(a), "hasta": ses.reloj(b), "segundos": round(b - a, 1),
             "pistas": len(activas), "bajada_db": bajada, "frecuencia": fs_sal, "avisos": avisos}
