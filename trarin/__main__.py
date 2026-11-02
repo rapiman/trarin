@@ -156,6 +156,16 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    nv = sub.add_parser("nivelar", help="propone el clip gain que deja cada pista a un RMS objetivo por canción (y canciones parejas); con -o lo escribe. Necesita fichas")
+    nv.add_argument("sesion")
+    nv.add_argument("--objetivo", type=float, default=-18.0, help="RMS objetivo en dBFS (por defecto -18)")
+    nv.add_argument("--tope-pico", type=float, default=-1.0, help="el pico no pasa de esto (por defecto -1 dBFS)")
+    nv.add_argument("--cancion")
+    nv.add_argument("--pistas", help="expresión regular sobre el nombre")
+    nv.add_argument("--parejas", action="store_true", help="además, que las canciones queden parejas en sonoridad")
+    nv.add_argument("--lufs", type=float, help="con --parejas: sonoridad objetivo (por defecto la de la canción más fuerte)")
+    nv.add_argument("--minimo", type=float, default=0.5, help="cambios menores a esto (dB) no se hacen")
+    nv.add_argument("-o", "--salida")
     ed = sub.add_parser("editar", help="mover, cortar, silenciar o quitar clips de una pista por compás de la canción; sin -o solo muestra el plan")
     ed.add_argument("sesion")
     ed.add_argument("accion", choices=["mover", "cortar", "silenciar", "quitar"])
@@ -220,6 +230,25 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "nivelar":
+        from pathlib import Path
+        from . import nivelar as NV
+        from .fichas import ErrorFicha
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            plan = NV.planear(a.sesion, a.objetivo, a.tope_pico, a.cancion, a.pistas, a.parejas, a.lufs, a.minimo)
+        except ErrorFicha as e:
+            p.error(str(e))
+        print(NV.texto(plan))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            r = NV.escribir(plan, a.salida)
+            print(f"escrito {a.salida}: clip gain de {r['regiones']} regiones; " + (r["verificacion"].get("texto") or ""))
+            for x in r["avisos"]:
+                print(f"  aviso: {x}")
         return
     if a.orden == "editar":
         from pathlib import Path
