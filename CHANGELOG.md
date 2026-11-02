@@ -5,6 +5,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Automatización del fader de las pistas de instrumento, verificada en Pro Tools.**
+  Esas listas `0x260A` van en ticks (byte +10 en 1) y el primer punto es un u64
+  con CERO + tick; trarin leía la mitad alta («232») y, al escribir, pisaba el
+  primer punto, así que Pro Tools no mostraba la curva. Ahora se leen y se
+  escriben bien (igual byte a byte que el oráculo `PRUEBA_auto_instrumento.ptx`,
+  hecho en Pro Tools) y en el modelo común van en muestras, convertidas con el
+  mapa de tempo. «8 instrumentos con automatizacion por trarin» muestra en Pro
+  Tools la curva escrita. Pruebas nuevas: listas contra el oráculo y vuelta por el
+  modelo común.
 - **Pistas de instrumento desde el modelo común.** Se leen con tipo
   `"instrumento"` (antes `"0x0007"`, que se sigue aceptando al escribir), con su
   mezcla (fader en el canal `0x2621`, sin `0x261B`). Quitarlas y crearlas vacías

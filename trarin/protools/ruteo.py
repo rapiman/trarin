@@ -37,6 +37,7 @@ from .bloques import arbol, buscar
 from .pistas import _cadena
 from .pistas_nuevas import ErrorPista, _ids_canal, _lista_2519, _primero
 from .reconstruccion import reconstruir
+from .tiempo import CERO
 
 
 def rutas(d, bloques=None):
@@ -129,25 +130,41 @@ def _destino_260e(d, e):
     raise ErrorPista("destino de fader (0x260E) sin nombre")
 
 
+def _en_ticks(d, a):
+    """El byte +10 de un 0x260A vale 1 si sus posiciones van en ticks (fader de una
+    pista de instrumento) y 0 si van en muestras."""
+    return d[a.inicio + 10] == 1
+
+
 def _puntos(d, a):
-    """(cantidad, ancho, [(muestra, valor en bytes)]) de un 0x260A."""
+    """(ancho, [(posición, valor en bytes)]) de un 0x260A. Desde +18: u16 cantidad − 1,
+    u64 posición del primer punto (en ticks, CERO + tick: oráculo «6 automatizacion
+    instrumento.ptx»), su valor, y cada punto siguiente como u32 posición y valor;
+    2 bytes al final. Las posiciones salen en muestras o en ticks (sin CERO)."""
     n = struct.unpack_from("<I", d, a.inicio + 12)[0]
     w = struct.unpack_from("<H", d, a.inicio + 16)[0]
-    p = a.inicio + 24
-    if p + n * (4 + w) + 2 != a.fin:
+    if n == 0 or a.inicio + 28 + w + (n - 1) * (4 + w) + 2 != a.fin:
         raise ErrorPista("lista de automatización (0x260A) no reconocida")
-    return w, [(struct.unpack_from("<I", d, p + j * (4 + w))[0],
-                bytes(d[p + j * (4 + w) + 4:p + (j + 1) * (4 + w)])) for j in range(n)]
+    t0 = struct.unpack_from("<Q", d, a.inicio + 20)[0]
+    if _en_ticks(d, a):
+        t0 -= CERO
+    out = [(t0, bytes(d[a.inicio + 28:a.inicio + 28 + w]))]
+    p = a.inicio + 28 + w
+    for _ in range(n - 1):
+        out.append((struct.unpack_from("<I", d, p)[0], bytes(d[p + 4:p + 4 + w])))
+        p += 4 + w
+    return w, out
 
 
 def _contenido_260a(d, a, puntos):
     """Contenido nuevo (desde a.inicio) de un 0x260A con otros puntos."""
-    w, _ = _puntos(d, a)
-    cab = bytearray(d[a.inicio:a.inicio + 24])
-    cuerpo = b"".join(struct.pack("<I", m) + v for m, v in puntos) + bytes(d[a.fin - 2:a.fin])
-    struct.pack_into("<I", cab, 6, 12 + len(cuerpo))
+    _puntos(d, a)
+    t0, v0 = puntos[0]
+    cuerpo = (struct.pack("<HQ", len(puntos) - 1, t0 + (CERO if _en_ticks(d, a) else 0)) + v0
+              + b"".join(struct.pack("<I", m) + v for m, v in puntos[1:]) + bytes(d[a.fin - 2:a.fin]))
+    cab = bytearray(d[a.inicio:a.inicio + 18])
+    struct.pack_into("<I", cab, 6, len(cab) + len(cuerpo) - 12)
     struct.pack_into("<I", cab, 12, len(puntos))
-    struct.pack_into("<I", cab, 18, max(len(puntos) - 1, 0))
     return bytes(cab) + cuerpo
 
 

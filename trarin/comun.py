@@ -163,6 +163,19 @@ def _contenido_grupo_pt(c, r, ta, grupos_clips, regiones, fs, mapa):
     return out
 
 
+def _auto_de_ticks(auto, tempo, fs):
+    """La automatización del fader de una pista de instrumento va en ticks, no en
+    muestras (oráculo «6 automatizacion instrumento.ptx»: puntos en 125 280 000 ticks
+    = 123 s). En el modelo común va en muestras, como en las demás pistas."""
+    return {k: [dict(x, muestra=round(T.segundos(x["muestra"], tempo) * fs)) for x in v] for k, v in auto.items()}
+
+
+def _auto_a_ticks(auto, tempo, fs):
+    mapa = T.MapaTempo(tempo)
+    return {k: [dict(x, muestra=max(0, round(T.tick_de_segundos(x["muestra"] / fs, mapa)))) for x in v]
+            for k, v in auto.items()}
+
+
 def _desde_protools(n):
     fs = n["origen"].get("frecuencia_muestreo") or 48000
     mapa = T.MapaTempo(n["tempo"])
@@ -243,7 +256,8 @@ def _desde_protools(n):
                        "envios": [{"destino": e.get("destino"), "volumen_db": e.get("volumen_db")}
                                   for e in m.get("envios", [])]},
             "efectos": [{"nombre": i.get("plugin"), "fabricante": i.get("fabricante")} for i in m.get("inserts", [])],
-            "automatizacion": m.get("automatizacion", {}),
+            "automatizacion": (_auto_de_ticks(m.get("automatizacion", {}), n["tempo"], fs)
+                               if p["tipo"] == "instrumento" else m.get("automatizacion", {})),
             "clips": sorted(clips, key=lambda c: c["tick"]),
         })
     master = [x for x in n.get("mezcla", []) if x.get("tipo") == "master"]
@@ -577,7 +591,9 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                     continue
                 clips_borrados.setdefault(p["id"], []).append(int(i.rsplit("#", 1)[1]))
     # puntos de automatización cambiados (se escriben después del resto)
-    autos = {p.get("nombre") or p["id"]: p.get("automatizacion") or {} for p in comun["pistas"]
+    autos = {p.get("nombre") or p["id"]: (_auto_a_ticks(p.get("automatizacion") or {}, nativo["tempo"], fs)
+                                          if orig[p["id"]]["tipo"] == "instrumento" else p.get("automatizacion") or {})
+             for p in comun["pistas"]
              if p.get("id") in orig and (p.get("automatizacion") or {}) != (orig[p["id"]].get("automatizacion") or {})}
     res = escribir_cambios(plantilla, salida, mezcla=mezcla, regiones=regiones, marcadores=marcadores, tempo=tempo, midi=midi,
                            marcadores_nuevos=altas, marcadores_borrados=bajas, nombres=nombres,
