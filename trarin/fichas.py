@@ -787,10 +787,11 @@ def _fuentes_sesion(sesion, comun):
     def ruta(i):
         return rutas.get(i) or _ruta_audio(sesion, nombres.get(i, str(i)))
 
+    from .comun import clips_audio
     out = {}
     for p in comun["pistas"]:
-        for c in p.get("clips") or []:
-            if c.get("tipo") != "audio" or c.get("archivo") is None:
+        for c in clips_audio(p):
+            if c.get("archivo") is None:
                 continue
             ids = tuple(c.get("archivos_canales") or [c["archivo"]])
             if ids not in out:
@@ -894,11 +895,13 @@ class Sesion:
     def tramo(self, pista, rango=None):
         """(Tramo de la pista, clips sin serie). rango: (desde_s, hasta_s) de la sesión."""
         from .consolidar import _ganancia
+        from .comun import clips_audio
         tr, sin = Tramo(), 0
+        audio = list(clips_audio(pista))
         bordes_pista = [(c["segundos"], c["segundos"] + c["largo_muestras"] / self.fs)
-                        for c in pista.get("clips") or [] if c.get("segundos") is not None and c.get("largo_muestras")]
-        for c in pista.get("clips") or []:
-            if c.get("tipo") != "audio" or c.get("archivo") is None or c.get("segundos") is None:
+                        for c in audio if c.get("segundos") is not None and c.get("largo_muestras")]
+        for c in audio:
+            if c.get("archivo") is None or c.get("segundos") is None:
                 continue
             ini = c["segundos"]
             fin = ini + c["largo_muestras"] / self.fs

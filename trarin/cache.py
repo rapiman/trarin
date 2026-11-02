@@ -10,7 +10,7 @@ import os
 import pickle
 from pathlib import Path
 
-VERSION = 2            # subir cuando cambie la forma del modelo: invalida todo (2: grupos de clips)
+VERSION = 3            # subir cuando cambie la forma del modelo: invalida todo (3: contenido de los grupos)
 MAXIMO = 200
 
 

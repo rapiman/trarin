@@ -22,7 +22,8 @@ _PERCUSION = ("kultr", "cultr", "bombo", "kick", "bass drum", "perc", "kask", "c
 
 
 def _clips(p, fs, a, b):
-    return [k for k in p.get("clips") or [] if k.get("tipo") == "audio" and not k.get("mute")
+    from .comun import clips_audio
+    return [k for k in clips_audio(p) if not k.get("mute")
             and k.get("archivo") is not None and a <= k["muestra"] / fs < b]
 
 

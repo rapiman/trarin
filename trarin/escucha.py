@@ -165,8 +165,9 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     if crudo:
         auxiliares = False
     activas = []
+    from .comun import clips_audio
     for p in todas:
-        clips = [c for c in p["clips"] if c.get("tipo") == "audio" and c.get("archivo") is not None
+        clips = [c for c in clips_audio(p) if c.get("archivo") is not None
                  and c.get("muestra") is not None and c["muestra"] < m1 and c["muestra"] + c["largo_muestras"] > m0]
         if clips:
             activas.append((p, clips))
@@ -385,8 +386,9 @@ def por_pista(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_
     for p in ses.comun["pistas"]:
         if p["tipo"] != "audio" or (pistas and not _re.search(pistas, _normal(p["nombre"]))):
             continue
-        if any(c.get("tipo") == "audio" and c.get("muestra") is not None and c["muestra"] < m1
-               and c["muestra"] + c["largo_muestras"] > m0 for c in p.get("clips") or []):
+        from .comun import clips_audio
+        if any(c.get("muestra") is not None and c["muestra"] < m1
+               and c["muestra"] + c["largo_muestras"] > m0 for c in clips_audio(p)):
             candidatas.append(p["nombre"])
     if not candidatas:
         raise ErrorEscucha("no hay pistas de audio con sonido en el tramo pedido")

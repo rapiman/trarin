@@ -178,10 +178,13 @@ def revisar(ruta, comun=None):
     grupos = [(p["nombre"], c) for p in comun["pistas"] for c in p.get("clips", []) if c.get("tipo") == "grupo"]
     if grupos:
         revisado["grupos_de_clips"] = len(grupos)
+        revisado["clips_dentro_de_grupos"] = sum(len(c.get("contenido") or []) for _, c in grupos)
         fs_ = comun.get("unidades", {}).get("frecuencia_muestreo") or 48000
-        avisos.append(f"{len(grupos)} grupos de clips en la línea de tiempo; trarin no mira adentro de un grupo "
-                      f"(ni su audio ni su clip gain): para que los vea, desagruparlos en Pro Tools (Clip > Ungroup): "
-                      + ", ".join(f"{p}: {c['nombre']} a {c['muestra'] / fs_:.0f} s" for p, c in grupos[:8]))
+        sin = [(p, c) for p, c in grupos if c.get("contenido") is None]
+        if sin:
+            avisos.append(f"{len(sin)} grupos de clips cuyo contenido no se pudo leer: trarin no escucha ni mide su "
+                          f"audio; desagruparlos en Pro Tools (Clip > Ungroup) lo resuelve: "
+                          + ", ".join(f"{p}: {c['nombre']} a {c['muestra'] / fs_:.0f} s" for p, c in sin[:8]))
     return {"ok": not errores, "errores": errores, "avisos": avisos, "revisado": revisado}
 
 

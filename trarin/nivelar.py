@@ -33,6 +33,7 @@ def planear(sesion, objetivo_db=-18.0, tope_pico_db=-1.0, cancion=None, pistas=N
             lufs_objetivo=None, minimo_cambio_db=0.5):
     from . import fichas as F
     from .vistas import _normal
+    from .comun import clips_audio
     import re
     ses = F.Sesion(str(sesion))
     if not ses.hay():
@@ -66,7 +67,7 @@ def planear(sesion, objetivo_db=-18.0, tope_pico_db=-1.0, cancion=None, pistas=N
             acotado = False
             if delta > tope:
                 delta, acotado = tope, True
-            clips = [c for c in p["clips"] if c.get("tipo") == "audio" and c.get("archivo") is not None
+            clips = [c for c in clips_audio(p) if c.get("archivo") is not None
                      and (rango is None or rango[0] <= c["segundos"] < rango[1])]
             fila = {"pista": p["nombre"], "cancion": cn, "rms_dbfs": round(rms, 1), "pico_dbfs": round(pico, 1),
                     "delta_db": round(delta, 2), "clips": len(clips), "ids": [c["id"] for c in clips]}
@@ -85,11 +86,24 @@ def _regiones_de_clips(sesion, ids):
     from .comun import leer_nativo
     nat = leer_nativo(sesion)
     por_pista = {t["nombre"]: t for t in nat["pistas_audio"]}
+    grupos = nat["audio"].get("grupos_clips") or []
     out = {}
     for cid in ids:
         pista, j = cid.rsplit("#", 1)
         t = por_pista.get(pista)
         if not t:
+            continue
+        if "." in j:
+            # clip de adentro de un grupo («pista#j.k»): la región k del contenido del grupo
+            # de cada canal (cambiarla cambia todos los lugares donde se usa ese contenido)
+            j, k = (int(x) for x in j.split(".", 1))
+            ref = t["canales"][0]["regiones"][j]
+            for canal in t["canales"]:
+                r = next((x for x in canal["regiones"] if x["muestra"] == ref["muestra"] and "indice_grupo" in x), None)
+                g = grupos[r["indice_grupo"]] if r is not None and r["indice_grupo"] < len(grupos) else None
+                cont = (g or {}).get("contenido") or []
+                if k < len(cont):
+                    out.setdefault(cont[k][1], []).append(cid)
             continue
         j = int(j)
         ref = t["canales"][0]["regiones"][j]

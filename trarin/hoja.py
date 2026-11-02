@@ -81,7 +81,7 @@ def hoja(comun, margen_s=3.0, max_entradas=40):
                 continue
             primero = None
             for k in p.get("clips") or []:
-                if k.get("tipo") == "audio":
+                if k.get("tipo") in ("audio", "grupo"):
                     if k.get("mute"):
                         continue
                     a, b = k["muestra"] / fs, (k["muestra"] + k["largo_muestras"]) / fs

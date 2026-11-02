@@ -53,8 +53,9 @@ def exportar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s
         if p["tipo"] != "audio" or (pistas and not re.search(pistas, _normal(p["nombre"]))):
             continue
         clips = []
-        for c in p.get("clips") or []:
-            if c.get("tipo") != "audio" or c.get("archivo") is None or c.get("muestra") is None:
+        from .comun import clips_audio
+        for c in clips_audio(p):
+            if c.get("archivo") is None or c.get("muestra") is None:
                 continue
             x0, x1 = max(c["muestra"], m0), min(c["muestra"] + c["largo_muestras"], m1)
             if x1 <= x0:
