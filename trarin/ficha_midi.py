@@ -143,7 +143,7 @@ def ficha(sesion, pista, cancion=None, audio=None, tolerancia_ms=50.0):
         partes.append(f"{'dobla' if pct >= 70 else 'dobla a medias' if pct >= 40 else 'no dobla'} a {dobla['audio']} ({pct} % de las notas sobre un golpe)")
     if out["salida"]:
         s = out["salida"]
-        partes.append(f"sale por {s['puerto']} canal {s['canal'] + 1}" if isinstance(s, dict) else f"sale por {s}")
+        partes.append(f"sale por {s['puerto']} canal {s['canal']}" if isinstance(s, dict) else f"sale por {s}")
     if out["mute"]:
         partes.append("MUTE")
     out["palabras"] = "; ".join(partes)

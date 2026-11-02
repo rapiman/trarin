@@ -156,6 +156,17 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    ins = sub.add_parser("instalar", help="instala el servidor MCP en Claude Desktop (entrada «trarin» en claude_desktop_config.json con este Python) y revisa las dependencias")
+    ins.add_argument("--revisar", action="store_true", help="solo revisar, sin escribir la configuración")
+    ins.add_argument("--config", help="ruta del claude_desktop_config.json (por defecto la del sistema)")
+    ins.add_argument("--nombre", default="trarin", help="nombre del servidor en la configuración")
+    lu = sub.add_parser("luces", help="arma las tres pistas MIDI de luces del show desde la percusión de cada canción (canal 1 kultrun/bombo, 2 y 3 pifilkas a la contra); sin -o solo el plan")
+    lu.add_argument("sesion")
+    lu.add_argument("--puerto", help="puerto MIDI de salida (por defecto el más usado en la sesión)")
+    lu.add_argument("--fijar", help='JSON {"canción": {"principal": pista, "pifilkas": [L, R], "otra": pista}}')
+    lu.add_argument("--grilla", default="1/16")
+    lu.add_argument("--nota", type=int, default=36)
+    lu.add_argument("-o", "--salida")
     on = sub.add_parser("onda", help="dibuja la onda (envolvente RMS y pico, golpes, marcadores y compases) de una o varias pistas en un tramo: SVG y PNG en trarin/ondas. Necesita fichas")
     on.add_argument("sesion")
     on.add_argument("--cancion")
@@ -250,6 +261,35 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "instalar":
+        from . import instalar as IN
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        r = IN.revisar()
+        print(IN.texto(r))
+        if not a.revisar:
+            if "mcp" in r["falta"]:
+                p.error('falta el paquete mcp: pip install "trarin[mcp]" antes de instalar')
+            x = IN.instalar(a.config, a.nombre)
+            print(f"escrita la entrada «{a.nombre}» en {x['config']}: {json.dumps(x['entrada'], ensure_ascii=False)}"
+                  + (f" (antes: {json.dumps(x['antes'], ensure_ascii=False)})" if x["antes"] else "")
+                  + "\nReiniciar Claude Desktop para que la vea.")
+        return
+    if a.orden == "luces":
+        from pathlib import Path
+        from . import luces as LU
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        plan = LU.planear(a.sesion, a.puerto, json.loads(a.fijar) if a.fijar else None, a.grilla, a.nota)
+        print(LU.texto(plan))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            r = LU.escribir(plan, a.salida)
+            print(f"escrito {a.salida}: {r['notas']} notas; salidas {r['salidas_midi']}")
+            for x in r["avisos"]:
+                print(f"  aviso: {x}")
         return
     if a.orden == "onda":
         from . import onda as ON
