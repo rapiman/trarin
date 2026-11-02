@@ -3,6 +3,17 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-11-01
+
+- **Regiones que no empiezan en el inicio del archivo (corregido)**: el `0x2628`
+  de una región nueva ahora se escribe como Pro Tools (desplazamiento, largo, dos
+  veces el desplazamiento, 8 bytes FF, anchos en el 4.º byte y 8 en el 5.º). Sin
+  los dos campos repetidos, Pro Tools dejaba con largo cero los clips que no
+  empiezan en la muestra 0 del archivo (rayas negras, sin sonido).
+- Árbol de bloques: el mapa de tempo `0x2028` se lee como lista plana (sin hijos).
+  Una rampa con muchos eventos contiene bytes 0x5A que parecían cabeceras y
+  rompían el árbol.
+
 ## 2026-10-27
 
 - **Salida MIDI (puerto y canal)**: `protools/salidas_midi.py` (`leer_salidas`,

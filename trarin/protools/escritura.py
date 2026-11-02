@@ -806,8 +806,14 @@ def _altas_archivos_regiones(d, bloques, archivos, regiones):
                               + b"".join(struct.pack("<If", int(x["muestra"]), float(x["db"])) for x in nodos))
                 cola = cola[:-4] + struct.pack("<i", n_dic + con_ganancia)
                 con_ganancia += 1
-            datos = (struct.pack("<I", len(nombre)) + nombre + bytes([0, w_off << 4, w_len << 4, 0, 0])
-                     + (desde.to_bytes(w_off, "little") if w_off else b"") + largo.to_bytes(w_len, "little")
+            # como lo escribe Pro Tools: desplazamiento, largo, dos veces el desplazamiento
+            # (anchos en el 4.º byte) y 8 bytes FF (ancho 8 en el 5.º). Sin los dos campos del
+            # desplazamiento, Pro Tools deja con largo cero los clips que no empiezan en el
+            # inicio del archivo (rayas negras, sin sonido).
+            off_b = desde.to_bytes(w_off, "little") if w_off else b""
+            datos = (struct.pack("<I", len(nombre)) + nombre
+                     + bytes([1 if w_off else 0, w_off << 4, w_len << 4, (w_off << 4) | w_off, 0x08])
+                     + off_b + largo.to_bytes(w_len, "little") + off_b + off_b + b"\xff" * 8
                      + cola)
             b2628 = b"\x5a\x01\x00" + struct.pack("<I", 2 + len(datos)) + b"\x28\x26" + datos
             arch = r["archivo"] if r["archivo"] >= 0 else n_arch - r["archivo"] - 1
