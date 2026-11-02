@@ -28,7 +28,8 @@ os.environ["TRARIN_SIN_CACHE"] = "1"
 SESIONES = RAIZ / "pruebas" / "sesiones"
 VACIAS = ["trarin_vacia_44k.ptx", "trarin_vacia_48k.ptx", "trarin_vacia_96k.ptx"]
 TODAS = VACIAS + ["trarin_pistas_48k.ptx", "PRUEBA_una_nota_vacia.ptx", "PRUEBA_una_nota.ptx",
-                  "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx", "PRUEBA_grupos.ptx"]
+                  "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx", "PRUEBA_grupos.ptx",
+                  "PRUEBA_crear_grupo_antes.ptx", "PRUEBA_crear_grupo.ptx"]
 
 
 def _sin_ids(comun):
@@ -243,6 +244,59 @@ class GruposDeClips(Base):
                          [(x["nombre"], x["muestra"] - g["muestra"]) for x in g["contenido"]])
         from trarin.revision import revisar
         self.assertTrue(revisar(s)["ok"])
+
+    def test_crear_grupo_como_pro_tools(self):
+        """Agrupar Audio 4_03-04 y 4_03-05 en Bombo (oráculo: PRUEBA_crear_grupo.ptx, hecho
+        con Clip > Group sobre PRUEBA_crear_grupo_antes.ptx): el 0x262B sale igual byte a
+        byte, y el contenido (con el fundido de salida de adentro) se lee igual."""
+        from trarin.comun import leer_comun, aplicar
+        from trarin.protools.bloques import arbol, buscar
+        from trarin.protools.descifrado import leer_descifrado
+        from trarin.revision import revisar
+        f = str(SESIONES / "PRUEBA_crear_grupo_antes.ptx")
+        c = leer_comun(f)
+        p = next(t for t in c["pistas"] if t["nombre"] == "Bombo")
+        p["clips"] = [x for x in p["clips"] if x["id"] not in ("Bombo#2", "Bombo#3")]
+        p["clips"].append({"tipo": "grupo", "agrupa": ["Bombo#2", "Bombo#3"]})
+        s = self.salida("crear_grupo.ptx")
+        aplicar(c, f, s)
+        hijos = lambda r: [bytes(d[h.pos:h.fin]) for d in [leer_descifrado(r)] for h in buscar(arbol(d), 0x262C)[0].hijos]
+        self.assertEqual(hijos(s), hijos(str(SESIONES / "PRUEBA_crear_grupo.ptx")))
+        resumen = lambda r: [(x["tipo"], x["muestra"], x.get("nombre"),
+                              [(y["nombre"], y["muestra"], y["largo_muestras"],
+                                [(z["tipo"], z["muestra"]) for z in y.get("fundidos", [])])
+                               for y in x.get("contenido") or []])
+                             for x in next(t for t in leer_comun(r)["pistas"] if t["nombre"] == "Bombo")["clips"]]
+        self.assertEqual(resumen(s), resumen(str(SESIONES / "PRUEBA_crear_grupo.ptx")))
+        self.assertTrue(revisar(s)["ok"])
+
+    def test_crear_grupo_estereo(self):
+        """En estéreo va un grupo por canal (.L y .R); los fundidos cruzados de adentro
+        quedan en el grupo. Un fundido que cruza el borde del grupo da error."""
+        from trarin.comun import leer_comun, aplicar, ErrorComun
+        from trarin.protools.escritura import ErrorEscritura
+        f = str(SESIONES / "PRUEBA_crear_grupo_antes.ptx")
+        c = leer_comun(f)
+        p = next(t for t in c["pistas"] if t["nombre"] == "Delay")
+        ids = [x["id"] for x in p["clips"]]
+        antes = [(x["nombre"], x["muestra"], [(z["tipo"], z["muestra"]) for z in x.get("fundidos", [])]) for x in p["clips"]]
+        p["clips"] = [{"tipo": "grupo", "agrupa": ids, "nombre": "Delay junto"}]
+        s = self.salida("crear_grupo_st.ptx")
+        aplicar(c, f, s)
+        c2 = leer_comun(s)
+        q = next(t for t in c2["pistas"] if t["nombre"] == "Delay")
+        self.assertEqual(len(q["clips"]), 1)
+        g = q["clips"][0]
+        self.assertEqual(g["nombre"], "Delay junto.L")
+        self.assertEqual([(x["nombre"], x["muestra"], [(z["tipo"], z["muestra"]) for z in x.get("fundidos", [])])
+                          for x in g["contenido"]], antes)
+        from trarin.protools import leer
+        self.assertEqual([x["nombre"] for x in leer(s)["audio"]["grupos_clips"]], ["Delay junto.L", "Delay junto.R"])
+        c = leer_comun(f)
+        p = next(t for t in c["pistas"] if t["nombre"] == "Delay")
+        p["clips"] = [p["clips"][0], {"tipo": "grupo", "agrupa": [p["clips"][1]["id"], p["clips"][2]["id"]]}]
+        with self.assertRaises((ErrorEscritura, ErrorComun)):
+            aplicar(c, f, self.salida("cruza.ptx"))
 
     def test_plantilla_no_es_de_grupo(self):
         """Un clip nuevo nunca hereda la marca de grupo (+20 del 0x104F) de la plantilla."""

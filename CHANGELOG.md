@@ -5,6 +5,16 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Crear grupos de clips al escribir (Clip > Group).** En el modelo común, un
+  clip `{"tipo": "grupo", "agrupa": [ids de clips de la pista], "nombre"?}` en
+  lugar de esos clips; en `escribir_cambios`, `grupos_nuevos`. Se escribe el
+  `0x262B` (uno por canal en estéreo), la entrada con el contenido en el
+  `0x2428` (los clips y los fundidos de adentro, tal cual), los registros de
+  nombre y origen (`0x2423`, `0x2425`) y las entradas del índice. Oráculo de
+  Pro Tools: `PRUEBA_crear_grupo.ptx` (Bombo 4_03-04 + 4_03-05): el `0x262B` de
+  trarin sale igual byte a byte. Un fundido que cruza el borde del grupo da
+  error (Pro Tools recorta el clip y crea regiones). Pruebas nuevas: mono contra
+  el oráculo, estéreo con fundidos cruzados adentro y el error del borde.
 - **Duplicar o mover grupos de clips al escribir**: un clip `grupo` nuevo en el
   modelo común (copia de uno de la sesión) se escribe como una colocación de
   grupo con el mismo índice, como hace Pro Tools al pegar; en estéreo, con el

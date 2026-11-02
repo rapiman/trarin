@@ -408,7 +408,7 @@ grupo se mueve, se mutea o se quita como cualquier clip (misma colocación);
 duplicarlo (o llevarlo a otra pista con los mismos canales) es una colocación
 nueva con el byte +20 en 1 y el mismo índice, igual que hace Pro Tools al pegar
 (el oráculo tiene grp-03 pegado dos veces con un solo `0x262B`). Crear un grupo
-nuevo (agrupar clips) no está soportado. Los fundidos de adentro de un
+nuevo (agrupar clips) se explica más abajo. Los fundidos de adentro de un
 grupo son colocaciones de fundido en la misma entrada (byte tras el `0x104F` en
 1, ancla menos pre-roll, como en una playlist); trarin los pasa a la ventana del
 grupo y se los da a los clips que tocan (calzan con la sesión original del
@@ -419,6 +419,43 @@ sesión; si esa plantilla era de un grupo, el clip nuevo heredaba el byte +20 y
 Pro Tools lo leía como grupo (pasó en los shows del 2026-10-28: 860
 colocaciones marcadas). `escritura._plantilla_colocacion` ya no toma una
 colocación de grupo y cada clip nuevo lleva el byte en 0.
+
+**Crear un grupo (Clip > Group)** [verificado 2026-11-02, oráculo
+`PRUEBA_cruces\2 grupo en Bombo.ptx`: Audio 4_03-04 y 4_03-05 agrupados en Pro
+Tools sobre `1 sin grupos.ptx`; copias en `pruebas/sesiones/PRUEBA_crear_grupo*.ptx`].
+Una sesión sin grupos ya trae las listas, vacías: `0x262C` (u32 0 y 4 ceros),
+`0x2428 → 0x1054` (u32 0), `0x2424` y `0x2426` (u32 0). Agrupar cambia:
+
+- **Pista**: salen las colocaciones de los clips y de los fundidos que quedan dentro
+  de la ventana (del inicio del primer clip al fin del último); entra una
+  colocación de grupo (byte +20 en 1, +17 en 3) en el inicio. Otros clips pueden
+  quedar debajo (Bombo 4_03-02 sigue ahí). Un fundido que cruza el borde lo
+  resuelve Pro Tools recortando el clip y creando regiones nuevas (Delay en
+  `G_A.ptx`); trarin da error en ese caso.
+- **`0x262B` nuevo** al final del `0x262C`: nombre `Pista.grp` (`.L`/`.R` en
+  estéreo, uno por canal), byte 0, anchos `50 | largo<<4 | inicio<<4 + inicio | 08`,
+  CERO, largo, inicio original (inicio de la sesión + muestra) dos veces, 8 FF,
+  `FE FF 00000000 FFFF 04000400`, u32 1 y una instancia `0x2523` (88 bytes: muestra,
+  `FFFFFFFF 00000000`, id = cantidad de instancias de la lista, 8 ceros, CERO,
+  CERO + largo, muestra + largo, padre `FFFFFFFF`, 9 ceros), 17 ceros y clip gain
+  −1. Cola del `0x262B`: `00 | u32 registro de nombre | …`; en el canal R, los
+  bytes 5 y 7 en 1.
+- **Entrada `0x1052` nueva** al final del `0x1054` del `0x2428`: nombre «?», cantidad,
+  las colocaciones de los clips y fundidos tal cual estaban en la pista con la
+  muestra cambiada a `CERO + (m - inicio)`, y `01 00`.
+- **`0x2423`** en el `0x2424` (registro de nombre: u32 registro de origen, nombre,
+  byte 1 si es estéreo, 2 ceros) y **`0x2425`** en el `0x2426` (origen: u32 n, n ×
+  (u8 0, u32 índice de grupo), la ruta de la sesión donde se creó en partes, la
+  serie del volumen, la misma del `0x0F3C`, y 6 ceros). Un registro por grupo creado,
+  compartido por los dos canales de un estéreo.
+- **Índice `0x0002`**: las entradas `(0x2428)(0x1054)`, `(0x2424)` y `(0x2426)` tienen un
+  grupo por hijo y suman el nuevo; la del `0x262C` solo apunta a la lista.
+
+Pro Tools además renumera los fundidos y el clip gain de toda la sesión al
+guardar; no hace falta para leer. trarin (`escribir_cambios(grupos_nuevos=…)`, en el
+modelo común un clip `{"tipo": "grupo", "agrupa": [ids]}` en lugar de esos clips)
+escribe el `0x262B` del oráculo byte a byte igual, y el resto igual salvo el número
+de fundido y la ruta de origen.
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 

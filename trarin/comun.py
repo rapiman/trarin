@@ -504,7 +504,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
     indices = {p["nombre"]: i for i, p in enumerate(nativo["pistas"])}
     orig = _por_id(original["pistas"])
     mezcla, regiones, midi, nombres, notas = {}, {}, {}, {}, {}
-    clips_nuevos, clips_borrados, fundidos_nuevos = {}, {}, {}
+    clips_nuevos, clips_borrados, fundidos_nuevos, grupos_nuevos = {}, {}, {}, {}
     midi_nuevos = {"regiones": [], "clips": {}}
     altas_audio = {"archivos": [], "regiones": [], "indices": {}, "largo": {},
                    "base_regiones": len(nativo["audio"]["regiones"])}
@@ -529,8 +529,12 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         oc = _por_id(o["clips"])
         vistos = set()
         fundidos_pista = []
+        presentes = {c.get("id") for c in p["clips"]}
         for c in p["clips"]:
             x = oc.get(c.get("id"))
+            if (x is None or c.get("id") in vistos) and c.get("tipo") == "grupo" and c.get("agrupa"):
+                vistos.update(_grupo_a_crear_pt(c, p, oc, presentes, vistos, grupos_nuevos))
+                continue
             if x is None or c.get("id") in vistos:
                 if c.get("tipo") == "midi":
                     _clip_midi_nuevo_pt(c, p, original, nativo, midi_nuevos)
@@ -580,7 +584,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                            compases=compases, notas=notas, clips_nuevos=clips_nuevos,
                            clips_borrados=clips_borrados, archivos_nuevos=altas_audio["archivos"],
                            regiones_nuevas=altas_audio["regiones"], midi_nuevos=midi_nuevos,
-                           fundidos_nuevos=fundidos_nuevos)
+                           fundidos_nuevos=fundidos_nuevos, grupos_nuevos=grupos_nuevos)
     if autos:
         from .protools.descifrado import leer_descifrado
         from .protools.reconstruccion import cifrar
@@ -750,11 +754,33 @@ def _fundidos_nuevos_pt(pista, fundidos, nativo, fs):
     return out
 
 
+def _grupo_a_crear_pt(c, pista, oc, presentes, vistos, grupos_nuevos):
+    """Grupo de clips nuevo (Clip > Group): {"tipo": "grupo", "agrupa": [ids de clips
+    de audio de la misma pista], "nombre"?}. Los clips agrupados ya no van sueltos en
+    la pista; el grupo queda donde empieza el primero. Devuelve los ids agrupados."""
+    ids = list(c["agrupa"])
+    for i in ids:
+        x = oc.get(i)
+        if x is None or x.get("tipo") != "audio":
+            raise ErrorComun(f"Pro Tools: el grupo nuevo {c.get('nombre')!r} agrupa {i!r}, que no es un clip de "
+                             f"audio de la pista {pista['id']!r}")
+        if i in presentes or i in vistos:
+            raise ErrorComun(f"Pro Tools: {i!r} va en el grupo nuevo {c.get('nombre')!r}; no puede quedar también "
+                             "suelto en la pista ni en otro grupo")
+    inicio = min(oc[i]["muestra"] for i in ids)
+    if c.get("muestra") is not None and c["muestra"] != inicio:
+        raise ErrorComun(f"Pro Tools: el grupo nuevo {c.get('nombre')!r} va donde empieza su primer clip "
+                         f"(muestra {inicio}); moverlo en otra escritura")
+    grupos_nuevos.setdefault(pista["id"], []).append(
+        {"clips": [int(i.rsplit("#", 1)[1]) for i in ids], "nombre": c.get("nombre")})
+    return ids
+
+
 def _grupo_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos):
     """Duplicar o mover un grupo de clips que ya está en la sesión. Pegar un grupo en
     Pro Tools no crea otro registro 0x262B: la colocación nueva apunta al mismo índice
-    (en estéreo, al grupo de cada canal). Crear un grupo nuevo (agrupar clips) no
-    está soportado: para eso, agregar los clips sueltos."""
+    (en estéreo, al grupo de cada canal). Para crear uno nuevo (agrupar clips), ver
+    _grupo_a_crear_pt."""
     canales = next((len(t["canales"]) for t in nativo["pistas_audio"] if t["nombre"] == pista["id"]), None)
     if not canales:
         raise ErrorComun(f"Pro Tools: la pista {pista['id']!r} no es de audio")
@@ -776,8 +802,8 @@ def _grupo_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos):
                 muestra = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
             clips_nuevos.setdefault(pista["id"], []).append((indices, muestra, True))
             return
-    raise ErrorComun(f"Pro Tools: crear un grupo de clips nuevo ({c.get('nombre')!r}) no está soportado; solo se "
-                     f"puede duplicar o mover uno que ya esté en la sesión, o agregar sus clips sueltos")
+    raise ErrorComun(f"Pro Tools: el grupo {c.get('nombre')!r} no está en la sesión; para crear uno nuevo, "
+                     "indicar en 'agrupa' los ids de los clips de la pista que lleva")
 
 
 def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
