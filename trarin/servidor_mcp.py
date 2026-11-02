@@ -118,7 +118,11 @@ def _existe(ruta):
 
 
 def _reglas(reglas):
-    """Las reglas pueden venir como objeto o como ruta a un JSON."""
+    """Las reglas pueden venir como objeto, como ruta a un JSON o como
+    "plantilla:nombre[+extra.json]" (ver trarin.plantillas)."""
+    if isinstance(reglas, str) and reglas.startswith("plantilla:"):
+        from . import plantillas
+        return plantillas.resolver(reglas)
     if isinstance(reglas, str):
         return json.loads(Path(reglas).read_text(encoding="utf-8-sig"))
     return reglas
@@ -404,6 +408,53 @@ def crear():
             out["resumen"] = [f"{c['orden']}. {c['nombre']} — {c['inicio']}, {c['duracion']}, {c['compases']} compases, "
                               + " → ".join(H._tempo_corto(t) for t in c["tempo"]) + " bpm, "
                               + " → ".join(x["compas"] for x in c["compas"]) for c in h["canciones"]]
+        return out
+
+    @herramienta
+    def plantillas(accion: str = "listar", nombre: str = "", reglas: dict | str | None = None,
+                   extra: dict | str | None = None, descripcion: str = "") -> dict:
+        """Plantillas de reglas con nombre para consolidar, grupos y el armador:
+        categorías, buses, auxiliares, grupos y reglas MIDI de un show guardadas
+        para el próximo (viene «rapizuam»). accion: "listar"; "ver" (la
+        plantilla 'nombre'); "guardar" (unas 'reglas' —objeto o ruta JSON— como
+        plantilla propia, sin lo propio del show: canciones, rutas, borrar…);
+        "armar" (las reglas listas: la plantilla con 'extra' encima, las listas
+        se suman). En consolidar, plan_consolidar, crear_grupos y plan_grupos,
+        reglas="plantilla:rapizuam" o "plantilla:rapizuam+extra.json" las usa
+        directamente."""
+        from . import plantillas as PL
+        if accion == "listar":
+            return {"plantillas": PL.listar(), "carpeta_propia": str(PL.carpeta_propia())}
+        if accion == "ver":
+            return PL.leer(nombre)
+        if accion == "guardar":
+            if reglas is None:
+                raise ValueError("guardar: indicar 'reglas'")
+            return {"escrito": PL.guardar(nombre, reglas, descripcion or None)}
+        if accion == "armar":
+            return PL.armar(nombre, extra)
+        raise ValueError("accion: listar, ver, guardar o armar")
+
+    @herramienta
+    def luces(ruta: str, salida: str = "", puerto: str = "", fijar: dict | None = None, grilla: str = "1/16",
+              nota: int = 36) -> dict:
+        """Luces del show por MIDI: tres pistas MIDI nuevas («Luz 1», «Luz 2»,
+        «Luz 3», un clip por canción) desde los golpes de la percusión de cada
+        canción, según la convención: canal 1 el kultrun o bombo (luz
+        principal); canales 2 y 3 una pifilka cada uno a la contra (L y R; con
+        una sola, golpes alternados); sin pifilkas, otra percusión repetida en
+        los dos. Elige las pistas por nombre y por cuánto audio tienen; fijar:
+        {canción: {"principal", "pifilkas": [L, R], "otra"}} para decidir a
+        mano. Sin salida devuelve el plan (tarda: detecta golpes en todo el
+        show); con salida escribe la sesión nueva, les pone puerto (el más usado
+        en la sesión, o 'puerto') y canal 1, 2 y 3, la revisa y anota."""
+        from . import luces as LU
+        plan = LU.planear(_existe(ruta), puerto or None, fijar, grilla, nota)
+        out = {"plan": LU.texto(plan).splitlines(), "notas": plan["notas"], "puerto": plan["puerto"], "avisos": plan["avisos"]}
+        if salida:
+            r = LU.escribir(plan, _salida_nueva(salida))
+            out.update({"escrito": str(_existe(salida)), "notas_escritas": r["notas"], "salidas_midi": r["salidas_midi"],
+                        "verificacion": r["verificacion"], "avisos": r["avisos"]})
         return out
 
     @herramienta

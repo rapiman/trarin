@@ -5,6 +5,30 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Luces del show por MIDI** (`trarin/luces.py`): tres pistas MIDI nuevas
+  («Luz 1», «Luz 2», «Luz 3», un clip por canción) desde los golpes de la
+  percusión según la convención: canal 1 el kultrun o bombo; canales 2 y 3
+  una pifilka cada uno a la contra (L y R; con una sola, golpes alternados);
+  sin pifilkas, otra percusión repetida. Elige por nombre y por cuánto audio
+  hay en la canción; se puede fijar a mano por canción. Escribe la sesión y
+  les pone puerto (el más usado en la sesión) y canal 1, 2 y 3 con
+  `cambiar_salidas`. Probado con el show: 9820 notas, salidas Motu 1/2/3,
+  revisión limpia (Sombra queda sin luz principal: no tiene kultrun ni bombo
+  en audio). CLI `trarin luces sesion.ptx [--puerto …] [--fijar JSON] [-o …]`;
+  MCP `luces`. Pendiente: verlo en Pro Tools.
+- **Plantillas de reglas con nombre** (`trarin/plantillas/`): categorías,
+  buses, auxiliares, grupos y reglas MIDI de un show guardadas para el
+  próximo; viene «rapizuam». Lo propio de cada show (canciones, rutas, borrar,
+  carpeta de Live) se agrega al armar. En consolidar, plan_consolidar,
+  crear_grupos y plan_grupos, `reglas="plantilla:rapizuam"` o
+  `"plantilla:rapizuam+extra.json"`. Probado: la plantilla más lo propio de
+  RAPIZUAM da el mismo plan de consolidación. MCP `plantillas` (listar, ver,
+  guardar, armar); propias en `~/.trarin/plantillas/`.
+- **Instalador** (`trarin instalar`): escribe la entrada «trarin» en
+  `claude_desktop_config.json` (Windows, macOS, Linux) con el Python actual y
+  revisa las dependencias (mcp, numpy, soxr, lameenc, pyyaml) diciendo con qué
+  se instala cada una; `--revisar` solo revisa.
+- `ficha_midi`: el canal de salida ya venía desde 1 (se mostraba uno de más).
 - **Ficha de una pista MIDI** (`trarin/ficha_midi.py`): notas y densidad,
   rango y notas más usadas, acordes, velocidad, largo, si está cuantizada a la
   grilla de la sesión, puerto y canal de salida y si dobla a una pista de audio

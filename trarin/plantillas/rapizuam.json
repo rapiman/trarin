@@ -1,0 +1,45 @@
+{
+ "descripcion": "Reglas del show RAPIZUAM (2026): categorías L/C/R por familia, buses por familia a su aux, grupos y MIDI. Lo propio de cada show (canciones, pistas por ruta, qué borrar) va aparte.",
+ "categorias": [
+  {"nombre": "Bombo", "patron": "^bombo", "modo": "juntar", "salida": "Speakers 1-2", "grupo": "Bombo"},
+  {"nombre": "Bajo", "patron": "bajo", "modo": "juntar", "salida": "Speakers 1-2", "grupo": "Bajos"},
+  {"nombre": "Kultrun", "patron": "kultr|cultr", "modo": "lcr", "salida": "Bus 1-2", "grupo": "Kultrunes"},
+  {"nombre": "Pifilka", "patron": "pif|puf", "modo": "lcr", "salida": "Bus 3-4", "grupo": "Pifilkas"},
+  {"nombre": "Kaskawillas", "patron": "kask|kasak|cascab|semill|unitas|vidrio|percu", "modo": "lcr", "salida": "Bus 5-6", "grupo": "Kaskawillas y percusiones"},
+  {"nombre": "Woo", "patron": "^woo", "modo": "juntar", "salida": "Bus 13-14", "grupo": "Woo"}
+ ],
+ "lado": {"Percusión Izquerda": "L", "Percusión Central": "C", "Percución Derecha": "R"},
+ "auxiliares": [
+  {"nombre": "Aux 4", "bus": "Bus 7-8", "plantilla": "Aux 1"},
+  {"nombre": "Aux 5", "bus": "Bus 9-10", "plantilla": "Aux 1"},
+  {"nombre": "Aux 6", "bus": "Bus 11-12", "plantilla": "Aux 1"},
+  {"nombre": "Aux 7", "bus": "Bus 13-14", "plantilla": "Aux 1"}
+ ],
+ "buses": {
+  "Bus 1-2": "kultrunes (Aux Kultrum)", "Bus 3-4": "pifilkas (Aux 2)", "Bus 5-6": "kaskawillas, semillas, uñitas y similares (Aux 3)",
+  "Bus 7-8": "sintes y ambientes", "Bus 9-10": "efectos", "Bus 11-12": "ñolkin", "Bus 13-14": "woo"
+ },
+ "midi": [
+  {"nombre": "Bombo", "patron": "^bombo", "grupo": "Bombo"},
+  {"nombre": "Bajo", "patron": "bajo", "grupo": "Bajos"},
+  {"nombre": "Kultrun", "patron": "kultr|cultr", "grupo": "Kultrunes"},
+  {"nombre": "Pifilka", "patron": "pif|puf", "grupo": "Pifilkas"},
+  {"nombre": "Percusión", "patron": "kask|percu|timbal", "grupo": "Kaskawillas y percusiones"},
+  {"nombre": "Woo", "patron": "^woo", "grupo": "Woo"}
+ ],
+ "grupos": [
+  {"nombre": "Bajos", "patron": "bajo|bass"},
+  {"nombre": "Bombos", "patron": "bombo"},
+  {"nombre": "Percusiones", "patron": "percu|clap|palo de agua|otro mas"},
+  {"nombre": "Kultrunes", "patron": "kultr|cultr"},
+  {"nombre": "Kaskawillas", "patron": "kask|kasak|cascab|semill|unitas|unas|vidrio"},
+  {"nombre": "Pufulkas", "patron": "pif|puf"},
+  {"nombre": "Voces", "patron": "voz|coro|^vz"},
+  {"nombre": "Sintes", "patron": "synth|sinte|sinyht|syth|novation|^m1$|_m1|^mon[0-9]|acorde|melodia|tenso|trompe|sawer|toxic"},
+  {"nombre": "Efectos", "patron": "efecto|ambient|pajaro|zorzal|tiuke|chuncho|ballenas_ballenas|agua|^mar|gotas|crash|explosion|kull|kukul|wada"}
+ ],
+ "grupo_midi": "MIDI",
+ "salida_principal": "Speakers 1-2",
+ "normalizar_db": -18,
+ "luces": {"canal_1": "kultrun o bombo", "canal_2": "pifilka L", "canal_3": "pifilka R"}
+}

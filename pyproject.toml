@@ -21,3 +21,6 @@ trarin = "trarin.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["trarin*"]
+
+[tool.setuptools.package-data]
+trarin = ["plantillas/*.json"]

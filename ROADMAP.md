@@ -101,8 +101,10 @@ y §24), que se reutiliza:
 
 ## Fase 5 — Lo que sale de lo anterior
 
-- **Plantillas de reglas** con nombre (categorías, buses y patrones de RAPIZUAM) para el
-  próximo show.
+- ✅ **Plantillas de reglas** con nombre (`plantillas`; viene «rapizuam»), usables como
+  `reglas="plantilla:nombre[+extra.json]"` en consolidar y grupos.
+- ✅ **Luces por MIDI** (`luces`): las tres pistas del show según la convención. Pendiente:
+  verlas en Pro Tools.
 - ✅ **Hoja del show** para los músicos (`hoja_show`): orden, inicio, duración, tempo, compás,
   secciones y dónde entra cada pista, en Markdown junto a la sesión.
 
