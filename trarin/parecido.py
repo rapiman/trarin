@@ -93,8 +93,29 @@ def _por_que(difs):
 
 # ------------------------------------------------------------------ candidatos
 
-def _fichas_pistas(ses, cancion=None, por_cancion=False):
-    """[(etiqueta, pista, canción, ficha)] de las pistas de audio con sonido."""
+def _ventanas(ses, cancion, ventana_compases):
+    """[(nombre de canción, (a, b), etiqueta del tramo)]: la canción entera o
+    partida en ventanas de N compases."""
+    from . import fichas as F
+    nombre_c, a, b = F._ventana_cancion(ses.comun, cancion)
+    if not ventana_compases:
+        return [(nombre_c, (a, b), None)]
+    r = ses.reloj
+    k0, k1 = r.compas_de(a), r.compas_de(min(b, a + 3600))
+    out = []
+    k = k0
+    while k <= k1:
+        ta, tb = r.segundo_de_compas(k), r.segundo_de_compas(k + ventana_compases)
+        if ta >= b:
+            break
+        out.append((nombre_c, (max(ta, a), min(tb, b)), f"c. {k - k0 + 1}–{k - k0 + ventana_compases}"))
+        k += ventana_compases
+    return out
+
+
+def _fichas_pistas(ses, cancion=None, por_cancion=False, ventana_compases=0):
+    """[(etiqueta, pista, canción, ficha, tramo)] de las pistas de audio con sonido.
+    ventana_compases: cada pista partida en tramos de N compases de la canción."""
     from . import fichas as F
     out = []
     if por_cancion and not cancion:
@@ -102,58 +123,85 @@ def _fichas_pistas(ses, cancion=None, por_cancion=False):
     else:
         canciones = [cancion]
     for cn in canciones:
-        rango = None
-        nombre_c = None
-        if cn:
-            nombre_c, a, b = F._ventana_cancion(ses.comun, cn)
-            rango = (a, b)
-        for p in ses.comun["pistas"]:
-            if p["tipo"] != "audio":
-                continue
-            j = ses.tramo(p, rango)[0].juntar()
-            if j is None:
-                continue
-            f = F.resumir(j, ses.reloj)
-            if not f.get("color"):
-                continue
-            etiqueta = p["nombre"] + (f" ({nombre_c})" if nombre_c else "")
-            out.append((etiqueta, p["nombre"], nombre_c, f))
+        tramos = _ventanas(ses, cn, ventana_compases) if cn else [(None, None, None)]
+        for nombre_c, rango, tramo in tramos:
+            for p in ses.comun["pistas"]:
+                if p["tipo"] != "audio":
+                    continue
+                j = ses.tramo(p, rango)[0].juntar()
+                if j is None:
+                    continue
+                f = F.resumir(j, ses.reloj)
+                if not f.get("color"):
+                    continue
+                etiqueta = p["nombre"] + (f" ({nombre_c}" + (f", {tramo}" if tramo else "") + ")" if nombre_c else "")
+                out.append((etiqueta, p["nombre"], nombre_c, f, tramo))
     return out
 
 
-def parecidos(sesion, referencia, cancion=None, cuantos=8, por_cancion=False):
+def _ficha_tramo(ses, pista, cancion, desde_compas, hasta_compas):
+    """Ficha de una pista en los compases desde–hasta de la canción (un golpe,
+    una frase), como referencia."""
+    from . import fichas as F
+    from .escucha import _rango
+    p = next((x for x in ses.comun["pistas"] if x["tipo"] == "audio" and x["nombre"] == pista), None) or \
+        next((x for x in ses.comun["pistas"] if x["tipo"] == "audio" and _normal(pista) in _normal(x["nombre"])), None)
+    if p is None:
+        raise F.ErrorFicha(f"no hay una pista de audio que se llame como {pista!r}")
+    a, b, nombre = _rango(ses, cancion, desde_compas, hasta_compas, None, None)
+    j = ses.tramo(p, (a, b))[0].juntar()
+    if j is None:
+        raise F.ErrorFicha(f"{p['nombre']} no tiene audio con ficha en {nombre}")
+    f = F.resumir(j, ses.reloj)
+    if not f.get("color"):
+        raise F.ErrorFicha(f"{p['nombre']} no suena en {nombre}")
+    return f, f"{p['nombre']} ({nombre})"
+
+
+def parecidos(sesion, referencia, cancion=None, cuantos=8, por_cancion=False, desde_compas=None, hasta_compas=None,
+              ventana_compases=0, sin_misma_pista=False):
     """Las pistas de la sesión más parecidas a 'referencia': el nombre de una
     pista de la misma sesión, o la ruta de un WAV (su ficha se calcula en el
     momento si no está). cancion: comparar lo que suena en esa canción.
-    por_cancion: cada pista por separado en cada canción del show."""
+    por_cancion: cada pista por separado en cada canción del show.
+    desde_compas–hasta_compas: la referencia es solo ese tramo de la pista (un
+    golpe, una frase). ventana_compases: las candidatas se parten en tramos de
+    N compases de la canción («este golpe del compás 12 contra los demás»)."""
     from . import fichas as F
     ses = F.Sesion(str(sesion))
     if not ses.hay():
         raise F.ErrorFicha("esta sesión todavía no tiene fichas: calcularlas con fichas_calcular")
-    cand = _fichas_pistas(ses, cancion, por_cancion)
+    if ventana_compases and not cancion:
+        raise F.ErrorFicha("ventana_compases necesita una canción")
+    cand = _fichas_pistas(ses, cancion, por_cancion, ventana_compases)
     ref = str(referencia)
     if ref.lower().endswith((".wav", ".aif", ".aiff")) and Path(ref).exists():
         fr = F.ficha_archivo(ref)
         etiqueta_ref = Path(ref).name
+    elif desde_compas or hasta_compas:
+        fr, etiqueta_ref = _ficha_tramo(ses, ref, cancion, desde_compas, hasta_compas)
     else:
-        mio = [x for x in cand if x[1] == ref] or [x for x in cand if _normal(ref) in _normal(x[1])]
-        if not mio:
+        mio = [x for x in cand if x[1] == ref and not x[4]] or [x for x in cand if _normal(ref) in _normal(x[1]) and not x[4]]
+        if not mio and ventana_compases:
+            fr, etiqueta_ref = _ficha_tramo(ses, ref, cancion, None, None)
+        elif not mio:
             raise F.ErrorFicha(f"no hay una pista de audio con sonido que se llame {ref!r}"
                                + (f" en {cancion}" if cancion else ""))
-        fr = mio[0][3]
-        etiqueta_ref = mio[0][0]
+        else:
+            fr, etiqueta_ref = mio[0][3], mio[0][0]
     vr = rasgos(fr)
     if vr is None:
         raise F.ErrorFicha("la referencia no tiene sonido")
     lista = []
-    for etiqueta, pista, cn, f in cand:
-        if etiqueta == etiqueta_ref:
+    pista_ref = etiqueta_ref.split(" (")[0]
+    for etiqueta, pista, cn, f, tramo in cand:
+        if etiqueta == etiqueta_ref or (sin_misma_pista and pista == pista_ref):
             continue
         v = rasgos(f)
         if v is None:
             continue
         d, difs = distancia(vr, v)
-        lista.append({"pista": pista, "cancion": cn, "distancia": d, "difiere_en": _por_que(difs),
+        lista.append({"pista": pista, "cancion": cn, "tramo": tramo, "distancia": d, "difiere_en": _por_que(difs),
                       "palabras": f["palabras"]})
     lista.sort(key=lambda x: x["distancia"])
     return {"referencia": etiqueta_ref, "palabras_referencia": fr["palabras"], "candidatas": len(lista),
@@ -259,7 +307,8 @@ def buscar(sesion, descripcion, cancion=None, cuantos=20, por_cancion=False):
 def texto_parecidos(r):
     lineas = [f"referencia: {r['referencia']} — {r['palabras_referencia']}"]
     for x in r["parecidos"]:
-        lineas.append(f"  {x['distancia']:5.2f}  {x['pista']}" + (f" ({x['cancion']})" if x["cancion"] else "")
+        lineas.append(f"  {x['distancia']:5.2f}  {x['pista']}"
+                      + (f" ({x['cancion']}" + (f", {x['tramo']}" if x.get("tramo") else "") + ")" if x["cancion"] else "")
                       + f"  [{x['difiere_en']}]  {x['palabras']}")
     return "\n".join(lineas)
 

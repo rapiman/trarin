@@ -219,7 +219,17 @@ def main(argv=None):
     pa.add_argument("--cancion")
     pa.add_argument("--por-cancion", action="store_true", help="cada pista por separado en cada canción")
     pa.add_argument("--cuantos", type=int, default=8)
+    pa.add_argument("--desde-compas", type=int, help="la referencia es solo este tramo de la pista (con --cancion)")
+    pa.add_argument("--hasta-compas", type=int)
+    pa.add_argument("--ventana", type=int, default=0, help="partir las candidatas en tramos de N compases")
+    pa.add_argument("--otras", action="store_true", help="no comparar con la propia pista de la referencia")
     pa.add_argument("--json", action="store_true")
+    fm = sub.add_parser("ficha-midi", help="ficha de una pista MIDI: notas, densidad, rango, velocidad, cuantización, salida y si dobla a una pista de audio")
+    fm.add_argument("sesion")
+    fm.add_argument("pista")
+    fm.add_argument("--cancion")
+    fm.add_argument("--audio", help="pista de audio contra la que ver si dobla")
+    fm.add_argument("--json", action="store_true")
     bu = sub.add_parser("buscar", help="pistas cuya ficha cumple una descripción («agudas y percusivas», «graves sostenidas en estéreo», «nota la») (solo lee)")
     bu.add_argument("sesion")
     bu.add_argument("descripcion")
@@ -344,6 +354,17 @@ def main(argv=None):
         ruta, h = H.escribir(a.sesion, a.salida, a.titulo)
         print(f"{len(h['canciones'])} canciones, {h['total']}; escrito {ruta}")
         return
+    if a.orden == "ficha-midi":
+        from . import ficha_midi as FM
+        from .fichas import ErrorFicha
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            r = FM.ficha(a.sesion, a.pista, a.cancion, a.audio)
+        except ErrorFicha as e:
+            p.error(str(e))
+        print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else r["palabras"])
+        return
     if a.orden in ("parecidos", "buscar"):
         from . import parecido as PR
         from .fichas import ErrorFicha
@@ -351,7 +372,8 @@ def main(argv=None):
             sys.stdout.reconfigure(encoding="utf-8")
         try:
             if a.orden == "parecidos":
-                r = PR.parecidos(a.sesion, a.referencia, a.cancion, a.cuantos, a.por_cancion)
+                r = PR.parecidos(a.sesion, a.referencia, a.cancion, a.cuantos, a.por_cancion, a.desde_compas,
+                                 a.hasta_compas, a.ventana, a.otras)
                 print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else PR.texto_parecidos(r))
             else:
                 r = PR.buscar(a.sesion, a.descripcion, a.cancion, a.cuantos, a.por_cancion)

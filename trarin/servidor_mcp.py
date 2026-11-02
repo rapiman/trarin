@@ -202,20 +202,39 @@ def crear():
         return fichas.ficha_archivo(r, None if desde_s < 0 else desde_s, None if hasta_s < 0 else hasta_s)
 
     @herramienta
-    def parecidos(ruta: str, referencia: str, cancion: str = "", cuantos: int = 8, por_cancion: bool = False) -> dict:
+    def parecidos(ruta: str, referencia: str, cancion: str = "", cuantos: int = 8, por_cancion: bool = False,
+                  desde_compas: int = 0, hasta_compas: int = 0, ventana_compases: int = 0,
+                  sin_misma_pista: bool = False) -> dict:
         """Las pistas de la sesión que más se parecen a 'referencia' (el nombre
         de una pista de la sesión, o la ruta de un WAV: «busca en el show lo que
         se parezca a este golpe»), por timbre y manera de tocar: color, brillo,
         tonal o ruidoso, ataque, golpes por segundo, caída, nota, mono o
         estéreo (no el nivel). Cada resultado dice en qué difiere. cancion:
         comparar lo que suena en esa canción; por_cancion: cada pista por
-        separado en cada canción del show. Necesita fichas_calcular. Solo lee."""
+        separado en cada canción del show. desde_compas–hasta_compas: la
+        referencia es solo ese tramo de la pista en la canción (un golpe, una
+        frase); ventana_compases: las candidatas se parten en tramos de N
+        compases («este golpe del compás 12 contra los demás»);
+        sin_misma_pista: no comparar con la propia pista de la referencia.
+        Necesita fichas_calcular. Solo lee."""
         from . import parecido as PR
-        r = PR.parecidos(_existe(ruta), referencia, cancion or None, cuantos, por_cancion)
+        r = PR.parecidos(_existe(ruta), referencia, cancion or None, cuantos, por_cancion, desde_compas or None,
+                         hasta_compas or None, ventana_compases, sin_misma_pista)
         return {"referencia": r["referencia"], "palabras_referencia": r["palabras_referencia"],
                 "candidatas": r["candidatas"],
                 "parecidos": [{k: v for k, v in x.items() if k != "palabras"} | {"palabras": x["palabras"]}
                               for x in r["parecidos"]]}
+
+    @herramienta
+    def ficha_midi(ruta: str, pista: str, cancion: str = "", audio: str = "") -> dict:
+        """Ficha de una pista MIDI (las fichas de sonido son solo de audio):
+        notas y densidad (por segundo y por compás), rango y notas más usadas,
+        acordes, velocidad, largo de las notas, si está cuantizada a la grilla
+        de la sesión, puerto y canal de salida, y si dobla a una pista de audio
+        ('audio', o la de nombre más parecido): qué parte de sus notas cae
+        sobre un golpe detectado. Con una línea en palabras. Solo lee."""
+        from . import ficha_midi as FM
+        return FM.ficha(_existe(ruta), pista, cancion or None, audio or None)
 
     @herramienta
     def buscar_sonidos(ruta: str, descripcion: str, cancion: str = "", cuantos: int = 20,

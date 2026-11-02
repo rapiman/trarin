@@ -5,6 +5,18 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Ficha de una pista MIDI** (`trarin/ficha_midi.py`): notas y densidad,
+  rango y notas más usadas, acordes, velocidad, largo, si está cuantizada a la
+  grilla de la sesión, puerto y canal de salida y si dobla a una pista de audio
+  (notas sobre un golpe detectado), en palabras. En el show: «MIDI Bombo»
+  dobla al Bombo (99 % de las notas sobre un golpe). CLI `trarin ficha-midi`;
+  MCP `ficha_midi`.
+- **Parecidos por tramo**: la referencia puede ser un tramo de una pista
+  (desde_compas–hasta_compas en la canción: un golpe, una frase) y las
+  candidatas partirse en ventanas de N compases (`ventana_compases`);
+  `sin_misma_pista` para buscar en las otras pistas. Para eso `resumir` acota
+  las ventanas de LUFS (400 ms y 3 s) al largo del tramo: antes un tramo de
+  menos de 3 s fallaba.
 - **Onda dibujada** (`trarin/onda.py`): envolvente RMS y pico (bloques de
   0,1 s de las fichas, con el clip gain) de una o varias pistas en un tramo,
   con los golpes detectados, los marcadores de canción y la grilla de
