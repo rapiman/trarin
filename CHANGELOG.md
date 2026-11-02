@@ -5,6 +5,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Una sola sesión con respaldos** (`trarin/respaldos.py`): `reemplazar`
+  respalda la sesión de trabajo en Session File Backups
+  (`<nombre>.trarin.<fecha>_<n>.ptx`) y pone en su lugar la sesión nueva que
+  escribió otra herramienta; `deshacer` vuelve al último respaldo (o al
+  indicado) dejando lo que había como `<nombre>.deshecho.<fecha>.ptx`;
+  `listar` muestra los respaldos con su nota. Todo anota en las notas. Es la
+  forma de trabajo que se usó a mano en el show, ahora en una llamada. CLI
+  `trarin respaldos sesion.ptx [--reemplazar nueva.ptx --motivo …] [--deshacer
+  [cual]]`; MCP `reemplazar_sesion`, `respaldos_sesion`, `deshacer`.
 - `escuchar`: el master va como una pista más (fader, automatización de
   volumen y mute), no solo su volumen fijo. Probado inyectando −20 dB de
   automatización a mitad de un tramo: la segunda mitad sale 20 dB más baja.
