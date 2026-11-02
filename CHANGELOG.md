@@ -5,6 +5,25 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Arreglo en `nivelar` / `clip_gain.cambiar`**: en el show real varias
+  regiones de una pista comparten el mismo registro de clip gain y la escritura
+  caía con «reemplazos solapados». Ahora un registro compartido se corre una
+  sola vez si el delta es el mismo; con un delta distinto la región recibe una
+  copia nueva del registro (nodos copiados con el delta). `nivelar` sobre
+  `base_show.ptx`: clip gain de 288 regiones, `revisar` sin errores.
+- **`proponer_tempo` con puente**: cuando la negra de la grilla actual más
+  cercana al pulso medido cae lejos (> 15 ms), la propuesta agrega un «puente»:
+  desde la negra anterior al pulso un tempo que dura justo hasta el golpe, así
+  la negra siguiente cae EN el golpe y desde ahí sigue el bpm medido. Antes el
+  cambio se ponía en la negra cercana y toda la grilla quedaba corrida (331 ms
+  en Sombra en el Desierto). Los eventos de tempo que caían dentro del puente
+  se quitan.
+- **`fichas.Almacen.vigente` recordado por instancia**: cada comprobación hacía
+  `stat` de los archivos de audio y una sesión lo pide cientos de veces; con el
+  disco cargado eran 4 ms por `stat` y minutos por `nivelar`.
+- Pendiente de ver en Pro Tools (el PC estaba bloqueado): `verif\nivelada.ptx`,
+  `verif\tempo.ptx` y `verif\luces.ptx` junto a `base_show.ptx`.
+
 - **Puente con Pizarrita** (`trarin/pizarrita.py`): exporta una canción o un
   tramo como montaje de Pizarrita Edit Pro (`Proyecto` de `montajeVideo.ts`:
   pistas de audio con clips `{f, a, b, en}`, clip gain en lineal, fundidos de

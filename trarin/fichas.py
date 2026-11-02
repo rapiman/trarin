@@ -218,18 +218,26 @@ class Almacen:
         self.indice_ruta = self.carpeta / "indice.json"
         self.indice = json.loads(self.indice_ruta.read_text(encoding="utf-8")) if self.indice_ruta.exists() else {}
         self._cache = {}
+        self._vigentes = {}
 
     def guardar_indice(self):
         self.carpeta.mkdir(parents=True, exist_ok=True)
         self.indice_ruta.write_text(json.dumps(self.indice, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def vigente(self, rutas):
-        e = self.indice.get(_clave(rutas))
+        clave = _clave(rutas)
+        if clave in self._vigentes:
+            return self._vigentes[clave]
+        e = self.indice.get(clave)
         try:
-            return bool(e) and e.get("version") == VERSION and e["firma"] == _firma(rutas) \
+            ok = bool(e) and e.get("version") == VERSION and e["firma"] == _firma(rutas) \
                 and (self.carpeta / e["serie"]).exists()
         except OSError:
-            return False
+            ok = False
+        # se recuerda por instancia: cada comprobación son stats de los archivos de audio
+        # (lentos en disco cargado) y una sesión los pide cientos de veces
+        self._vigentes[clave] = ok
+        return ok
 
     def calcular(self, rutas, registro=None):
         clave, entrada = _calcular_guardar(rutas, str(self.carpeta), registro)
@@ -239,6 +247,7 @@ class Almacen:
     def anotar(self, clave, entrada):
         self.indice[clave] = entrada
         self._cache.pop(clave, None)
+        self._vigentes.pop(clave, None)
 
     def serie(self, rutas):
         """(series, meta) de la fuente, o None si no está calculada o cambió."""
