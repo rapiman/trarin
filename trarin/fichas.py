@@ -393,7 +393,8 @@ def resumir(j, reloj=None):
     # nivel
     ms = 10 ** (rms[suena] / 10)
     kms = 10 ** (j["k"] / 10)
-    corto = np.convolve(kms, np.ones(4) / 4, mode="same")              # 400 ms
+    v4, v30 = max(1, min(4, len(kms))), max(1, min(30, len(kms)))       # tramos cortos: ventana acotada
+    corto = np.convolve(kms, np.ones(v4) / v4, mode="same")            # 400 ms
     lu = -0.691 + 10 * np.log10(corto + 1e-15)
     g = lu > -70
     integrada = None
@@ -401,7 +402,7 @@ def resumir(j, reloj=None):
         rel = -0.691 + 10 * np.log10(corto[g].mean()) - 10
         g2 = lu > max(-70, rel)
         integrada = round(float(-0.691 + 10 * np.log10(corto[g2].mean())), 1)
-    st = -0.691 + 10 * np.log10(np.convolve(kms, np.ones(30) / 30, mode="same") + 1e-15)   # 3 s
+    st = -0.691 + 10 * np.log10(np.convolve(kms, np.ones(v30) / v30, mode="same") + 1e-15)   # 3 s
     activos = st[suena & (st > -70)]
     nivel = {"pico_dbfs": round(float(pico.max()), 1) + 0.0, "rms_dbfs": round(float(10 * np.log10(ms.mean())), 1),
              "lufs": integrada}
