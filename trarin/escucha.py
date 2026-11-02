@@ -144,7 +144,7 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     import numpy as np
     from . import audio, fichas
     from .vistas import _normal
-    ses = fichas.Sesion(sesion)
+    ses = sesion if isinstance(sesion, fichas.Sesion) else fichas.Sesion(sesion)
     fs = ses.fs
     a, b, nombre = _rango(ses, cancion, desde_compas, hasta_compas, desde_s, hasta_s)
     m0, m1 = int(round(a * fs)), int(round(b * fs))
@@ -176,7 +176,13 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     if otros:
         avisos.append(f"las pistas MIDI y de instrumento no suenan ({len(otros)})")
     master = next((x for x in (ses.comun.get("nativo") or {}).get("master") or [] if x.get("tipo") == "master"), None)
-    g_master = 1.0 if crudo else 10 ** (float((master or {}).get("volumen_db") or 0.0) / 20)
+    # el master como pista del modelo común: fader, su automatización y mute, igual que una pista
+    master_p = next((p for p in ses.comun["pistas"] if p["tipo"] in ("0x0005", "master")), None)
+    if master_p is None and master:
+        master_p = {"mezcla": {"volumen_db": master.get("volumen_db"), "mute": master.get("mute")},
+                    "automatizacion": master.get("automatizacion") or {}}
+    if not crudo and master_p and (master_p.get("automatizacion") or {}).get("volumen_db"):
+        avisos.append("con la automatización de volumen del master")
     if master and master.get("inserts") and not crudo:
         avisos.append("el master tiene plugins (" + ", ".join(i.get("plugin", "?") for i in master["inserts"])
                       + ") que aquí no se aplican")
@@ -308,7 +314,9 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
                             l, r = _pan(pa)              # paneado a su lado: 0 dB en ese lado
                             suma[:, 0] += buf[:, ch] * (gv * l).astype(np.float32)
                             suma[:, 1] += buf[:, ch] * (gv * r).astype(np.float32)
-                suma *= g_master
+                if not crudo and master_p:
+                    gm, mudo = _ganancia_pista(master_p, xs, n)
+                    suma *= (0.0 if mudo else 1.0) * gm[:, None].astype(np.float32)
                 pico = max(pico, float(np.abs(suma).max()) if n else 0.0)
                 suma.astype("<f4").tofile(fcrudo)
                 registro(f"  {(c1 - m0) / fs:.0f} de {total / fs:.0f} s")

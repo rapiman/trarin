@@ -5,6 +5,10 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- `escuchar`: el master va como una pista más (fader, automatización de
+  volumen y mute), no solo su volumen fijo. Probado inyectando −20 dB de
+  automatización a mitad de un tramo: la segunda mitad sale 20 dB más baja.
+  `mezclar` acepta un `fichas.Sesion` ya armado además de la ruta.
 - **`escuchar` por pista y en crudo**: `crudo=True` deja solo clip gain y
   fundidos (sin fader, paneo, mute, solo, auxiliares, master ni plugins; una
   pista mono va igual a los dos lados): «la pista tal cual está grabada».
