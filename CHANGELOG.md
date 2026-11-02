@@ -5,6 +5,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Comparar una canción del show con su original** (`trarin/origen.py`):
+  clips del original hallados en el show (y en qué pista), faltantes, muteados
+  en el show, en otro lugar, agregados en el show, pistas del original no
+  llevadas y faders distintos. Los clips se reconocen por archivo (sin los
+  sufijos `_48k_xxxxxx` y `.L`/`.R`), pedazo y largo; la alineación es el
+  corrimiento más repetido entre coincidencias (alinear por el primer audio
+  fallaba cuando esa pista no se llevó). Con Eluwün: 7 de 177 clips llevados,
+  faltan el bajo, el mic y las kaskawillas (los cortes decididos). CLI `trarin
+  origen show.ptx cancion original.ptx`; MCP `comparar_con_original`.
 - **Una sola sesión con respaldos** (`trarin/respaldos.py`): `reemplazar`
   respalda la sesión de trabajo en Session File Backups
   (`<nombre>.trarin.<fecha>_<n>.ptx`) y pone en su lugar la sesión nueva que

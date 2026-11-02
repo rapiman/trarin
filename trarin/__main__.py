@@ -156,6 +156,12 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    og = sub.add_parser("origen", help="compara una canción del show con la sesión de la que salió: clips hallados, faltantes, muteados, movidos, agregados, pistas no llevadas y faders (solo lee)")
+    og.add_argument("show")
+    og.add_argument("cancion")
+    og.add_argument("original", help="sesión .ptx original de la canción")
+    og.add_argument("--tolerancia-ms", type=float, default=50.0)
+    og.add_argument("--json", action="store_true")
     rs = sub.add_parser("respaldos", help="respaldos de trarin de una sesión (Session File Backups); con --reemplazar NUEVA deja la nueva en su lugar; con --deshacer vuelve al último")
     rs.add_argument("sesion")
     rs.add_argument("--reemplazar", metavar="NUEVA", help="sesión nueva que pasa a ser la de trabajo (la actual se respalda)")
@@ -203,6 +209,16 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "origen":
+        from . import origen as O
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            r = O.comparar(a.show, a.cancion, a.original, a.tolerancia_ms / 1000)
+        except ValueError as e:
+            p.error(str(e))
+        print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else O.texto(r))
         return
     if a.orden == "respaldos":
         from . import respaldos as R

@@ -433,6 +433,21 @@ def crear():
                 "texto": tx(r).splitlines()}
 
     @herramienta
+    def comparar_con_original(ruta: str, cancion: str, original: str, tolerancia_ms: float = 50.0) -> dict:
+        """Compara una canción del show con la sesión de la que salió: cuántos
+        clips del original están en el show y en qué pista quedaron, cuáles
+        faltan, cuáles están muteados en el show, cuáles quedaron en otro lugar,
+        qué hay en el show que no viene del original (grabaciones agregadas),
+        qué pistas del original no se llevaron y qué faders cambiaron. Los
+        clips se reconocen por archivo, pedazo y largo; la alineación es el
+        corrimiento más repetido. Solo lee."""
+        from . import origen as O
+        r = O.comparar(_existe(ruta), cancion, _existe(original), tolerancia_ms / 1000)
+        return {**{k: v for k, v in r.items() if k not in ("faltan", "muteados_en_show", "movidos", "agregados_en_show")},
+                "faltan": len(r["faltan"]), "muteados_en_show": len(r["muteados_en_show"]), "movidos": len(r["movidos"]),
+                "agregados_en_show": len(r["agregados_en_show"]), "texto": O.texto(r).splitlines()}
+
+    @herramienta
     def uniones(ruta: str, formato: str = "texto") -> dict:
         """Los bordes entre las canciones de un show: por cada par seguido, dónde
         termina el último audio de una (y en qué pistas), el marcador de la
