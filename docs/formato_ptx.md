@@ -406,7 +406,10 @@ usa `comun.clips_audio(pista)`, que los incluye; el armador de shows y
 `consolidar` los llevan como clips sueltos (como desagrupar). Al escribir, un
 grupo se mueve, se mutea o se quita como cualquier clip (misma colocación);
 agregar o duplicar un grupo no está soportado. Los fundidos de adentro de un
-grupo todavía no se leen.
+grupo son colocaciones de fundido en la misma entrada (byte tras el `0x104F` en
+1, ancla menos pre-roll, como en una playlist); trarin los pasa a la ventana del
+grupo y se los da a los clips que tocan (calzan con la sesión original del
+oráculo).
 
 **Cuidado al escribir**: un clip nuevo se arma copiando una colocación de la
 sesión; si esa plantilla era de un grupo, el clip nuevo heredaba el byte +20 y
