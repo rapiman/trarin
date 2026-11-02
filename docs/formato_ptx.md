@@ -104,6 +104,8 @@ La transformación es simétrica: la misma operación cifra y descifra.
   (4 + 61 × eventos), u32 cantidad, 4 bytes, eventos de 61 bytes (`Const` … `TMS`: tick en +30, BPM
   en +40, figura del pulso en +49, banderas en +21 y +39 que valen 1 en el primer evento) y 13 bytes
   finales [verificado: agregar un tempo con trarin da los mismos bytes que con Pro Tools].
+  El `0x2028` es una lista plana: con una rampa de muchos eventos, dentro de los valores aparecen
+  bytes `0x5A` que parecen cabeceras de bloque; el árbol de bloques no le busca hijos.
 - **Compases** (bloque `0x2029`, dos copias): tras `29 20 'Meter' 02 00`, u32 largo del resto,
   u32 cantidad y eventos de 36 bytes: int64 tick (+10¹²), u32 número de compás, u32 numerador,
   u32 denominador y 16 bytes fijos; luego una tabla de 16 bytes por evento (u32 compás mostrado,
@@ -137,6 +139,11 @@ La transformación es simétrica: la misma operación cifra y descifra.
   - byte `j`: banderas; bytes `j+1..j+3`: anchos en nibbles del desplazamiento en el archivo, del
     largo y del inicio original; los valores siguen desde `j+5`.
   - El archivo de la región es el u32 que sigue al final del `0x2628`.
+  - **Región que no empieza en el inicio del archivo** (desplazamiento > 0) [verificado en Pro
+    Tools 12]: banderas = 1; anchos = `w_off`, `w_len` y `(w_off << 4) | w_off` en el 4.º byte,
+    `0x08` en el 5.º; luego desplazamiento, largo, dos veces más el desplazamiento y 8 bytes `FF`.
+    Si faltan los dos campos repetidos del desplazamiento, Pro Tools deja el clip con largo
+    cero (raya negra, sin sonido). Con desplazamiento 0: banderas 0, sin los campos extra.
   - **Clip gain**: int32 con el índice en el diccionario `0x2637` (`-1` = sin clip gain), 27 bytes
     después de la última marca `FF FF 04 00 04 00` del `0x2628` [verificado en 45 833 bloques de
     PT 12.5, 12.8, 2019 y 2026]. En PT 12 coincide con los últimos 4 bytes; en 2026 el bloque

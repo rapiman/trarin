@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 import struct
 
 ZMARK = 0x5A
+# bloques que son una lista plana de bytes: dentro de sus valores aparecen 0x5A que
+# parecen cabeceras (el mapa de tempo 0x2028 con muchos eventos de una rampa)
+_SIN_HIJOS = {0x2028}
 
 
 @dataclass
@@ -61,6 +64,8 @@ def _parsear(d: bytes, pos: int, maximo: int):
     if tamano + inicio > maximo or tipo_bloque & 0xFF00:
         return None
     b = Bloque(pos, contenido, tamano)
+    if contenido in _SIN_HIJOS:
+        return b
     i = 1
     tope = min(pos + tamano, maximo)
     while i < tamano and pos + i < maximo:
