@@ -154,6 +154,13 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   bloque `0x2028`; notas fuera de la ventana de su región; ancla distinta de 0 en un show;
   archivos que no existen; avisos por regiones con la forma antigua, clips que cruzan un
   marcador y huecos largos. Pendiente: sumar reglas a medida que aparezcan errores nuevos.
+- ✅ **Ida y vuelta por Pro Tools** (2026-11-02): abrir lo que escribió trarin en Pro Tools,
+  guardarlo como `*_pt.ptx` y comparar los dos modelos. Así se vio el clip gain de `nivelar`,
+  la grilla de `proponer_tempo` y las pistas de `luces`, y apareció el cuarto error grave:
+  los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
+  RAPIZUAM eran otro clip). Pendiente: una sesión chica con dos o tres grupos guardada
+  desde Pro Tools (oráculo) para averiguar cómo se asocia cada grupo a su contenido en el
+  `0x2428` y así poder mirar adentro (hoy se saltan y `revisar` avisa).
 
 ## Rendimiento
 
