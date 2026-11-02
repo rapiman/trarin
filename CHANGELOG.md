@@ -5,6 +5,22 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Revisión (lint) de una sesión**: `trarin/revision.py` (`revisar`, `texto`).
+  Errores (lo que Pro Tools mostraría roto): regiones de audio con largo cero,
+  fuera de su archivo o sin archivo; bloque `0x2628` inconsistente (el inicio
+  original no se repite como lo escribe Pro Tools); listas `0x262A` y `0x1004`
+  cuya cantidad no coincide con sus bloques; mapa de tempo cuyo largo o cantidad
+  de eventos no cuadra; clips MIDI con las notas fuera de su ventana; ancla de
+  la línea de tiempo distinta de 0 en un show; archivos de audio que faltan.
+  Avisos: regiones con desplazamiento sin inicio original (la forma que
+  escribía trarin hasta hoy), clips que cruzan un marcador de canción, huecos de
+  más de 10 s. Verificado: acusa las sesiones rotas conocidas (ancla en 13 s,
+  94 clips MIDI vacíos) y da limpio en el show actual y en una sesión original
+  de Pro Tools. `tras_escribir` lo corre después de cada escritura y lo deja en
+  `verificacion.revision` (y en la línea de las notas si hay errores). CLI
+  `trarin revisar sesion.ptx [--json]` (código 1 con errores); MCP `revisar`.
+- Documentado en `formato_ptx.md`: tras el largo, el `0x2628` repite dos veces
+  el inicio original con el ancho del 4.º byte (2, 3, 4 u 8) y luego 8 bytes FF.
 - **Uniones entre canciones**: `trarin/uniones.py` (`uniones`, `por_cancion`,
   `comparar_por_cancion`, `texto`). Por cada par de canciones seguidas: dónde
   termina el último audio con sonido (y en qué pistas), el marcador de la

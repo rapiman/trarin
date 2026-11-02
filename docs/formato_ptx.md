@@ -140,10 +140,13 @@ La transformación es simétrica: la misma operación cifra y descifra.
     largo y del inicio original; los valores siguen desde `j+5`.
   - El archivo de la región es el u32 que sigue al final del `0x2628`.
   - **Región que no empieza en el inicio del archivo** (desplazamiento > 0) [verificado en Pro
-    Tools 12]: banderas = 1; anchos = `w_off`, `w_len` y `(w_off << 4) | w_off` en el 4.º byte,
-    `0x08` en el 5.º; luego desplazamiento, largo, dos veces más el desplazamiento y 8 bytes `FF`.
-    Si faltan los dos campos repetidos del desplazamiento, Pro Tools deja el clip con largo
-    cero (raya negra, sin sonido). Con desplazamiento 0: banderas 0, sin los campos extra.
+    Tools 12]: banderas = 1; anchos = `w_off`, `w_len` y `(w_ini << 4) | w_ini` en el 4.º byte,
+    `0x08` en el 5.º; luego desplazamiento, largo, dos veces el inicio original (ancho `w_ini`:
+    2, 3, 4 u 8 en sesiones reales; en una región nunca recortada vale lo mismo que el
+    desplazamiento) y 8 bytes `FF`. Si faltan los dos campos repetidos, Pro Tools deja el
+    clip con largo cero (raya negra, sin sonido). trarin escribe el desplazamiento como
+    inicio original. Con desplazamiento 0: banderas 0, sin los campos extra.
+    `trarin revisar` comprueba esta forma.
   - **Clip gain**: int32 con el índice en el diccionario `0x2637` (`-1` = sin clip gain), 27 bytes
     después de la última marca `FF FF 04 00 04 00` del `0x2628` [verificado en 45 833 bloques de
     PT 12.5, 12.8, 2019 y 2026]. En PT 12 coincide con los últimos 4 bytes; en 2026 el bloque
