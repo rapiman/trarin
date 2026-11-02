@@ -156,6 +156,20 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    pa = sub.add_parser("parecidos", help="pistas de la sesión que más se parecen a una pista o a un WAV, según las fichas (solo lee)")
+    pa.add_argument("sesion")
+    pa.add_argument("referencia", help="nombre de una pista de la sesión o ruta de un WAV")
+    pa.add_argument("--cancion")
+    pa.add_argument("--por-cancion", action="store_true", help="cada pista por separado en cada canción")
+    pa.add_argument("--cuantos", type=int, default=8)
+    pa.add_argument("--json", action="store_true")
+    bu = sub.add_parser("buscar", help="pistas cuya ficha cumple una descripción («agudas y percusivas», «graves sostenidas en estéreo», «nota la») (solo lee)")
+    bu.add_argument("sesion")
+    bu.add_argument("descripcion")
+    bu.add_argument("--cancion")
+    bu.add_argument("--por-cancion", action="store_true")
+    bu.add_argument("--cuantos", type=int, default=20)
+    bu.add_argument("--json", action="store_true")
     rv = sub.add_parser("revisar", help="revisa una sesión .ptx: lo que Pro Tools mostraría roto (regiones, MIDI, tempo, ancla, archivos) y avisos (solo lee)")
     rv.add_argument("sesion")
     rv.add_argument("--json", action="store_true")
@@ -169,6 +183,21 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden in ("parecidos", "buscar"):
+        from . import parecido as PR
+        from .fichas import ErrorFicha
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            if a.orden == "parecidos":
+                r = PR.parecidos(a.sesion, a.referencia, a.cancion, a.cuantos, a.por_cancion)
+                print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else PR.texto_parecidos(r))
+            else:
+                r = PR.buscar(a.sesion, a.descripcion, a.cancion, a.cuantos, a.por_cancion)
+                print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else PR.texto_busqueda(r))
+        except ErrorFicha as e:
+            p.error(str(e))
         return
     if a.orden == "revisar":
         from .revision import revisar, texto as texto_revision

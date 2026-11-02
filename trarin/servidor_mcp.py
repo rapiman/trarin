@@ -202,6 +202,37 @@ def crear():
         return fichas.ficha_archivo(r, None if desde_s < 0 else desde_s, None if hasta_s < 0 else hasta_s)
 
     @herramienta
+    def parecidos(ruta: str, referencia: str, cancion: str = "", cuantos: int = 8, por_cancion: bool = False) -> dict:
+        """Las pistas de la sesión que más se parecen a 'referencia' (el nombre
+        de una pista de la sesión, o la ruta de un WAV: «busca en el show lo que
+        se parezca a este golpe»), por timbre y manera de tocar: color, brillo,
+        tonal o ruidoso, ataque, golpes por segundo, caída, nota, mono o
+        estéreo (no el nivel). Cada resultado dice en qué difiere. cancion:
+        comparar lo que suena en esa canción; por_cancion: cada pista por
+        separado en cada canción del show. Necesita fichas_calcular. Solo lee."""
+        from . import parecido as PR
+        r = PR.parecidos(_existe(ruta), referencia, cancion or None, cuantos, por_cancion)
+        return {"referencia": r["referencia"], "palabras_referencia": r["palabras_referencia"],
+                "candidatas": r["candidatas"],
+                "parecidos": [{k: v for k, v in x.items() if k != "palabras"} | {"palabras": x["palabras"]}
+                              for x in r["parecidos"]]}
+
+    @herramienta
+    def buscar_sonidos(ruta: str, descripcion: str, cancion: str = "", cuantos: int = 20,
+                       por_cancion: bool = False) -> dict:
+        """Pistas de audio cuya ficha cumple una descripción en palabras: «agudas
+        y percusivas», «graves sostenidas en estéreo», «ruidoso rápido», «nota
+        la», «que saturen». Se entienden: agudo, grave, muy grave, de registro
+        medio, brillante, opaco, tonal, ruidoso, percusivo, sostenido, mixto,
+        regular, irregular, rápido, lento, mono, estéreo, satura, fuerte, suave,
+        crece, se apaga, constante, intermitente, con problemas y «nota X».
+        Tienen que cumplirse todos los criterios; las palabras no entendidas se
+        devuelven. cancion: solo lo que suena en esa canción. Necesita
+        fichas_calcular. Solo lee."""
+        from . import parecido as PR
+        return PR.buscar(_existe(ruta), descripcion, cancion or None, cuantos, por_cancion)
+
+    @herramienta
     def mapa_cancion(ruta: str, cancion: str, compases_por_tramo: int = 4) -> dict:
         """El mapa de una canción de la sesión, por tramos de N compases: qué
         pistas suenan, cuáles entran y salen y la sonoridad aproximada de la
