@@ -5,6 +5,12 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Onda dibujada** (`trarin/onda.py`): envolvente RMS y pico (bloques de
+  0,1 s de las fichas, con el clip gain) de una o varias pistas en un tramo,
+  con los golpes detectados, los marcadores de canción y la grilla de
+  compases. Sin dependencias: SVG con etiquetas y PNG pintado a mano (zlib),
+  en `trarin/ondas/` junto a la sesión. CLI `trarin onda sesion.ptx [--cancion
+  …] [--pistas …] [-o base]`; MCP `onda`. Dibujada Aliwen del show (7 pistas).
 - **Nivelar** (`trarin/nivelar.py`): propone el clip gain que deja cada pista a
   un RMS objetivo (−18 dBFS) por canción sin que el pico pase un tope, y con
   `parejas` iguala la sonoridad de las canciones a la más fuerte (o a un LUFS

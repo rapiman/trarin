@@ -388,6 +388,20 @@ def crear():
         return out
 
     @herramienta
+    def onda(ruta: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0, desde_s: float = -1,
+             hasta_s: float = -1, pistas: str = "", maximo: int = 12) -> dict:
+        """Dibuja la onda de una o varias pistas de audio en un tramo: envolvente
+        RMS y pico (con el clip gain, bloques de 0,1 s), los golpes detectados,
+        los marcadores de canción y la grilla de compases. Escribe un SVG (con
+        nombres y etiquetas, para abrir en el navegador) y un PNG en
+        trarin/ondas junto a la sesión y devuelve las rutas. Tramo como en
+        escuchar; pistas: expresión regular (por defecto las primeras 'maximo'
+        pistas de audio con sonido). Necesita fichas_calcular. Solo lee."""
+        from . import onda as ON
+        return ON.dibujar(_existe(ruta), cancion or None, desde_compas or None, hasta_compas or None,
+                          None if desde_s < 0 else desde_s, None if hasta_s < 0 else hasta_s, pistas or None, maximo)
+
+    @herramienta
     def nivelar(ruta: str, objetivo_db: float = -18.0, tope_pico_db: float = -1.0, cancion: str = "",
                 pistas: str = "", parejas: bool = False, lufs_objetivo: float = 0.0, salida: str = "") -> dict:
         """Propone el clip gain que deja cada pista de audio a un RMS objetivo

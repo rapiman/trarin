@@ -156,6 +156,16 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    on = sub.add_parser("onda", help="dibuja la onda (envolvente RMS y pico, golpes, marcadores y compases) de una o varias pistas en un tramo: SVG y PNG en trarin/ondas. Necesita fichas")
+    on.add_argument("sesion")
+    on.add_argument("--cancion")
+    on.add_argument("--desde-compas", type=int)
+    on.add_argument("--hasta-compas", type=int)
+    on.add_argument("--desde", type=float, help="segundo de la sesión")
+    on.add_argument("--hasta", type=float)
+    on.add_argument("--pistas", help="expresión regular sobre el nombre (por defecto hasta 12 pistas de audio)")
+    on.add_argument("--maximo", type=int, default=12)
+    on.add_argument("-o", "--salida", help="ruta base sin extensión")
     nv = sub.add_parser("nivelar", help="propone el clip gain que deja cada pista a un RMS objetivo por canción (y canciones parejas); con -o lo escribe. Necesita fichas")
     nv.add_argument("sesion")
     nv.add_argument("--objetivo", type=float, default=-18.0, help="RMS objetivo en dBFS (por defecto -18)")
@@ -230,6 +240,17 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "onda":
+        from . import onda as ON
+        from .fichas import ErrorFicha
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            r = ON.dibujar(a.sesion, a.cancion, a.desde_compas, a.hasta_compas, a.desde, a.hasta, a.pistas, a.maximo, a.salida)
+        except ErrorFicha as e:
+            p.error(str(e))
+        print(f"{len(r['pistas'])} pistas, {r['desde']} a {r['hasta']}: " + ", ".join(r["archivos"]))
         return
     if a.orden == "nivelar":
         from pathlib import Path
