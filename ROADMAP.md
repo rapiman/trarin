@@ -1,13 +1,15 @@
 # Hoja de ruta
 
-Estado al 2026-10-27. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
+Estado al 2026-11-01. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
 camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en la anterior.
 
 ## Fase 1 — Servidor MCP completo ✅
 
-- ✅ 23 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
-  de audio, comparar versiones), notas del proyecto, consolidar y grupos con su plan, bpm,
-  conversión de audio, paneo de Live, shows y escribir.
+- ✅ 37 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
+  de audio, comparar versiones, también por canción, uniones entre canciones), notas del
+  proyecto, consolidar y grupos con su plan, bpm, conversión de audio, paneo de Live, shows,
+  fichas, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
+  cruces y escribir.
 - ✅ Trabajos largos al estilo witral (id, avance por líneas nuevas, espera con tope de 40 s,
   matar, recientes).
 - ✅ Al escribir: relee, compara con el original y anota en `trarin/notas.md` junto a la
@@ -138,6 +140,22 @@ y §24), que se reutiliza:
   quedan donde estaban en su sesión original y caen con el kultrun.
 - **Borrar o rehacer un clip que tiene un fundido cruzado** (por `aplicar`): sigue sin
   poderse. Para agregar crossfades ya no hace falta (`cruces` no toca los clips).
+
+## Red de seguridad
+
+Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
+regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
+
+- **Pruebas de regresión**: ida y vuelta (leer → escribir sin cambios = mismos bytes) sobre
+  las plantillas vacías; lote = de a una (mismos bytes); sesiones oráculo mínimas guardadas
+  por Pro Tools con un caso cada una (clip que empieza a mitad de archivo, una nota MIDI,
+  una rampa de tempo) contra lo que genera trarin.
+- **`trarin revisar`, lint de una sesión** (generaliza `revisar_midi` y `revisar_niveles`),
+  para correr solo después de cada escritura: regiones con largo cero; cantidad de hijos de
+  `0x262A` y `0x1004` contra su campo u32; eventos de tempo contados contra el largo del
+  bloque `0x2028`; notas fuera de la ventana de su región; ancla distinta de 0 en un show;
+  archivos referenciados que no existen; clips que cruzan un marcador de canción
+  (`uniones`).
 
 ## Rendimiento
 

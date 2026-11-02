@@ -5,6 +5,19 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Uniones entre canciones**: `trarin/uniones.py` (`uniones`, `por_cancion`,
+  `comparar_por_cancion`, `texto`). Por cada par de canciones seguidas: dónde
+  termina el último audio con sonido (y en qué pistas), el marcador de la
+  siguiente, dónde empieza su primer audio, el hueco entre ambos, lo mismo para
+  el MIDI, y tempo y compás a cada lado; los huecos sin ningún clip y los clips
+  que cruzan un marcador. Por canción: corrimiento del primer audio, de la
+  primera nota MIDI (y la distancia entre ambos), fin del audio y primera
+  automatización respecto del marcador; y la comparación de eso entre dos
+  versiones (detecta un MIDI desfasado del audio, como el del ancla). Una
+  canción va desde 3 s antes de su marcador hasta 3 s antes del siguiente. CLI
+  `trarin uniones sesion.ptx [--comparar otra.ptx] [--json]`; MCP `uniones` y
+  `comparar_sesiones(..., por_cancion=True)`. Viene de las sondas con las que se
+  revisó el show RAPIZUAM.
 - **Regiones que no empiezan en el inicio del archivo (corregido)**: el `0x2628`
   de una región nueva ahora se escribe como Pro Tools (desplazamiento, largo, dos
   veces el desplazamiento, 8 bytes FF, anchos en el 4.º byte y 8 en el 5.º). Sin

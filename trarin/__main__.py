@@ -156,12 +156,36 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    un = sub.add_parser("uniones", help="bordes entre las canciones de un show .ptx: huecos, clips que cruzan un marcador y, por canción, cómo caen audio y MIDI (solo lee)")
+    un.add_argument("sesion")
+    un.add_argument("--comparar", metavar="OTRA", help="otra versión de la sesión: qué cambió por canción")
+    un.add_argument("--json", action="store_true")
     tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
     tj.add_argument("carpeta")
     a = p.parse_args(argv)
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "uniones":
+        from . import uniones as U
+        from .comun import leer_comun
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        c = leer_comun(a.sesion)
+        u = U.uniones(c)
+        u["por_cancion"] = U.por_cancion(c)
+        if a.comparar:
+            u["cambios_por_cancion"] = U.comparar_por_cancion(c, leer_comun(a.comparar))
+        if a.json:
+            print(json.dumps(u, ensure_ascii=False, indent=2))
+            return
+        print(U.texto(u))
+        print("por canción:")
+        print(U.texto_por_cancion(u["por_cancion"]))
+        if a.comparar:
+            print(f"cambios por canción respecto de {a.comparar}:")
+            print(U.texto_comparacion_por_cancion(u["cambios_por_cancion"]))
         return
     if a.orden == "golpes":
         from pathlib import Path
