@@ -2,8 +2,9 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
-# nunca subir sesiones ni audio
+# nunca subir sesiones ni audio (salvo las sesiones chicas de las pruebas)
 *.ptx
+!pruebas/sesiones/*.ptx
 *.ptf
 *.wav
 *.aif

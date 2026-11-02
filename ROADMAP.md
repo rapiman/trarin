@@ -137,10 +137,13 @@ y §24), que se reutiliza:
 Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
 regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 
-- **Pruebas de regresión**: ida y vuelta (leer → escribir sin cambios = mismos bytes) sobre
-  las plantillas vacías; lote = de a una (mismos bytes); sesiones oráculo mínimas guardadas
-  por Pro Tools con un caso cada una (clip que empieza a mitad de archivo, una nota MIDI,
-  una rampa de tempo) contra lo que genera trarin.
+- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 10 pruebas, 1 s):
+  descifrar → cifrar mismos bytes; aplicar sin cambios deja el modelo igual; tempo con ancla,
+  renombrar y mezcla sobreviven la ida y vuelta; la revisión da limpio en lo guardado por Pro
+  Tools y acusa un ancla distinta de 0 en un show; una nota MIDI escrita por trarin se lee
+  igual que la que dibujó Pro Tools (oráculo `PRUEBA_una_nota`); quitar en lote = de a una;
+  reordenar; cambiar canal MIDI. Sesiones chicas en `pruebas/sesiones/`. Pendiente: oráculos
+  con audio (clip a mitad de archivo, clip gain, cruces) guardados desde Pro Tools.
 - ✅ **`trarin revisar`, lint de una sesión**, corre solo después de cada escritura:
   regiones con largo cero, fuera de su archivo o con el `0x2628` inconsistente; cantidad de
   hijos de `0x262A` y `0x1004` contra su campo u32; eventos de tempo contra el largo del
