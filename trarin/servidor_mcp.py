@@ -387,6 +387,29 @@ def crear():
                               + " → ".join(x["compas"] for x in c["compas"]) for c in h["canciones"]]
         return out
 
+    @herramienta
+    def editar_clips(ruta: str, accion: str, pista: str, cancion: str = "", desde_compas: int = 0,
+                     hasta_compas: int = 0, compas: int = 0, compases: float = 0.0, segundos: float = 0.0,
+                     salida: str = "") -> dict:
+        """Edita los clips de una pista por compás de la canción. accion:
+        "mover" (los clips que empiezan en el tramo se corren 'compases' —puede
+        ser negativo o fraccionario— o 'segundos'; audio y MIDI), "cortar" (los
+        clips de audio que pasan por 'compas' se parten ahí), "silenciar" o
+        "quitar" (los clips de audio dentro de desde_compas–hasta_compas se
+        mutean o se borran; los que cruzan un borde se cortan primero). Los
+        compases se cuentan desde el marcador de la canción; sin canción, son de
+        la sesión. Un clip con fundidos no se puede partir ni, si el fundido es
+        cruzado, borrar: se avisa y se mutea entero. Sin 'salida' devuelve el
+        plan; con 'salida' escribe una copia nueva, la revisa y anota."""
+        from . import edicion as ED
+        plan = ED.planear(_existe(ruta), accion, pista, cancion or None, desde_compas or None, hasta_compas or None,
+                          compas or None, compases, segundos)
+        out = {"plan": ED.texto(plan).splitlines(), "cambios": len(plan["cambios"]), "avisos": plan["avisos"]}
+        if salida:
+            r = ED.escribir(plan, _salida_nueva(salida))
+            out.update({"escrito": str(_existe(salida)), "verificacion": r["verificacion"], "avisos": r["avisos"]})
+        return out
+
     # ------------------------------------------------------------ una sola sesión con respaldos
 
     @herramienta

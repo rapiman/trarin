@@ -5,6 +5,20 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Editar clips por compás** (`trarin/edicion.py`): mover (audio y MIDI, N
+  compases —negativo o fraccionario— o segundos), cortar (partir los clips de
+  audio que pasan por un compás), silenciar y quitar (los clips dentro de un
+  tramo; los que cruzan un borde se cortan antes, en dos pasadas porque un
+  clip nuevo no puede nacer muteado). Compases contados desde el marcador de
+  la canción (la canción empieza 3 s antes de su marcador). Un clip con
+  fundidos no se parte y uno con fundido cruzado no se borra: se avisa y se
+  mutea entero. Plan primero; con salida escribe por `aplicar`, revisa y anota.
+  Probado con el show (mover el bombo de Aliwen un compás, cortar la pifilka C
+  de Katrümongen en el 20, silenciar kaskawillas 12–20 de Aliwen, quitar
+  semillas 10–14 de Üñümngeiñ): la revisión da limpio y los clips quedan como
+  se pidió. CLI `trarin editar sesion.ptx accion pista [--cancion …] [--compas
+  N] [--desde-compas A --hasta-compas B] [--compases N | --segundos S] [-o …]`;
+  MCP `editar_clips`.
 - **Comparar una canción del show con su original** (`trarin/origen.py`):
   clips del original hallados en el show (y en qué pista), faltantes, muteados
   en el show, en otro lugar, agregados en el show, pistas del original no
