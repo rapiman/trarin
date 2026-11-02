@@ -85,7 +85,14 @@ def _t_escuchar(a, registro):
                            crudo=a.get("crudo", False), **comunes)
 
 
-TAREAS = {"armar_show": _t_armar_show, "escuchar": _t_escuchar, "consolidar": _t_consolidar,
+def _t_pizarrita(a, registro):
+    from . import pizarrita
+    return pizarrita.exportar(a["sesion"], a.get("cancion"), a.get("desde_compas"), a.get("hasta_compas"),
+                              a.get("desde_s"), a.get("hasta_s"), a.get("carpeta"), a.get("con_archivos", False),
+                              a.get("mezcla", True), a.get("pistas"), a.get("subtitulos_compases", False), registro)
+
+
+TAREAS = {"armar_show": _t_armar_show, "escuchar": _t_escuchar, "consolidar": _t_consolidar, "pizarrita": _t_pizarrita,
           "convertir_audio": _t_convertir_audio, "bpm": _t_bpm, "fichas": _t_fichas}
 
 

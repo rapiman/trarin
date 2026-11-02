@@ -156,6 +156,16 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    pz = sub.add_parser("pizarrita", help="exporta una canción o tramo como montaje de Pizarrita Edit Pro (JSON + mezcla MP3; --con-archivos copia los WAV)")
+    pz.add_argument("sesion")
+    pz.add_argument("--cancion")
+    pz.add_argument("--desde-compas", type=int)
+    pz.add_argument("--hasta-compas", type=int)
+    pz.add_argument("--pistas")
+    pz.add_argument("--carpeta")
+    pz.add_argument("--con-archivos", action="store_true")
+    pz.add_argument("--sin-mezcla", action="store_true")
+    pz.add_argument("--compases", action="store_true", help="los compases como subtítulos")
     ins = sub.add_parser("instalar", help="instala el servidor MCP en Claude Desktop (entrada «trarin» en claude_desktop_config.json con este Python) y revisa las dependencias")
     ins.add_argument("--revisar", action="store_true", help="solo revisar, sin escribir la configuración")
     ins.add_argument("--config", help="ruta del claude_desktop_config.json (por defecto la del sistema)")
@@ -261,6 +271,20 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "pizarrita":
+        from . import pizarrita as PZ
+        from .fichas import ErrorFicha
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            r = PZ.exportar(a.sesion, a.cancion, a.desde_compas, a.hasta_compas, None, None, a.carpeta, a.con_archivos,
+                            not a.sin_mezcla, a.pistas, a.compases)
+        except ErrorFicha as e:
+            p.error(str(e))
+        print(f"{r['pistas']} pistas, {r['clips']} clips, {r['archivos']} archivos: {r['montaje']}"
+              + (f"; mezcla {r['mezcla']}" if r.get("mezcla") else "") + (f"; {r['copiados']} WAV copiados a {r['carpeta_audio']}" if "copiados" in r else ""))
+        print(r["nota"])
         return
     if a.orden == "instalar":
         from . import instalar as IN

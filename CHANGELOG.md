@@ -5,6 +5,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Puente con Pizarrita** (`trarin/pizarrita.py`): exporta una canción o un
+  tramo como montaje de Pizarrita Edit Pro (`Proyecto` de `montajeVideo.ts`:
+  pistas de audio con clips `{f, a, b, en}`, clip gain en lineal, fundidos de
+  entrada y salida, fader, paneo, mute, automatización de volumen y paneo,
+  marcas y, si se pide, los compases como subtítulos), más la mezcla rápida en
+  MP3 y, con `con_archivos`, los WAV que usa. Aliwen: 19 pistas, 28 clips, 37
+  archivos. Lo que falta está del lado de Pizarrita: subir los archivos a una
+  idea y pegar el montaje. CLI `trarin pizarrita`; MCP `exportar_pizarrita`
+  (trabajo).
 - **Pruebas de regresión** (`pruebas/test_regresion.py`, `python -m unittest
   discover -s pruebas`): sobre sesiones chicas guardadas por Pro Tools 12 en
   `pruebas/sesiones/` (plantillas vacías a 44,1, 48 y 96 kHz, una pista de cada
