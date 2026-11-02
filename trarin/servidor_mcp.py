@@ -325,6 +325,20 @@ def crear():
         return out
 
     @herramienta
+    def revisar(ruta: str) -> dict:
+        """Revisión (lint) de una sesión de Pro Tools sin abrirla: errores que
+        Pro Tools mostraría rotos (regiones de audio con largo cero o fuera de su
+        archivo, listas con cantidad distinta de sus bloques, mapa de tempo que
+        no cuadra, clips MIDI con las notas fuera de su ventana, ancla de la
+        línea de tiempo distinta de 0 en un show, archivos de audio que faltan)
+        y avisos (regiones con la forma antigua de trarin, clips que cruzan un
+        marcador, huecos largos). Correr después de cada escritura. Solo lee."""
+        from .revision import revisar as rv, texto as tx
+        r = rv(_existe(ruta))
+        return {"ok": r["ok"], "errores": r["errores"], "avisos": r["avisos"], "revisado": r["revisado"],
+                "texto": tx(r).splitlines()}
+
+    @herramienta
     def uniones(ruta: str, formato: str = "texto") -> dict:
         """Los bordes entre las canciones de un show: por cada par seguido, dónde
         termina el último audio de una (y en qué pistas), el marcador de la

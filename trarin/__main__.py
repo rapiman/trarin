@@ -156,6 +156,9 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    rv = sub.add_parser("revisar", help="revisa una sesión .ptx: lo que Pro Tools mostraría roto (regiones, MIDI, tempo, ancla, archivos) y avisos (solo lee)")
+    rv.add_argument("sesion")
+    rv.add_argument("--json", action="store_true")
     un = sub.add_parser("uniones", help="bordes entre las canciones de un show .ptx: huecos, clips que cruzan un marcador y, por canción, cómo caen audio y MIDI (solo lee)")
     un.add_argument("sesion")
     un.add_argument("--comparar", metavar="OTRA", help="otra versión de la sesión: qué cambió por canción")
@@ -167,6 +170,13 @@ def main(argv=None):
         from .trabajos import correr
         correr(a.carpeta)
         return
+    if a.orden == "revisar":
+        from .revision import revisar, texto as texto_revision
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        r = revisar(a.sesion)
+        print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else texto_revision(r))
+        sys.exit(0 if r["ok"] else 1)
     if a.orden == "uniones":
         from . import uniones as U
         from .comun import leer_comun

@@ -150,12 +150,12 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   las plantillas vacías; lote = de a una (mismos bytes); sesiones oráculo mínimas guardadas
   por Pro Tools con un caso cada una (clip que empieza a mitad de archivo, una nota MIDI,
   una rampa de tempo) contra lo que genera trarin.
-- **`trarin revisar`, lint de una sesión** (generaliza `revisar_midi` y `revisar_niveles`),
-  para correr solo después de cada escritura: regiones con largo cero; cantidad de hijos de
-  `0x262A` y `0x1004` contra su campo u32; eventos de tempo contados contra el largo del
+- ✅ **`trarin revisar`, lint de una sesión**, corre solo después de cada escritura:
+  regiones con largo cero, fuera de su archivo o con el `0x2628` inconsistente; cantidad de
+  hijos de `0x262A` y `0x1004` contra su campo u32; eventos de tempo contra el largo del
   bloque `0x2028`; notas fuera de la ventana de su región; ancla distinta de 0 en un show;
-  archivos referenciados que no existen; clips que cruzan un marcador de canción
-  (`uniones`).
+  archivos que no existen; avisos por regiones con la forma antigua, clips que cruzan un
+  marcador y huecos largos. Pendiente: sumar reglas a medida que aparezcan errores nuevos.
 
 ## Rendimiento
 

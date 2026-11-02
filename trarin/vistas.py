@@ -218,6 +218,15 @@ def tras_escribir(origen, salida, que):
     cb = leer_comun(salida)
     out = {"verificacion": {"pistas": len(cb["pistas"]), "lee_bien": True}}
     linea = f"{que}: {Path(salida).name} ({len(cb['pistas'])} pistas)"
+    if str(salida).lower().endswith(".ptx"):
+        from .revision import revisar
+        try:
+            r = revisar(salida, cb)
+            out["verificacion"]["revision"] = {"ok": r["ok"], "errores": r["errores"], "avisos": r["avisos"]}
+            if not r["ok"]:
+                linea += f" — REVISAR: {len(r['errores'])} errores"
+        except Exception as e:                      # la revisión nunca impide anotar lo escrito
+            out["verificacion"]["revision"] = {"ok": None, "error": f"{type(e).__name__}: {e}"}
     if origen:
         c = comparar(origen, cb)
         out["verificacion"]["cambios"] = c
