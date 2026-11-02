@@ -221,6 +221,29 @@ class GruposDeClips(Base):
         self.assertEqual(f(g1["contenido"][3]), [("entrada", 6342215, 9401)])
         self.assertEqual(f(g2["contenido"][0]), [])
 
+    def test_duplicar_grupo(self):
+        """Pegar un grupo otra vez: una colocación nueva con el mismo índice, que se lee
+        como grupo con el mismo contenido corrido."""
+        from trarin.comun import leer_comun, aplicar
+        f = str(SESIONES / "PRUEBA_grupos.ptx")
+        c = leer_comun(f)
+        p = next(t for t in c["pistas"] if t["nombre"] == "Synth ModelD")
+        g = [x for x in p["clips"] if x["tipo"] == "grupo"][1]
+        nuevo = {k: v for k, v in g.items() if k not in ("id", "contenido", "tick", "segundos", "posicion")}
+        nuevo["muestra"] = g["muestra"] + 30_000_000
+        p["clips"].append(nuevo)
+        s = self.salida("dup_grupo.ptx")
+        aplicar(c, f, s)
+        q = next(t for t in leer_comun(s)["pistas"] if t["nombre"] == "Synth ModelD")
+        grupos = [x for x in q["clips"] if x["tipo"] == "grupo"]
+        self.assertEqual([x["indice_grupo"] for x in grupos], [2, 3, 3, 3])
+        d = grupos[-1]
+        self.assertEqual(d["muestra"], g["muestra"] + 30_000_000)
+        self.assertEqual([(x["nombre"], x["muestra"] - d["muestra"]) for x in d["contenido"]],
+                         [(x["nombre"], x["muestra"] - g["muestra"]) for x in g["contenido"]])
+        from trarin.revision import revisar
+        self.assertTrue(revisar(s)["ok"])
+
     def test_plantilla_no_es_de_grupo(self):
         """Un clip nuevo nunca hereda la marca de grupo (+20 del 0x104F) de la plantilla."""
         from trarin.protools.bloques import arbol

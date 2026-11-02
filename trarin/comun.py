@@ -750,6 +750,36 @@ def _fundidos_nuevos_pt(pista, fundidos, nativo, fs):
     return out
 
 
+def _grupo_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos):
+    """Duplicar o mover un grupo de clips que ya está en la sesión. Pegar un grupo en
+    Pro Tools no crea otro registro 0x262B: la colocación nueva apunta al mismo índice
+    (en estéreo, al grupo de cada canal). Crear un grupo nuevo (agrupar clips) no
+    está soportado: para eso, agregar los clips sueltos."""
+    canales = next((len(t["canales"]) for t in nativo["pistas_audio"] if t["nombre"] == pista["id"]), None)
+    if not canales:
+        raise ErrorComun(f"Pro Tools: la pista {pista['id']!r} no es de audio")
+    gi = c.get("indice_grupo")
+    for t in original["pistas"]:
+        for x in t["clips"]:
+            if x.get("tipo") != "grupo" or x.get("indice_grupo") != gi:
+                continue
+            if x.get("canales", 1) != canales:
+                raise ErrorComun(f"Pro Tools: el grupo {c.get('nombre')!r} tiene {x.get('canales', 1)} canales y la "
+                                 f"pista {pista['id']!r} {canales}")
+            ta = next(a for a in nativo["pistas_audio"] if a["nombre"] == t["id"])
+            j = int(x["id"].rsplit("#", 1)[1])
+            ref = ta["canales"][0]["regiones"][j]
+            indices = [next(r for r in canal["regiones"] if r["muestra"] == ref["muestra"] and "indice_grupo" in r)
+                       ["indice_grupo"] for canal in ta["canales"]]
+            muestra = c.get("muestra")
+            if muestra is None:
+                muestra = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
+            clips_nuevos.setdefault(pista["id"], []).append((indices, muestra, True))
+            return
+    raise ErrorComun(f"Pro Tools: crear un grupo de clips nuevo ({c.get('nombre')!r}) no está soportado; solo se "
+                     f"puede duplicar o mover uno que ya esté en la sesión, o agregar sus clips sueltos")
+
+
 def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     """Clip de audio nuevo en Pro Tools. Si hay un clip de la sesión con el mismo
     archivo, desde_muestra y largo_muestras (y la misma cantidad de canales), se
@@ -758,8 +788,7 @@ def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     cada archivo que no esté en la sesión se agrega: debe venir en 'archivos'
     con su 'ruta' absoluta (WAV mono a la frecuencia de la sesión)."""
     if c.get("tipo") == "grupo":
-        raise ErrorComun(f"Pro Tools: agregar o duplicar un grupo de clips ({c.get('nombre')!r}) aún no está soportado; "
-                         f"se pueden agregar sus clips sueltos (su 'contenido')")
+        return _grupo_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos)
     if c.get("tipo") != "audio":
         raise ErrorComun("Pro Tools: agregar clips MIDI aún no está soportado")
     canales = next((len(t["canales"]) for t in nativo["pistas_audio"] if t["nombre"] == pista["id"]), None)
