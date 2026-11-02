@@ -5,6 +5,7 @@ __pycache__/
 # nunca subir sesiones ni audio (salvo las sesiones chicas de las pruebas)
 *.ptx
 !pruebas/sesiones/*.ptx
+!trarin/plantillas/*.ptx
 *.ptf
 *.wav
 *.aif
