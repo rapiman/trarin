@@ -799,7 +799,18 @@ def _fuentes_sesion(sesion, comun):
     return out
 
 
-def calcular_sesion(sesion, recalcular=False, registro=print, procesos=None):
+def _imprimir(texto):
+    """print que no se cae si la consola no puede mostrar un nombre (p. ej. «uñitas»
+    con la tilde combinada en una consola cp1252 de Windows)."""
+    import sys
+    try:
+        print(texto)
+    except UnicodeEncodeError:
+        enc = getattr(sys.stdout, "encoding", None) or "ascii"
+        print(texto.encode(enc, "replace").decode(enc, "replace"))
+
+
+def calcular_sesion(sesion, recalcular=False, registro=_imprimir, procesos=None):
     """Calcula (o pone al día) las series de todas las fuentes de una sesión.
     Solo recalcula lo que falta o cambió, salvo con recalcular=True. Calcula
     varias fuentes a la vez (procesos: por defecto hasta 4)."""

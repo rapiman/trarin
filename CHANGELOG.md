@@ -21,8 +21,11 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   un grupo se mueve, se mutea o se quita como un clip; `editar` ya no deja los
   grupos atrás al mover un tramo y avisa si uno cruza un borde. Escribir una
   sesión con grupos sin cambios fallaba (el escritor los tomaba por MIDI):
-  arreglado. Pendiente: fundidos de adentro de un grupo; recalcular las fichas
-  del show para que `nivelar` mida esos clips.
+  arreglado. Fichas del show recalculadas (19 archivos que solo se usaban
+  dentro de grupos): `nivelar` pasa de 65 a 82 pistas por canción a ajustar.
+  Pendiente: fundidos de adentro de un grupo. El registro de `fichas_calcular`
+  ya no se cae con nombres que la consola no puede mostrar («uñitas» con tilde
+  combinada en cp1252).
 - **Bug de escritura: clips nuevos marcados como grupo.** La plantilla para
   colocar un clip nuevo era la primera colocación de la sesión; si era de un
   grupo, el clip nuevo heredaba el byte +20 y Pro Tools lo leía como grupo
