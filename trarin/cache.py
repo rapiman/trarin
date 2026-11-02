@@ -10,7 +10,7 @@ import os
 import pickle
 from pathlib import Path
 
-VERSION = 1            # subir cuando cambie la forma del modelo: invalida todo
+VERSION = 2            # subir cuando cambie la forma del modelo: invalida todo (2: grupos de clips)
 MAXIMO = 200
 
 
@@ -19,7 +19,7 @@ def carpeta():
 
 
 def activa():
-    return os.environ.get("TRARIN_SIN_CACHE", "") not in ("1", "si", "true")
+    return os.environ.get("TRARIN_SIN_CACHE", "").strip().lower() not in ("1", "si", "true")
 
 
 def _llave(ruta, que):

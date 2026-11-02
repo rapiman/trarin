@@ -175,6 +175,13 @@ def revisar(ruta, comun=None):
             avisos.append(f"{len(huecos)} huecos de más de 10 s sin ningún clip: "
                           + ", ".join(f"{h['desde_s']}–{h['hasta_s']} s" for h in huecos[:8]))
 
+    grupos = [(p["nombre"], c) for p in comun["pistas"] for c in p.get("clips", []) if c.get("tipo") == "grupo"]
+    if grupos:
+        revisado["grupos_de_clips"] = len(grupos)
+        fs_ = comun.get("unidades", {}).get("frecuencia_muestreo") or 48000
+        avisos.append(f"{len(grupos)} grupos de clips en la línea de tiempo; trarin no mira adentro de un grupo "
+                      f"(ni su audio ni su clip gain): para que los vea, desagruparlos en Pro Tools (Clip > Ungroup): "
+                      + ", ".join(f"{p}: {c['nombre']} a {c['muestra'] / fs_:.0f} s" for p, c in grupos[:8]))
     return {"ok": not errores, "errores": errores, "avisos": avisos, "revisado": revisado}
 
 

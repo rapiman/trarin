@@ -462,7 +462,8 @@ def consolidar(sesion, reglas, salida, tmp=None, rutas_audio=None, registro=prin
     for nombre, x in plan["nuevas"].items():
         clips = []
         for f, cancion in x["fuentes"]:
-            propios = [c for c in pistas[f]["clips"] if _cancion(ventanas, c["muestra"]) == cancion]
+            propios = [c for c in pistas[f]["clips"] if _cancion(ventanas, c["muestra"]) == cancion
+                       and c.get("tipo") == "audio" and c.get("archivo") is not None]
             delta = None
             if objetivo is not None:
                 try:
