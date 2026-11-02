@@ -3,6 +3,17 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-11-02
+
+- **`escuchar` por pista y en crudo**: `crudo=True` deja solo clip gain y
+  fundidos (sin fader, paneo, mute, solo, auxiliares, master ni plugins; una
+  pista mono va igual a los dos lados): «la pista tal cual está grabada».
+  `por_pista=True` (`escucha.por_pista`) escribe un archivo por pista de audio
+  con sonido en el tramo, en una carpeta del tramo («dame las pistas sin
+  efectos»); cada una con su fader y paneo, o crudas. El nombre del archivo
+  lleva las pistas pedidas y «crudo» («Aliwen c12-20 [Bombo] crudo.wav»).
+  Probado: el bombo de Aliwen en crudo da 3 dB más que con su paneo al centro.
+
 ## 2026-11-01
 
 - **`escuchar` con auxiliares y MP3**: se aplica el fader (automatización y
