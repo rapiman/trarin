@@ -5,6 +5,13 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Duplicar o mover grupos de clips al escribir**: un clip `grupo` nuevo en el
+  modelo común (copia de uno de la sesión) se escribe como una colocación de
+  grupo con el mismo índice, como hace Pro Tools al pegar; en estéreo, con el
+  grupo de cada canal. Crear un grupo nuevo sigue sin soporte (se rechaza con
+  un mensaje que sugiere agregar los clips sueltos). Prueba nueva: duplicar
+  grp-03 en el oráculo y leerlo de vuelta con el mismo contenido. Pendiente de
+  abrir en Pro Tools una sesión escrita así.
 - **trarin lee el contenido de los grupos de clips.** Cada `0x262B` lleva un
   byte tras el nombre (0 = dueño de un contenido, 1 = copia) y su propio índice
   de clip gain; las entradas del `0x2428` van una por familia (dueño + copias)

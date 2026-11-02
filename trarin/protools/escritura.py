@@ -566,12 +566,14 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
         hijos = [h for h in e.hijos if h.tipo_contenido == 0x1050]
         fin_vacio = p_cant + 4 + (2 if d[p_cant + 4:p_cant + 6] == bytes(2) and e.fin - (p_cant + 4) > 2 else 0)
         nuevos_col = []
-        for indices, muestra in nuevos:
+        for item in nuevos:
+            indices, muestra = item[0], item[1]
+            es_grupo = len(item) > 2 and bool(item[2])
             if muestra < 0:
                 raise ErrorEscritura(f"{pista}: posición negativa")
             col = bytearray(plantilla)
             col[18] = 0
-            col[16 + 20] = 0      # +20 del 0x104F: 1 = grupo de clips; un clip nuevo es una región
+            col[16 + 20] = 1 if es_grupo else 0   # +20 del 0x104F: 1 = índice en la lista de grupos 0x262C
             struct.pack_into("<I", col, 20, indices[k])
             col[25:30] = int(muestra).to_bytes(5, "little")
             col[16 + 17] = 3      # +17 del 0x104F: 3 en las regiones (22 715 de 23 121 en el corpus); con

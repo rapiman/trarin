@@ -405,7 +405,10 @@ posición absoluta y el clip gain del grupo sumado. Todo lo que escucha o mide
 usa `comun.clips_audio(pista)`, que los incluye; el armador de shows y
 `consolidar` los llevan como clips sueltos (como desagrupar). Al escribir, un
 grupo se mueve, se mutea o se quita como cualquier clip (misma colocación);
-agregar o duplicar un grupo no está soportado. Los fundidos de adentro de un
+duplicarlo (o llevarlo a otra pista con los mismos canales) es una colocación
+nueva con el byte +20 en 1 y el mismo índice, igual que hace Pro Tools al pegar
+(el oráculo tiene grp-03 pegado dos veces con un solo `0x262B`). Crear un grupo
+nuevo (agrupar clips) no está soportado. Los fundidos de adentro de un
 grupo son colocaciones de fundido en la misma entrada (byte tras el `0x104F` en
 1, ancla menos pre-roll, como en una playlist); trarin los pasa a la ventana del
 grupo y se los da a los clips que tocan (calzan con la sesión original del
