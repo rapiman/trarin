@@ -10,8 +10,12 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   grupo con el mismo índice, como hace Pro Tools al pegar; en estéreo, con el
   grupo de cada canal. Crear un grupo nuevo sigue sin soporte (se rechaza con
   un mensaje que sugiere agregar los clips sueltos). Prueba nueva: duplicar
-  grp-03 en el oráculo y leerlo de vuelta con el mismo contenido. Pendiente de
-  abrir en Pro Tools una sesión escrita así.
+  grp-03 en el oráculo y leerlo de vuelta con el mismo contenido. **Verificado en
+  Pro Tools**: `PRUEBA_grupos_dup.ptx` (grp-03 pegado por trarin en 750 s) abre
+  bien, muestra el grupo y, guardado de nuevo desde Pro Tools
+  (`PRUEBA_grupos_dup_pt.ptx`), conserva las tres colocaciones con el mismo
+  contenido; Pro Tools solo renumera los grupos (2→3, 3→4), y trarin lo lee igual.
+  También se abrió bien un grupo movido por trarin (`PRUEBA_grupos_mov.ptx`).
 - **trarin lee el contenido de los grupos de clips.** Cada `0x262B` lleva un
   byte tras el nombre (0 = dueño de un contenido, 1 = copia) y su propio índice
   de clip gain; las entradas del `0x2428` van una por familia (dueño + copias)

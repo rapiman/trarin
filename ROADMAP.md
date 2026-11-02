@@ -160,8 +160,8 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
   RAPIZUAM eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
   trarin lee el contenido de los grupos y sus fundidos (ver `docs/formato_ptx.md` 6.x).
-  ✅ Duplicar o mover grupos al escribir. Pendiente: abrir en Pro Tools una sesión con un
-  grupo duplicado por trarin; crear grupos nuevos (agrupar) no está previsto.
+  ✅ Duplicar o mover grupos al escribir, verificado en Pro Tools (abre, muestra y guarda
+  igual). Crear grupos nuevos (agrupar) no está previsto.
 
 ## Rendimiento
 
