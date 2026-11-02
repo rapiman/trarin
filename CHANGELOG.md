@@ -5,6 +5,14 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Hoja del show (fase 5)**: `trarin/hoja.py` (`hoja`, `markdown`, `escribir`).
+  Por canción: orden, inicio, duración y compases, tempo con sus cambios (las
+  rampas de muchos eventos resumidas en «de X a Y entre t1 y t2», partidas
+  donde cambian de sentido), compás, marcas de sección y dónde entra cada
+  pista de audio y MIDI (compás de la canción y minuto del show). Sale de los
+  clips; no necesita fichas. Escribe `trarin/hoja_del_show.md` junto a la
+  sesión. CLI `trarin hoja sesion.ptx [-o hoja.md] [--titulo …] [--json]`; MCP
+  `hoja_show`. Generada para el show RAPIZUAM.
 - **Comparar sonidos (fase 3)**: `trarin/parecido.py`. `parecidos`: las pistas
   que más se parecen a una pista de la sesión o a un WAV, por un vector de
   rasgos de la ficha (bandas, brillo, planitud, ataque, golpes por segundo,
