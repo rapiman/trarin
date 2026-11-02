@@ -5,6 +5,17 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Pistas de instrumento desde el modelo común.** Se leen con tipo
+  `"instrumento"` (antes `"0x0007"`, que se sigue aceptando al escribir), con su
+  mezcla (fader en el canal `0x2621`, sin `0x261B`). Quitarlas y crearlas vacías
+  editando el modelo: la nueva se copia de la primera pista de instrumento de la
+  sesión o, si no hay, de la plantilla `trarin/plantillas/instrumento.ptx`
+  (guardada en Pro Tools 12). Contra el oráculo de Pro Tools
+  (`PRUEBA_instrumento_antes.ptx` → `PRUEBA_instrumento.ptx`) crear y quitar dan
+  los mismos bloques salvo las marcas de fecha de `0x251A` y el `0x2067`. La
+  automatización del fader de una pista de instrumento ya se escribe; una pista
+  nueva conserva la automatización que trae en el modelo. Pruebas nuevas: leer,
+  quitar, crear desde la plantilla y crear copiando una de la sesión.
 - **Crear grupos de clips al escribir (Clip > Group).** En el modelo común, un
   clip `{"tipo": "grupo", "agrupa": [ids de clips de la pista], "nombre"?}` en
   lugar de esos clips; en `escribir_cambios`, `grupos_nuevos`. Se escribe el

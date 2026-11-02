@@ -10,7 +10,7 @@ import os
 import pickle
 from pathlib import Path
 
-VERSION = 3            # subir cuando cambie la forma del modelo: invalida todo (3: contenido de los grupos)
+VERSION = 4            # subir cuando cambie la forma del modelo: invalida todo (4: tipo «instrumento»)
 MAXIMO = 200
 
 

@@ -94,9 +94,9 @@ def _quitar_varias(d, nombres):
         if i is None:
             raise ErrorPista(f"no existe la pista {nombre!r}")
         tipo = entradas[i][2]
-        if tipo not in (0, 1, 2):
-            raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio, MIDI o auxiliares")
-        if raiz.hijos[i].tipo_contenido != {0: 0x261C, 1: 0x2620, 2: 0x261E}[tipo]:
+        if tipo not in (0, 1, 2, 7):
+            raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio, MIDI, de instrumento o auxiliares")
+        if raiz.hijos[i].tipo_contenido != {0: 0x261C, 1: 0x2620, 2: 0x261E, 7: 0x2621}[tipo]:
             raise ErrorPista(f"{nombre}: el canal no corresponde al tipo de pista")
         elegidas.append(i)
     if n - len(elegidas) < 1:
@@ -135,7 +135,7 @@ def _quitar_varias(d, nombres):
             reemplazos.append((h.pos, h.fin, bytes(b), L.pos))
 
     audio = [raiz.hijos[i] for i in elegidas if entradas[i][2] == 0]
-    midi = [(raiz.hijos[i], entradas[i][3]) for i in elegidas if entradas[i][2] == 1]
+    midi = [(raiz.hijos[i], entradas[i][3]) for i in elegidas if entradas[i][2] in (1, 7)]
     if audio:
         _quitar_audio_varias(d, bloques, raiz, audio, quitar, reemplazos)
     if midi:
@@ -313,16 +313,16 @@ def _quitar_una(d, nombre):
     if i is None:
         raise ErrorPista(f"no existe la pista {nombre!r}")
     tipo = entradas[i][2]
-    midi, aux = tipo == 1, tipo == 2
-    if tipo not in (0, 1, 2):
-        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio, MIDI o auxiliares")
+    midi, aux = tipo in (1, 7), tipo == 2
+    if tipo not in (0, 1, 2, 7):
+        raise ErrorPista(f"{nombre}: por ahora solo se pueden quitar pistas de audio, MIDI, de instrumento o auxiliares")
     if len(entradas) < 2:
         raise ErrorPista("la sesión debe conservar al menos una pista")
     raiz = _primero(bloques, 0x2624)
     if raiz is None or len(raiz.hijos) != len(entradas):
         raise ErrorPista("los canales de mezcla no corresponden con las pistas")
     canal = raiz.hijos[i]
-    if canal.tipo_contenido != {0: 0x261C, 1: 0x2620, 2: 0x261E}[tipo]:
+    if canal.tipo_contenido != {0: 0x261C, 1: 0x2620, 2: 0x261E, 7: 0x2621}[tipo]:
         raise ErrorPista(f"{nombre}: el canal no corresponde al tipo de pista")
     n = len(entradas)
     reemplazos = []

@@ -581,7 +581,7 @@ def main(argv=None):
         grupos = grupos_por_nombre(pistas, reglas["grupos"], reglas.get("grupo_midi"))
         for g in grupos:
             print(f"{g['nombre']} ({len(g['pistas'])}): " + ", ".join(g["pistas"]))
-        sueltas = sorted({n for n, t in pistas if t in ("audio", "midi", "0x0007")} - {x for g in grupos for x in g["pistas"]})
+        sueltas = sorted({n for n, t in pistas if t in ("audio", "midi", "instrumento")} - {x for g in grupos for x in g["pistas"]})
         print(f"sin grupo ({len(sueltas)}): " + ", ".join(sueltas))
         if not a.plan:
             if Path(a.salida).exists():

@@ -730,7 +730,7 @@ def crear():
         r = _reglas(reglas)
         pistas = [(x["nombre"], x["tipo"]) for x in leer_comun(_existe(sesion))["pistas"]]
         grupos = grupos_por_nombre(pistas, r["grupos"], r.get("grupo_midi"))
-        sueltas = sorted({n for n, t in pistas if t in ("audio", "midi", "0x0007")} - {x for g in grupos for x in g["pistas"]})
+        sueltas = sorted({n for n, t in pistas if t in ("audio", "midi", "instrumento")} - {x for g in grupos for x in g["pistas"]})
         return {"grupos": grupos, "sin_grupo": sueltas}
 
     @herramienta
