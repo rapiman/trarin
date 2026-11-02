@@ -356,6 +356,27 @@ def crear():
         return out
 
     @herramienta
+    def hoja_show(ruta: str, salida: str = "", titulo: str = "", formato: str = "markdown") -> dict:
+        """Hoja del show para los músicos: por canción, orden, dónde empieza,
+        cuánto dura y cuántos compases, tempo (con sus cambios y rampas
+        resumidas), compás, marcas de sección y dónde entra cada pista de audio
+        y MIDI (compás de la canción, minuto del show). Sale de los clips, no
+        necesita fichas. Escribe un Markdown (por omisión
+        trarin/hoja_del_show.md junto a la sesión; 'salida' para otra ruta) y
+        devuelve la ruta; formato "datos" devuelve además los datos. Solo lee
+        la sesión."""
+        from . import hoja as H
+        r, h = H.escribir(_existe(ruta), salida or None, titulo or None)
+        out = {"escrito": r, "canciones": len(h["canciones"]), "total": h["total"]}
+        if formato == "datos":
+            out["datos"] = h
+        else:
+            out["resumen"] = [f"{c['orden']}. {c['nombre']} — {c['inicio']}, {c['duracion']}, {c['compases']} compases, "
+                              + " → ".join(H._tempo_corto(t) for t in c["tempo"]) + " bpm, "
+                              + " → ".join(x["compas"] for x in c["compas"]) for c in h["canciones"]]
+        return out
+
+    @herramienta
     def revisar(ruta: str) -> dict:
         """Revisión (lint) de una sesión de Pro Tools sin abrirla: errores que
         Pro Tools mostraría rotos (regiones de audio con largo cero o fuera de su

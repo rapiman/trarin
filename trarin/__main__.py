@@ -156,6 +156,11 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    ho = sub.add_parser("hoja", help="hoja del show para los músicos (Markdown): orden, inicio, duración, tempo, compás, secciones y dónde entra cada pista (solo lee)")
+    ho.add_argument("sesion")
+    ho.add_argument("-o", "--salida", help="archivo .md (por omisión trarin/hoja_del_show.md junto a la sesión)")
+    ho.add_argument("--titulo")
+    ho.add_argument("--json", action="store_true", help="los datos en JSON por pantalla, sin escribir el .md")
     pa = sub.add_parser("parecidos", help="pistas de la sesión que más se parecen a una pista o a un WAV, según las fichas (solo lee)")
     pa.add_argument("sesion")
     pa.add_argument("referencia", help="nombre de una pista de la sesión o ruta de un WAV")
@@ -183,6 +188,17 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "hoja":
+        from . import hoja as H
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if a.json:
+            from .comun import leer_comun
+            print(json.dumps(H.hoja(leer_comun(a.sesion)), ensure_ascii=False, indent=2))
+            return
+        ruta, h = H.escribir(a.sesion, a.salida, a.titulo)
+        print(f"{len(h['canciones'])} canciones, {h['total']}; escrito {ruta}")
         return
     if a.orden in ("parecidos", "buscar"):
         from . import parecido as PR

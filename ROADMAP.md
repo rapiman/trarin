@@ -101,8 +101,8 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 
 - **Plantillas de reglas** con nombre (categorías, buses y patrones de un show real) para el
   próximo show.
-- **Hoja del show** para los músicos: orden, tempo, compás y duración de cada canción y
-  dónde entra cada cosa.
+- ✅ **Hoja del show** para los músicos (`hoja_show`): orden, inicio, duración, tempo, compás,
+  secciones y dónde entra cada pista, en Markdown junto a la sesión.
 
 ## Para llevar a Pizarrita
 
