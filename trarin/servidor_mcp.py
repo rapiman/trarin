@@ -305,14 +305,45 @@ def crear():
         return aa(_existe(ruta), solo_faltantes)
 
     @herramienta
-    def comparar_sesiones(antes: str, despues: str) -> dict:
+    def comparar_sesiones(antes: str, despues: str, por_cancion: bool = False) -> dict:
         """Qué cambió entre dos versiones de una sesión: pistas que aparecen o
         desaparecen y, en las demás, salida, paneo, volumen, mute, clips,
-        automatización y plugins; además tempo, compases y marcadores. Solo lee."""
+        automatización y plugins; además tempo, compases y marcadores. Solo lee.
+        por_cancion: además, canción por canción, si se corrió el primer audio,
+        la primera nota MIDI, la distancia MIDI−audio, el fin del audio o la
+        primera automatización respecto del marcador (detecta un MIDI que quedó
+        desfasado del audio sin mirar pista por pista)."""
+        from .comun import leer_comun
         from .vistas import comparar, texto_comparacion
-        c = comparar(_existe(antes), _existe(despues))
-        return {"pistas": c["pistas"], "aparecen": len(c["aparecen"]), "desaparecen": len(c["desaparecen"]),
-                "cambian": len(c["cambian"]), "detalle": texto_comparacion(c).splitlines()}
+        ca, cb = leer_comun(_existe(antes)), leer_comun(_existe(despues))
+        c = comparar(ca, cb)
+        out = {"pistas": c["pistas"], "aparecen": len(c["aparecen"]), "desaparecen": len(c["desaparecen"]),
+               "cambian": len(c["cambian"]), "detalle": texto_comparacion(c).splitlines()}
+        if por_cancion:
+            from . import uniones as U
+            out["por_cancion"] = U.texto_comparacion_por_cancion(U.comparar_por_cancion(ca, cb)).splitlines()
+        return out
+
+    @herramienta
+    def uniones(ruta: str, formato: str = "texto") -> dict:
+        """Los bordes entre las canciones de un show: por cada par seguido, dónde
+        termina el último audio de una (y en qué pistas), el marcador de la
+        siguiente, dónde empieza su primer audio, el hueco entre ambos, lo mismo
+        para el MIDI, y el tempo y compás a cada lado; los huecos sin ningún clip
+        y los clips que cruzan un marcador; y por canción, cómo caen el audio, el
+        MIDI y la automatización respecto de su marcador. Es lo que se revisa al
+        cambiar el orden o la separación del show. Solo lee.
+        formato: "texto" (liviano) o "datos" (cada campo)."""
+        from . import uniones as U
+        from .comun import leer_comun
+        c = leer_comun(_existe(ruta))
+        u = U.uniones(c)
+        pc = U.por_cancion(c)
+        if formato == "datos":
+            u["por_cancion"] = pc
+            return u
+        return {"canciones": u["canciones"], "uniones": U.texto(u).splitlines(),
+                "por_cancion": U.texto_por_cancion(pc).splitlines()}
 
     @herramienta
     def leer_sesion(ruta: str, modelo: str = "comun") -> dict:
