@@ -156,6 +156,11 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    rs = sub.add_parser("respaldos", help="respaldos de trarin de una sesión (Session File Backups); con --reemplazar NUEVA deja la nueva en su lugar; con --deshacer vuelve al último")
+    rs.add_argument("sesion")
+    rs.add_argument("--reemplazar", metavar="NUEVA", help="sesión nueva que pasa a ser la de trabajo (la actual se respalda)")
+    rs.add_argument("--motivo", default="")
+    rs.add_argument("--deshacer", nargs="?", const="", metavar="CUAL", help="volver al último respaldo (o al que contenga CUAL)")
     tp = sub.add_parser("tempo", help="propone el tempo de una sesión .ptx midiendo una pista de percusión; con -o escribe una copia con ese tempo")
     tp.add_argument("sesion")
     tp.add_argument("--pista", help="pista de audio a medir (por defecto, la de percusión con más audio)")
@@ -198,6 +203,22 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "respaldos":
+        from . import respaldos as R
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            if a.reemplazar:
+                r = R.reemplazar(a.sesion, a.reemplazar, a.motivo)
+                print(f"{r['sesion']} reemplazada; respaldo {r['respaldo']}")
+            elif a.deshacer is not None:
+                r = R.deshacer(a.sesion, a.deshacer or None)
+                print(f"se volvió a {r['volvio_a']}; lo que había quedó en {r['deshecho']}; quedan {r['quedan']} respaldos")
+            else:
+                print(R.texto(R.listar(a.sesion)))
+        except R.ErrorRespaldo as e:
+            p.error(str(e))
         return
     if a.orden == "tempo":
         from pathlib import Path

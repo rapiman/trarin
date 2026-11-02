@@ -387,6 +387,37 @@ def crear():
                               + " → ".join(x["compas"] for x in c["compas"]) for c in h["canciones"]]
         return out
 
+    # ------------------------------------------------------------ una sola sesión con respaldos
+
+    @herramienta
+    def reemplazar_sesion(sesion: str, nueva: str, motivo: str = "") -> dict:
+        """Deja un cambio en la sesión de trabajo: respalda la sesión vigente en
+        Session File Backups (<nombre>.trarin.<fecha>_<n>.ptx) y pone en su
+        lugar la sesión nueva que escribió otra herramienta (la mueve). Así en
+        la carpeta del show hay un solo archivo de sesión. Anota en las notas.
+        Antes de reemplazar conviene que 'revisar' de la nueva esté sin
+        errores."""
+        from . import respaldos
+        return respaldos.reemplazar(_existe(sesion), _existe(nueva), motivo)
+
+    @herramienta
+    def respaldos_sesion(sesion: str) -> dict:
+        """Los respaldos de trarin de una sesión (Session File Backups), del más
+        nuevo al más viejo, con la nota de lo que se cambió en cada uno. Solo
+        lee."""
+        from . import respaldos
+        lista = respaldos.listar(_existe(sesion))
+        return {"respaldos": lista, "texto": respaldos.texto(lista).splitlines()}
+
+    @herramienta
+    def deshacer(sesion: str, cual: str = "") -> dict:
+        """Vuelve la sesión de trabajo al último respaldo de trarin (o al que
+        contenga 'cual' en el nombre). Lo que había no se pierde: queda como
+        <nombre>.deshecho.<fecha>.ptx en Session File Backups. Anota en las
+        notas."""
+        from . import respaldos
+        return respaldos.deshacer(_existe(sesion), cual or None)
+
     @herramienta
     def revisar(ruta: str) -> dict:
         """Revisión (lint) de una sesión de Pro Tools sin abrirla: errores que
