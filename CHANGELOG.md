@@ -5,6 +5,20 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Nivelar** (`trarin/nivelar.py`): propone el clip gain que deja cada pista a
+  un RMS objetivo (−18 dBFS) por canción sin que el pico pase un tope, y con
+  `parejas` iguala la sonoridad de las canciones a la más fuerte (o a un LUFS
+  dado). Mide con las series de las fichas; no toca faders. Con salida escribe
+  el clip gain de las regiones de esos clips. CLI `trarin nivelar sesion.ptx
+  [--objetivo -18] [--tope-pico -1] [--cancion …] [--pistas …] [--parejas
+  [--lufs X]] [-o …]`; MCP `nivelar`. Probado en el show: los deltas quedan
+  exactos en las regiones (−3,03, +15,5…) y la revisión da limpio.
+- **Clip gain de regiones existentes** (`protools/clip_gain.py`): sumar un
+  delta a una región sobrescribe los float32 de los nodos de su registro en
+  el diccionario `0x2637` (mismo tamaño; una curva se conserva corrida); una
+  región sin registro recibe uno nuevo (un nodo en la muestra 0) y su índice.
+  Dos clips que comparten la región comparten el clip gain, como en Pro Tools.
+  Pendiente: confirmar en Pro Tools que muestra el valor nuevo.
 - **Editar clips por compás** (`trarin/edicion.py`): mover (audio y MIDI, N
   compases —negativo o fraccionario— o segundos), cortar (partir los clips de
   audio que pasan por un compás), silenciar y quitar (los clips dentro de un

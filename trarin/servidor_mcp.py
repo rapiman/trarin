@@ -388,6 +388,29 @@ def crear():
         return out
 
     @herramienta
+    def nivelar(ruta: str, objetivo_db: float = -18.0, tope_pico_db: float = -1.0, cancion: str = "",
+                pistas: str = "", parejas: bool = False, lufs_objetivo: float = 0.0, salida: str = "") -> dict:
+        """Propone el clip gain que deja cada pista de audio a un RMS objetivo
+        (por defecto −18 dBFS) en cada canción, sin que el pico pase
+        'tope_pico_db'; con parejas=True suma además lo que le falta a cada
+        canción para igualar su sonoridad a la más fuerte (o a lufs_objetivo).
+        Mide con las fichas (fichas_calcular antes); no toca faders. pistas:
+        expresión regular. Sin 'salida' solo propone; con 'salida' escribe una
+        copia con el clip gain cambiado en las regiones de esos clips (una curva
+        de clip gain se conserva corrida), la revisa y anota. Bajar lo que pasa
+        0 dBFS: nivelar con el objetivo actual (−18) y el tope del pico."""
+        from . import nivelar as NV
+        plan = NV.planear(_existe(ruta), objetivo_db, tope_pico_db, cancion or None, pistas or None, parejas,
+                          lufs_objetivo if lufs_objetivo else None)
+        out = {"plan": NV.texto(plan).splitlines(), "cambios": plan["cambios"],
+               "filas": [{k: v for k, v in f.items() if k != "ids"} for f in plan["filas"] if f["delta_db"]]}
+        if salida:
+            r = NV.escribir(plan, _salida_nueva(salida))
+            out.update({"escrito": str(_existe(salida)), "regiones": r["regiones"], "verificacion": r["verificacion"],
+                        "avisos": r["avisos"]})
+        return out
+
+    @herramienta
     def editar_clips(ruta: str, accion: str, pista: str, cancion: str = "", desde_compas: int = 0,
                      hasta_compas: int = 0, compas: int = 0, compases: float = 0.0, segundos: float = 0.0,
                      salida: str = "") -> dict:
