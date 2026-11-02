@@ -524,22 +524,63 @@ def _altas_fundidos(d, bloques, geometrias):
     return reemplazos, indices
 
 
-def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
+def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=(), agrupar=(), contenidos=None):
     """nuevos: [(índices de región por canal, muestra)]; borrados: [índice del
     clip]; fundidos: [(índice de geometría, ancla[, canal])] nuevos: sin canal
     (o None) van en todos los canales; con canal (desde 0), solo en ese. Cada colocación es un 0x1050 (con su 0x104F: +18 mute, +20 índice de
     región o de fundido, +25 muestra, relativos al 0x1050; el byte que sigue al
     0x104F vale 1 en un fundido) dentro del 0x1052 de cada canal,
     que lleva la cantidad (u32) tras su nombre. Un clip borrado se lleva sus
-    fundidos de entrada y salida; si tiene un fundido cruzado, da error."""
+    fundidos de entrada y salida; si tiene un fundido cruzado, da error.
+
+    agrupar: [(índices de clip, índice del grupo nuevo por canal)]: esos clips y los
+    fundidos que quedan dentro de su ventana salen de la playlist y en su lugar va una
+    colocación del grupo. En 'contenidos' se agrega, por agrupación y canal,
+    (agrupación, canal, inicio, largo, [bytes de cada 0x1050 con la muestra relativa
+    al inicio, + CERO]): lo que va en la entrada del grupo en el 0x2428."""
     entradas = _entradas_playlist(d, bloques, pista)
     canales = _colocaciones(d, bloques, pista)
     base = canales[0][0]
-    plantilla = _plantilla_colocacion(d, bloques) if nuevos or fundidos else None
+    plantilla = _plantilla_colocacion(d, bloques) if nuevos or fundidos or agrupar else None
+    ventanas = []
+    for js, _ in agrupar:
+        if not js or any(j >= len(base) for j in js):
+            raise ErrorEscritura(f"{pista}: grupo nuevo con clips que no existen: {js}")
+        if any(base[j].get("grupo") for j in js):
+            raise ErrorEscritura(f"{pista}: un grupo nuevo no puede llevar otro grupo adentro")
+        ventanas.append((min(base[j]["muestra"] for j in js), max(base[j]["muestra"] + base[j]["largo"] for j in js)))
+    nuevos = list(nuevos) + [(gis, ini, True) for (_, gis), (ini, _) in zip(agrupar, ventanas)]
     reemplazos = []
     for k, (e, (regs, fun)) in enumerate(zip(entradas, canales)):
         fundidos_k = [(x[0], x[1]) for x in fundidos if len(x) < 3 or x[2] is None or x[2] == k]
         quitar = []
+        for a, ((js, _), (ini, fin)) in enumerate(zip(agrupar, ventanas)):
+            elegidos = []
+            for j in js:
+                ref = base[j]
+                r = next((x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"]), None)
+                if r is None:
+                    raise ErrorEscritura(f"{pista}#{j}: el clip no está igual en todos los canales")
+                elegidos.append(r)
+            # otros clips pueden quedar debajo del grupo (como al agrupar en Pro Tools)
+            dentro = []
+            for f in fun:
+                if f["fin"] <= ini or f["inicio"] >= fin:
+                    continue
+                if f["inicio"] < ini or f["fin"] > fin:
+                    raise ErrorEscritura(f"{pista}: un fundido cruza el borde del grupo nuevo; quitarlo o "
+                                         "agrupar también el clip del otro lado")
+                dentro.append(f)
+            piezas = []
+            for x, es_fundido in [(r, False) for r in elegidos] + [(f, True) for f in dentro]:
+                b = bytearray(d[x["bloque"]:x["fin_bloque"]])
+                rel = (x["ancla"] if es_fundido else x["muestra"]) - ini
+                b[25:30] = (CERO + rel).to_bytes(5, "little")
+                piezas.append((rel, bytes(b), es_fundido))
+                quitar.append((x["bloque"], x["fin_bloque"]))
+            piezas.sort(key=lambda p: (p[0], not p[2]))
+            if contenidos is not None:
+                contenidos.append((a, k, ini, fin - ini, [p[1] for p in piezas]))
         for j in borrados:
             ref = base[j]
             r = next((x for x in regs if x["muestra"] == ref["muestra"] and x["largo"] == ref["largo"]), None)
@@ -626,6 +667,206 @@ def _insertar_ordenado(d, hijos, nuevos, quitar, punto_vacio, contenedor):
         grupos.setdefault(punto, b"")
         grupos[punto] += b
     return [(p, p, b, contenedor) for p, b in grupos.items()]
+
+
+# ------------------------------------------------------ grupos de clips nuevos
+
+def _bloque(tipo_cabecera, contenido):
+    """Bloque con su cabecera: 5A, u16 tipo de bloque, u32 tamaño del contenido."""
+    return b"\x5a" + struct.pack("<HI", tipo_cabecera, len(contenido)) + contenido
+
+
+def _ancho(v):
+    return (v.bit_length() + 7) // 8
+
+
+def _bytes_262b(nombre, largo, inicio, muestra, id_instancia, nombre_registro, canal=None):
+    """Un 0x262B (grupo dueño de su contenido) como lo escribe Pro Tools al agrupar
+    (oráculo: «2 grupo en Bombo.ptx»). 0x2628 como una región: nombre, byte 0 (dueño),
+    anchos en nibbles (desplazamiento 5, largo, inicio y otra vez el inicio, 8 bytes
+    FF), CERO + desplazamiento 0, largo, inicio original (inicio de la sesión +
+    muestra) dos veces, cola fija, una instancia 0x2523 y el índice de clip gain (−1).
+    La instancia: muestra en la línea de tiempo, id correlativo en toda la lista,
+    CERO, CERO + largo, muestra + largo y padre FFFFFFFF (está en una pista). Cola
+    del 0x262B: índice de su registro de nombre (0x2423); el canal R de un grupo
+    estéreo lleva además dos marcas en 1."""
+    nb = nombre.encode("utf-8")
+    wl, wi = _ancho(largo), _ancho(inicio)
+    inst = (b"\x23\x25" + _bloque(2, b"\x26\x25" + bytes(12))
+            + struct.pack("<QIII", muestra, 0xFFFFFFFF, 0, id_instancia) + bytes(8)
+            + struct.pack("<QQQI", CERO, CERO + largo, muestra + largo, 0xFFFFFFFF) + bytes(9))
+    c2628 = (b"\x28\x26" + struct.pack("<I", len(nb)) + nb
+             + bytes([0, 0x50, wl << 4, (wi << 4) | wi, 0x08])
+             + CERO.to_bytes(5, "little") + largo.to_bytes(wl, "little")
+             + inicio.to_bytes(wi, "little") * 2 + b"\xff" * 8
+             + bytes.fromhex("feff00000000ffff04000400") + struct.pack("<I", 1)
+             + _bloque(9, inst) + bytes(17) + b"\xff\xff\xff\xff")
+    cola = bytearray(9)
+    struct.pack_into("<I", cola, 1, nombre_registro)
+    if canal == 1:
+        cola[5] = cola[7] = 1
+    return _bloque(1, b"\x2b\x26" + _bloque(1, c2628) + bytes(cola))
+
+
+def _bytes_entrada_grupo(piezas):
+    """Entrada 0x1052 del 0x2428 con el contenido de un grupo: nombre «?», cantidad
+    y las colocaciones (0x1050) ordenadas por muestra."""
+    return _bloque(3, b"\x52\x10" + struct.pack("<I", 1) + b"?" + struct.pack("<I", len(piezas))
+                   + b"".join(piezas) + b"\x01\x00")
+
+
+def _serie_volumen(d, bloques, letra):
+    """Número de serie del volumen 'letra' (p. ej. «D:») según la lista de volúmenes
+    de la sesión (0x0F3C: nombre, serie u32, raíz); 0 si no está."""
+    for b in buscar(bloques, 0x0F3C):
+        try:
+            nombre, j = P._cadena(d, b.inicio + 2)
+        except Exception:
+            continue
+        if nombre.lower() == letra.lower() and j + 4 <= b.fin:
+            return d[j:j + 4]
+    return bytes(4)
+
+
+def _bytes_origen_grupo(indices, ruta_sesion, serie):
+    """0x2425: los grupos creados de una vez (u8 0 + u32 índice cada uno) y la ruta de
+    la sesión donde se crearon (u32 cantidad de partes y cada parte como cadena: «d:\\»,
+    carpetas, archivo), la serie del volumen y 6 ceros."""
+    partes = str(ruta_sesion).replace("/", "\\").split("\\")
+    partes = [partes[0].lower() + "\\"] + [x for x in partes[1:] if x]
+    cuerpo = (b"\x25\x24" + struct.pack("<I", len(indices)) + b"".join(b"\0" + struct.pack("<I", i) for i in indices)
+              + struct.pack("<I", len(partes))
+              + b"".join(struct.pack("<I", len(x.encode("utf-8"))) + x.encode("utf-8") for x in partes)
+              + serie + bytes(6))
+    return _bloque(2, cuerpo)
+
+
+def _bytes_nombre_grupo(nombre, origen, estereo):
+    nb = nombre.encode("utf-8")
+    return _bloque(2, b"\x23\x24" + struct.pack("<II", origen, len(nb)) + nb + bytes([1 if estereo else 0, 0, 0]))
+
+
+def _lista_con_hijos(d, b, tipo_hijo, nuevos):
+    """Reemplazos para sumar bloques al final de una lista «u16 tipo, u32 cantidad, hijos»."""
+    hijos = [h for h in b.hijos if h.tipo_contenido == tipo_hijo]
+    n = struct.unpack_from("<I", d, b.inicio + 2)[0]
+    if n != len(hijos):
+        raise ErrorEscritura(f"lista {b.tipo_contenido:#06x} no reconocida")
+    punto = hijos[-1].fin if hijos else b.inicio + 6
+    return [(b.inicio + 2, b.inicio + 6, struct.pack("<I", n + len(nuevos))),
+            (punto, punto, b"".join(nuevos), b.pos)]
+
+
+def _inicio_sesion(d, bloques):
+    """Inicio de la sesión en muestras (timecode de inicio a la cadencia nominal)."""
+    from .sesion import _NOMINAL, _frecuencia
+    b = next(iter(buscar(bloques, 0x204D)), None)
+    fs = _frecuencia(d, bloques)
+    if not b or not fs or b.fin - (b.inicio + 2) < 13:
+        return 0
+    nominal = _NOMINAL.get(d[b.inicio + 2])
+    if not nominal:
+        return 0
+    return struct.unpack_from("<I", d, b.inicio + 2 + 9)[0] * fs // nominal
+
+
+def _plan_grupos(d, bloques, grupos_nuevos):
+    """{pista: [{"nombre"?, "clips": [índices]}]} → lista de grupos a crear, con el
+    índice del grupo de cada canal (al final de la lista 0x262C, en orden)."""
+    lista = _primero(bloques, 0x262C)
+    if lista is None or _primero(bloques, 0x2428) is None:
+        raise ErrorEscritura("la sesión no tiene las listas de grupos de clips (0x262C, 0x2428)")
+    existentes = P.leer_grupos_clips(d, bloques)
+    usados = {g["nombre"] for g in existentes}
+    siguiente = len(existentes)
+    plan = []
+    vistos = set()
+    for pista, pedidos in grupos_nuevos.items():
+        canales = len(_entradas_playlist(d, bloques, pista))
+        if canales not in (1, 2):
+            raise ErrorEscritura(f"{pista}: grupos nuevos solo en pistas mono o estéreo")
+        for p in pedidos:
+            js = [int(j) for j in p["clips"]]
+            if len(set(js)) != len(js) or any((pista, j) in vistos for j in js):
+                raise ErrorEscritura(f"{pista}: un clip va en más de un grupo nuevo")
+            vistos.update((pista, j) for j in js)
+            base = p.get("nombre") or f"{pista}.grp"
+            nombre, n = base, 1
+            while nombre in usados or (canales == 2 and (nombre + ".L" in usados or nombre + ".R" in usados)):
+                nombre, n = f"{base}-{n:02d}", n + 1
+            usados.add(nombre)
+            nombres = [nombre] if canales == 1 else [nombre + ".L", nombre + ".R"]
+            usados.update(nombres)
+            plan.append({"pista": pista, "clips": js, "nombre": nombre, "nombres": nombres,
+                         "indices": list(range(siguiente, siguiente + canales))})
+            siguiente += canales
+    return plan
+
+
+def _altas_grupos(d, bloques, plan, contenidos, ruta_sesion):
+    """Reemplazos de los grupos nuevos fuera de las playlists: 0x262B en el 0x262C,
+    entradas 0x1052 en el 0x1054 del 0x2428, nombres (0x2423 en el 0x2424) y origen
+    (0x2425 en el 0x2426). contenidos: {(i del plan, canal): (inicio, largo, piezas)}."""
+    lista = _primero(bloques, 0x262C)
+    b2428 = _primero(bloques, 0x2428)
+    mapa = next((h for h in b2428.hijos if h.tipo_contenido == 0x1054), None)
+    b2424, b2426 = _primero(bloques, 0x2424), _primero(bloques, 0x2426)
+    if mapa is None or b2424 is None or b2426 is None:
+        raise ErrorEscritura("la sesión no tiene las listas de grupos de clips (0x1054 del 0x2428, 0x2424, 0x2426)")
+    id_inst = sum(1 for g in lista.hijos for h in g.hijos for x in h.hijos if x.tipo_contenido == 0x2523)
+    n_nombres = struct.unpack_from("<I", d, b2424.inicio + 2)[0]
+    n_origen = struct.unpack_from("<I", d, b2426.inicio + 2)[0]
+    inicio_sesion = _inicio_sesion(d, bloques)
+    letra = str(ruta_sesion).replace("/", "\\").split("\\")[0]
+    serie = _serie_volumen(d, bloques, letra)
+    b262b, b1052, b2423, b2425 = [], [], [], []
+    for i, g in enumerate(plan):
+        estereo = len(g["indices"]) == 2
+        for k, nombre in enumerate(g["nombres"]):
+            ini, largo, piezas = contenidos[(i, k)]
+            b262b.append(_bytes_262b(nombre, largo, inicio_sesion + ini, ini, id_inst, n_nombres + i,
+                                     canal=k if estereo else None))
+            id_inst += 1
+            b1052.append(_bytes_entrada_grupo(piezas))
+        b2423.append(_bytes_nombre_grupo(g["nombre"], n_origen + i, estereo))
+        b2425.append(_bytes_origen_grupo(g["indices"], ruta_sesion, serie))
+    return (_lista_con_hijos(d, lista, 0x262B, b262b) + _lista_con_hijos(d, mapa, 0x1052, b1052)
+            + _lista_con_hijos(d, b2424, 0x2423, b2423) + _lista_con_hijos(d, b2426, 0x2425, b2425))
+
+
+def _indice_grupos(d, n_entradas, n_nombres, n_origen):
+    """Suma al índice 0x0002 las posiciones de los bloques nuevos de las listas que el
+    índice recorre hijo por hijo: el 0x1054 del 0x2428 (entradas 0x1052), el 0x2424
+    (0x2423) y el 0x2426 (0x2425). La del 0x262C solo apunta a la lista."""
+    from .indice import Grupo, escribir_indice, leer_indice
+    bloques = arbol(d)
+    final = bloques[-1]
+    entradas, resto = leer_indice(d[final.inicio:final.fin])
+    b2428 = _primero(bloques, 0x2428)
+    listas = {(0x2428, 0x1054): (next(h for h in b2428.hijos if h.tipo_contenido == 0x1054), 0x1052, n_entradas),
+              (0x2424,): (_primero(bloques, 0x2424), 0x2423, n_nombres),
+              (0x2426,): (_primero(bloques, 0x2426), 0x2425, n_origen)}
+    hechas = set()
+    for e in entradas:
+        clave = tuple(s.tipo for s in e.camino)
+        if clave not in listas or clave in hechas:
+            continue
+        b, tipo, n = listas[clave]
+        if not n:
+            hechas.add(clave)
+            continue
+        hijos = [h for h in b.hijos if h.tipo_contenido == tipo]
+        if (not e.grupos or e.grupos[0].posiciones != [b.pos] or len(e.grupos) != 1 + len(hijos) - n
+                or any(len(g.posiciones) != 1 for g in e.grupos)):
+            raise ErrorEscritura(f"índice no reconocido para la lista {b.tipo_contenido:#06x}")
+        e.grupos += [Grupo([h.pos]) for h in hijos[-n:]]
+        hechas.add(clave)
+    if len(hechas) != len(listas):
+        raise ErrorEscritura(f"índice no reconocido (faltan las listas {set(listas) - hechas})")
+    nuevo = escribir_indice(entradas, resto)
+    out = bytearray(d[:final.inicio]) + nuevo
+    struct.pack_into("<I", out, final.pos + 3, len(nuevo))
+    return bytes(out)
 
 
 # ------------------------------------------------- archivos y regiones nuevas
@@ -1271,7 +1512,7 @@ def _cambios_compases(d, bloques, compases):
 def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=None, tempo=None, midi=None,
                      marcadores_nuevos=None, marcadores_borrados=None, nombres=None, compases=None,
                      notas=None, clips_nuevos=None, clips_borrados=None, archivos_nuevos=None,
-                     regiones_nuevas=None, midi_nuevos=None, fundidos_nuevos=None):
+                     regiones_nuevas=None, midi_nuevos=None, fundidos_nuevos=None, grupos_nuevos=None):
     """mezcla: {índice de pista: (nombre, {"volumen_db", "paneo", "mute"})}.
     regiones: {nombre de playlist: {índice de clip: {"muestra", "mute"}}}.
     marcadores: {número: {"nombre", "tick", "fin_tick"}}.
@@ -1280,6 +1521,8 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
     fundidos_nuevos: {pista: [{"tipo", "pre_roll", "muestras", "pendiente",
     curvas, "muestra"[, "canal"]}]} (muestra = inicio del fundido; ancla = muestra + pre_roll;
     canal: desde 0, solo en ese canal de la pista; sin canal, en todos).
+    grupos_nuevos: {pista: [{"clips": [índices de clip], "nombre"?}]}: agrupa esos
+    clips (Clip > Group de Pro Tools); un grupo por canal en estéreo.
     Escribe una copia cifrada en 'salida' (que no debe existir)."""
     salida = Path(salida)
     if salida.exists():
@@ -1324,11 +1567,23 @@ def escribir_cambios(plantilla, salida, mezcla=None, regiones=None, marcadores=N
         reemplazos += r
         for (pista, f), k in zip(todos, indices):
             por_pista.setdefault(pista, []).append((k, int(f["muestra"]) + int(f["pre_roll"]), f.get("canal")))
-    for pista in set(clips_nuevos or {}) | set(clips_borrados or {}) | set(por_pista):
+    plan = _plan_grupos(d, bloques, grupos_nuevos) if grupos_nuevos else []
+    contenidos = {}
+    for pista in set(clips_nuevos or {}) | set(clips_borrados or {}) | set(por_pista) | {g["pista"] for g in plan}:
+        mios = [(i, g) for i, g in enumerate(plan) if g["pista"] == pista]
+        sueltos = []
         reemplazos += _altas_bajas_clips(d, bloques, pista, (clips_nuevos or {}).get(pista, []),
-                                         (clips_borrados or {}).get(pista, []), por_pista.get(pista, []))
+                                         (clips_borrados or {}).get(pista, []), por_pista.get(pista, []),
+                                         agrupar=[(g["clips"], g["indices"]) for _, g in mios], contenidos=sueltos)
+        for a, k, ini, largo, piezas in sueltos:
+            contenidos[(mios[a][0], k)] = (ini, largo, piezas)
+    if plan:
+        reemplazos += _altas_grupos(d, bloques, plan, contenidos, salida.resolve())
     if marcadores_nuevos or marcadores_borrados:
         reemplazos += _altas_bajas_marcadores(d, bloques, marcadores_nuevos or [], marcadores_borrados or [])
     nuevo = reconstruir(bytes(nuevo), reemplazos) if reemplazos else bytes(nuevo)
+    if plan:
+        canales = sum(len(g["indices"]) for g in plan)
+        nuevo = _indice_grupos(nuevo, canales, len(plan), len(plan))
     salida.write_bytes(cifrar(nuevo))
     return salida

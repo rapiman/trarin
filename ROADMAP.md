@@ -161,7 +161,9 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   RAPIZUAM eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
   trarin lee el contenido de los grupos y sus fundidos (ver `docs/formato_ptx.md` 6.x).
   ✅ Duplicar o mover grupos al escribir, verificado en Pro Tools (abre, muestra y guarda
-  igual). Crear grupos nuevos (agrupar) no está previsto.
+  igual). ✅ Crear grupos nuevos (agrupar clips, mono y estéreo) contra el oráculo
+  `PRUEBA_crear_grupo.ptx`; pendiente: agrupar a través de un fundido que cruza el borde
+  (Pro Tools recorta el clip y crea regiones) y grupos dentro de grupos.
 
 ## Rendimiento
 
