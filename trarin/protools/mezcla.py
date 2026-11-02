@@ -35,6 +35,7 @@ de 32 bytes y los datos. Tipos vistos:
 import struct
 
 from .bloques import buscar
+from .tiempo import CERO
 
 
 def _cadena(d, p):
@@ -63,11 +64,19 @@ def _plugins_sesion(d, bloques):
 
 
 def _lista_auto(d, b):
+    """[[posición, valor]] de un 0x260A: el primer punto con u64 en +20 (en una lista en
+    ticks, byte +10 en 1, es CERO + tick) y valor en +28; los demás, u32 y valor."""
     p = b.inicio
     n = struct.unpack_from("<I", d, p + 12)[0]
     ancho = struct.unpack_from("<H", d, p + 16)[0]
-    q, puntos = p + 24, []
-    for _ in range(n):
+    if n == 0:
+        return []
+    t0 = struct.unpack_from("<Q", d, p + 20)[0]
+    if d[p + 10] == 1 and t0 >= CERO:
+        t0 -= CERO
+    puntos = [[t0, int.from_bytes(d[p + 28:p + 28 + ancho], "little", signed=True)]]
+    q = p + 28 + ancho
+    for _ in range(n - 1):
         pos = struct.unpack_from("<I", d, q)[0]
         val = int.from_bytes(d[q + 4:q + 4 + ancho], "little", signed=True)
         puntos.append([pos, val])

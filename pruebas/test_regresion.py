@@ -30,7 +30,7 @@ VACIAS = ["trarin_vacia_44k.ptx", "trarin_vacia_48k.ptx", "trarin_vacia_96k.ptx"
 TODAS = VACIAS + ["trarin_pistas_48k.ptx", "PRUEBA_una_nota_vacia.ptx", "PRUEBA_una_nota.ptx",
                   "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx", "PRUEBA_grupos.ptx",
                   "PRUEBA_crear_grupo_antes.ptx", "PRUEBA_crear_grupo.ptx",
-                  "PRUEBA_instrumento_antes.ptx", "PRUEBA_instrumento.ptx"]
+                  "PRUEBA_instrumento_antes.ptx", "PRUEBA_instrumento.ptx", "PRUEBA_auto_instrumento.ptx"]
 
 
 def _sin_ids(comun):
@@ -371,6 +371,52 @@ class PistasDeInstrumento(Base):
         q = [p for p in leer_comun(s)["pistas"] if p["tipo"] == "instrumento"]
         self.assertEqual([(p["nombre"], p["mezcla"]["volumen_db"], p["clips"]) for p in q],
                          [("Inst 1", 0.0, []), ("Inst 2", -6.0, [])])
+
+
+class AutomatizacionInstrumento(Base):
+    """Oráculo PRUEBA_auto_instrumento.ptx: PRUEBA_crear_grupo_antes.ptx con volumen, mute
+    y paneo automatizados en Pro Tools en el fader de «MIDI Out» (pista de instrumento).
+    Esas listas van en ticks (byte +10 del 0x260A en 1; el primer punto, CERO + tick)."""
+    ANTES = str(SESIONES / "PRUEBA_crear_grupo_antes.ptx")
+    ORACULO = str(SESIONES / "PRUEBA_auto_instrumento.ptx")
+
+    @staticmethod
+    def _listas(d):
+        from trarin.protools.bloques import arbol
+        from trarin.protools.ruteo import _canal
+        sb = _canal(d, arbol(d), "MIDI Out")
+        f = next(h for h in sb.hijos if h.tipo_contenido == 0x260D)
+        out = [h for h in f.hijos if h.tipo_contenido == 0x260A]
+        out += [k for h in f.hijos if h.tipo_contenido == 0x260C for k in h.hijos if k.tipo_contenido == 0x260A]
+        return [bytes(d[b.inicio:b.fin]) for b in out]
+
+    def test_listas_como_pro_tools(self):
+        from trarin.protools import leer
+        from trarin.protools.descifrado import leer_descifrado
+        from trarin.protools.ruteo import escribir_automatizacion
+        auto = next(m for m in leer(self.ORACULO)["mezcla"] if m.get("nombre") == "MIDI Out")["automatizacion"]
+        self.assertEqual(auto["volumen_db"][1], {"muestra": 125280000, "valor": 0.0})       # ticks
+        d = escribir_automatizacion(leer_descifrado(self.ANTES), "MIDI Out", auto)
+        self.assertEqual(self._listas(d), self._listas(leer_descifrado(self.ORACULO)))
+
+    def test_modelo_en_muestras(self):
+        """En el modelo común va en muestras; escrita de vuelta cae a menos de 10 ticks."""
+        from trarin.comun import leer_comun, aplicar
+        from trarin.protools import leer
+        c = leer_comun(self.ORACULO)
+        auto = next(p for p in c["pistas"] if p["nombre"] == "MIDI Out")["automatizacion"]
+        self.assertEqual(auto["volumen_db"][2]["valor"], -144.0)
+        self.assertEqual(auto["volumen_db"][1]["muestra"], 11823702)          # 123,16 s a 96 kHz
+        c2 = leer_comun(self.ANTES)
+        next(p for p in c2["pistas"] if p["nombre"] == "MIDI Out")["automatizacion"] = auto
+        s = self.salida("auto_inst.ptx")
+        aplicar(c2, self.ANTES, s)
+        crudo = lambda r: next(m for m in leer(r)["mezcla"] if m.get("nombre") == "MIDI Out")["automatizacion"]
+        a, b = crudo(s), crudo(self.ORACULO)
+        self.assertEqual(sorted(a), sorted(b))
+        for k in b:
+            self.assertEqual([x["valor"] for x in a[k]], [x["valor"] for x in b[k]])
+            self.assertTrue(all(abs(x["muestra"] - y["muestra"]) < 10 for x, y in zip(a[k], b[k])), k)
 
 
 class SalidasMidi(Base):

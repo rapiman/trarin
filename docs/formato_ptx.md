@@ -602,9 +602,15 @@ corpus de 145 sesiones]:
   envío, u16 lugar (0 = A) y su `0x260D`. Cada fader: `0x1029` (valores), `0x260E` (destino: u16
   clase 0x13 salida, 0x43 bus, FFFF ninguno; `01 01`, u32 0, `2A000000` e identificador; ceros;
   u32 largo, nombre y `01`) y listas de automatización `0x260A` (el paneo, dentro de `0x260C`).
-- `0x260A`: `0A26 01 4601 00`, u32 largo desde +12, `0000`, u32 cantidad de puntos (+12), u16 ancho
-  del valor (+16; 2 en todo el corpus), u32 cantidad − 1 (+18), `0000`; desde +24 los puntos (u32
-  muestra y valor) y 2 bytes al final. Las muestras son de la línea de tiempo de la sesión. El
+- `0x260A`: `0A26 01 4601 00`, u32 largo desde +12, u8 base de tiempo (+10: 0 muestras, 1 ticks),
+  `00`, u32 cantidad de puntos (+12), u16 ancho del valor (+16; 2 en todo el corpus), u16 cantidad − 1
+  (+18), u64 posición del primer punto (+20) y su valor (+28); cada punto siguiente, u32 posición y
+  valor; 2 bytes al final [verificado 2026-11-02: oráculo `PRUEBA_auto_instrumento.ptx`, trarin
+  escribe las listas igual byte a byte]. El fader de una pista de instrumento (`0x2621`) va en
+  **ticks**: el primer punto es CERO + tick (por eso, leído como u32 en +24, parecía «232», la mitad
+  alta de 10^12) y los demás, ticks sin CERO. En el modelo común trarin la pasa a muestras con el
+  mapa de tempo. Pendiente: el armador de shows corre estas listas como si fueran muestras.
+  Las muestras son de la línea de tiempo de la sesión. El
   primer punto va en la muestra 0: una lista que empieza después Pro Tools la descarta al abrir y
   deja solo su primer valor [verificado en Pro Tools 12 con un show: corrida y con el primer valor
   en 0, la automatización sobrevive a guardar de nuevo].
