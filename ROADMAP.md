@@ -172,6 +172,8 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   en lote; lectura con el mapa de tempo preparado y descifrado de una vez (leer el show: de
   8,7 s a 1,1 s; consolidar: de 6,7 min a menos de 2).
 - ✅ Armador de shows en lotes: el show RAPIZUAM de 132 s a 53 s, mismos bytes.
+- ✅ Caché del modelo común en disco (`~/.trarin/cache`, llave ruta + fecha + tamaño): leer el
+  show de 0,45 s a 0,04 s en las llamadas repetidas del MCP.
 
 ## Conversión entre programas
 

@@ -43,7 +43,18 @@ def leer_nativo(ruta):
 
 
 def leer_comun(ruta):
-    return a_comun(leer_nativo(ruta))
+    """El modelo común de una sesión. Pasa por una caché en disco (~/.trarin/cache)
+    con llave ruta + fecha + tamaño del archivo: leer el show RAPIZUAM baja de
+    0,55 s a 0,03 s, y cada herramienta MCP lo lee de nuevo en cada llamada.
+    Cada lectura devuelve un objeto nuevo (se puede editar sin ensuciar la
+    caché). TRARIN_SIN_CACHE=1 la desactiva."""
+    from . import cache
+    c = cache.leer(ruta, "comun")
+    if c is not None:
+        return c
+    c = a_comun(leer_nativo(ruta))
+    cache.guardar(ruta, "comun", c)
+    return c
 
 
 def a_comun(n):

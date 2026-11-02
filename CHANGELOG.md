@@ -5,6 +5,12 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Caché del modelo común** (`trarin/cache.py`): `leer_comun` guarda el modelo
+  en `~/.trarin/cache` (o `TRARIN_CACHE`) con llave ruta + fecha + tamaño del
+  archivo; leer el show pasa de 0,45 s a 0,04 s, y cada herramienta MCP lo
+  lee de nuevo en cada llamada. Cada lectura devuelve un objeto nuevo, idéntico
+  al leído sin caché (verificado). Se poda sola a 200 archivos;
+  `TRARIN_SIN_CACHE=1` la desactiva; `cache.vaciar()` la borra.
 - **Tempo propuesto desde la percusión**: `trarin/tempo_propuesto.py`
   (`proponer`, `escribir`, `texto`). Mide con el detector de bpm el clip más
   largo de una pista de percusión (la indicada o la de kultrun/bombo con más
