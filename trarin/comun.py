@@ -403,7 +403,9 @@ def _a_protools(comun, original, nativo, plantilla, salida):
         compases = [{k: c[k] for k in ("tick", "numerador", "denominador")} for c in comun["compases"]]
     tempo = None
     if [_sin(x) for x in comun["tempo"]] != [_sin(x) for x in original["tempo"]]:
-        tempo = [{"tick": t["tick"], "bpm": t["bpm"]} for t in comun["tempo"]]
+        tempo = [{"tick": t["tick"], "bpm": t["bpm"],
+                  **({"inicio_segundos": t["inicio_segundos"]} if t.get("inicio_segundos") else {})}
+                 for t in comun["tempo"]]
         if tempo[0]["tick"] != 0:
             raise ErrorComun("Pro Tools: el primer tempo debe estar en el tick 0")
     marcadores, altas, bajas = _cambios_marcadores_pt(comun["marcadores"], original["marcadores"])

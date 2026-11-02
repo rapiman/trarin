@@ -5,6 +5,21 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-01
 
+- **Tempo propuesto desde la percusión**: `trarin/tempo_propuesto.py`
+  (`proponer`, `escribir`, `texto`). Mide con el detector de bpm el clip más
+  largo de una pista de percusión (la indicada o la de kultrun/bombo con más
+  audio en la ventana) y devuelve bpm, confianza, acento, tempo por tramos,
+  dónde cae el primer pulso en la sesión, a cuántos ms del pulso cae la negra
+  más cercana de la grilla actual y si la grilla actual es el mismo pulso
+  contado distinto (en el show, 95 bpm = 126,67 × 3/4; en Eluwün, 33,75 = 45 ×
+  3/4). Propone: en una sesión suelta, un tempo único con el tick 0 en un
+  pulso (ancla); en un show o con 'cancion', un cambio de tempo en el pulso
+  más cercano de la grilla actual. Con salida, escribe la copia por el modelo
+  común y la revisa (probado: la sesión escrita lee el tempo y el ancla
+  propuestos). CLI `trarin tempo sesion.ptx [--pista …] [--cancion …] [-o …]`;
+  MCP `proponer_tempo`.
+- `comun.aplicar`: conserva `inicio_segundos` del modelo al escribir el tempo
+  (antes lo descartaba y el ancla quedaba en 0).
 - **Hoja del show (fase 5)**: `trarin/hoja.py` (`hoja`, `markdown`, `escribir`).
   Por canción: orden, inicio, duración y compases, tempo con sus cambios (las
   rampas de muchos eventos resumidas en «de X a Y entre t1 y t2», partidas

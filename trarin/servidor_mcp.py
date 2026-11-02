@@ -684,6 +684,27 @@ def crear():
     # ------------------------------------------------------------ audio
 
     @herramienta
+    def proponer_tempo(ruta: str, pista: str = "", cancion: str = "", salida: str = "",
+                       minimo: float = 40.0, maximo: float = 200.0) -> dict:
+        """Propone el tempo de una sesión de Pro Tools midiendo una pista de
+        percusión (la indicada o, por defecto, la de kultrun/bombo con más
+        audio): bpm, confianza, acento, tempo por tramos, dónde cae el primer
+        pulso, a cuántos ms del pulso cae la negra más cercana de la grilla
+        actual y si la grilla actual es el mismo pulso contado distinto (95 =
+        126,67 × 3/4). En una sesión suelta propone un tempo único con el tick
+        0 en un pulso (ancla); en un show o con 'cancion', un cambio de tempo en
+        el pulso más cercano de la grilla actual. Solo propone; con 'salida'
+        escribe una copia con ese tempo y la revisa."""
+        from . import tempo_propuesto as TP
+        r = TP.proponer(_existe(ruta), pista or None, cancion or None, None, None, minimo, maximo)
+        out = {k: v for k, v in r.items() if k not in ("candidatos",)}
+        out["texto"] = TP.texto(r).splitlines()
+        if salida:
+            out["escrito"] = str(_salida_nueva(salida))
+            out["verificacion"] = TP.escribir(r, out["escrito"])["verificacion"]
+        return out
+
+    @herramienta
     def medir_bpm(audios: list[str], minimo: float = 60, maximo: float = 200) -> dict:
         """Calcula el tempo de uno o más WAV (mejor una pista de percusión, como
         el bombo): pulso, primer pulso y tempo por tramos. Corre como trabajo."""

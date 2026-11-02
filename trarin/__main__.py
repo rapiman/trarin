@@ -156,6 +156,16 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    tp = sub.add_parser("tempo", help="propone el tempo de una sesión .ptx midiendo una pista de percusión; con -o escribe una copia con ese tempo")
+    tp.add_argument("sesion")
+    tp.add_argument("--pista", help="pista de audio a medir (por defecto, la de percusión con más audio)")
+    tp.add_argument("--cancion")
+    tp.add_argument("--desde", type=float, help="segundo de la sesión desde el que se busca el clip")
+    tp.add_argument("--hasta", type=float)
+    tp.add_argument("--minimo", type=float, default=40.0)
+    tp.add_argument("--maximo", type=float, default=200.0)
+    tp.add_argument("-o", "--salida", help="sesión .ptx nueva con el tempo propuesto")
+    tp.add_argument("--json", action="store_true")
     ho = sub.add_parser("hoja", help="hoja del show para los músicos (Markdown): orden, inicio, duración, tempo, compás, secciones y dónde entra cada pista (solo lee)")
     ho.add_argument("sesion")
     ho.add_argument("-o", "--salida", help="archivo .md (por omisión trarin/hoja_del_show.md junto a la sesión)")
@@ -188,6 +198,22 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "tempo":
+        from pathlib import Path
+        from . import tempo_propuesto as TP
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            r = TP.proponer(a.sesion, a.pista, a.cancion, a.desde, a.hasta, a.minimo, a.maximo)
+        except ValueError as e:
+            p.error(str(e))
+        print(json.dumps(r, ensure_ascii=False, indent=2) if a.json else TP.texto(r))
+        if a.salida:
+            if Path(a.salida).exists():
+                p.error(f"{a.salida} ya existe")
+            v = TP.escribir(r, a.salida)
+            print(f"escrito {a.salida}; " + (v["verificacion"].get("texto") or ""))
         return
     if a.orden == "hoja":
         from . import hoja as H

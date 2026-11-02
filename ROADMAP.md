@@ -207,5 +207,7 @@ Preguntas abiertas antes de construir:
 
 - ✅ Detector de bpm (`trarin bpm`) y conversor de frecuencia (`trarin convertir-audio`).
 - ✅ Medición de RMS por tramos con sonido (en `consolidar`).
-- Pendiente: usar el detector para proponer el tempo de una sesión (grilla de Pro
-  Tools alineada al primer pulso).
+- ✅ Proponer el tempo de una sesión con el detector (`proponer_tempo`): grilla alineada al
+  primer pulso por el ancla; en un show, cambio de tempo en el pulso más cercano. Pendiente:
+  abrir en Pro Tools una sesión escrita con el tempo propuesto y confirmar que la grilla cae
+  en los golpes.
