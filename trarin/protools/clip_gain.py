@@ -52,6 +52,7 @@ def cambiar(d, deltas):
     n_dic = len(registros)
     reemplazos, nuevos, resultado = [], b"", {}
     agregados = 0
+    tocados = {}  # registro del diccionario -> (delta ya aplicado, primer nodo resultante)
     for indice, delta in sorted(deltas.items()):
         if not 0 <= indice < len(regiones):
             raise ValueError(f"no existe la región {indice}")
@@ -60,7 +61,24 @@ def cambiar(d, deltas):
         if pos_idx is None:
             raise ValueError(f"la región {indice} no tiene el campo de clip gain")
         idx = struct.unpack_from("<i", d, pos_idx)[0]
-        if 0 <= idx < n_dic:
+        if 0 <= idx < n_dic and idx in tocados and abs(tocados[idx][0] - delta) < 0.005:
+            # varias regiones comparten el registro: ya quedó corrido con este delta
+            resultado[indice] = tocados[idx][1]
+        elif 0 <= idx < n_dic and idx in tocados:
+            # mismo registro con otro delta: se le da a esta región una copia nueva
+            _, cant, p0 = registros[idx]
+            nodos, primero = b"", None
+            for j in range(cant):
+                muestra, db = struct.unpack_from("<If", d, p0 + 8 * j)
+                nuevo = min(max(db + delta, -144.0), 36.0)
+                primero = nuevo if primero is None else primero
+                nodos += struct.pack("<If", muestra, nuevo)
+            nuevos += (b"\x01\x46\x01\x00" + struct.pack("<I", 14 + 8 * cant) + b"\0\0" + struct.pack("<I", cant)
+                       + b"\x04\x00" + struct.pack("<HI", 0, 0) + nodos)
+            reemplazos.append((pos_idx, pos_idx + 4, struct.pack("<i", n_dic + agregados)))
+            agregados += 1
+            resultado[indice] = round(primero, 2)
+        elif 0 <= idx < n_dic:
             _, cant, p0 = registros[idx]
             primero = None
             for j in range(cant):
@@ -69,6 +87,7 @@ def cambiar(d, deltas):
                 primero = nuevo if primero is None else primero
                 reemplazos.append((p0 + 8 * j + 4, p0 + 8 * j + 8, struct.pack("<f", nuevo)))
             resultado[indice] = round(primero, 2)
+            tocados[idx] = (delta, resultado[indice])
         else:
             nuevo = min(max(delta, -144.0), 36.0)
             nuevos += (b"\x01\x46\x01\x00" + struct.pack("<I", 22) + b"\0\0" + struct.pack("<I", 1) + b"\x04\x00"

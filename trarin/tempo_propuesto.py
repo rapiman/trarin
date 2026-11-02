@@ -102,6 +102,22 @@ def proponer(sesion, pista=None, cancion=None, desde_s=None, hasta_s=None, minim
         out["propuesta"] = {"tipo": "cambio de tempo en el pulso más cercano de la grilla actual",
                             "tick": int(cerca), "en_s": round(T.segundos(cerca, mapa), 4), "bpm": m["bpm"],
                             "nota": "no se mueve el tick 0; desde ese pulso la grilla sigue a este bpm"}
+        if abs(desvio_ms) > 15:
+            # un «puente»: desde la negra anterior al pulso, un tempo que dura justo hasta el pulso,
+            # así la negra siguiente cae EN el golpe y desde ahí sigue el bpm medido
+            previo = tk - resto
+            delta = pulso - T.segundos(previo, mapa)
+            negras = 1
+            while delta < 0.1 and previo - T.TICKS_NEGRA >= 0:
+                previo -= T.TICKS_NEGRA
+                delta = pulso - T.segundos(previo, mapa)
+                negras += 1
+            if delta > 0.05:
+                out["propuesta"] = {"tipo": "puente de una negra y cambio de tempo en el golpe",
+                                    "tick": int(previo + negras * T.TICKS_NEGRA), "en_s": round(pulso, 4), "bpm": m["bpm"],
+                                    "puente": {"tick": int(previo), "bpm": round(negras * 60.0 / delta, 3), "negras": negras},
+                                    "nota": f"no se mueve el tick 0; la negra anterior dura {delta:.3f} s (puente a "
+                                            f"{negras * 60.0 / delta:.1f} bpm) para que la siguiente caiga en el golpe"}
     else:
         inicio = pulso - math.floor(pulso / beat) * beat
         out["propuesta"] = {"tipo": "tempo único y ancla de la línea de tiempo", "bpm": m["bpm"],
@@ -123,8 +139,16 @@ def escribir(propuesta, salida):
     if "inicio_segundos" in pr:
         comun["tempo"] = [{"tick": 0, "bpm": pr["bpm"], "pulso_ticks": T.TICKS_NEGRA, "inicio_segundos": pr["inicio_segundos"]}]
     else:
-        tempo = [e for e in comun["tempo"] if e["tick"] != pr["tick"]]
-        tempo.append({"tick": pr["tick"], "bpm": pr["bpm"], "pulso_ticks": T.TICKS_NEGRA})
+        quitar = {pr["tick"]}
+        nuevos = [{"tick": pr["tick"], "bpm": pr["bpm"], "pulso_ticks": T.TICKS_NEGRA}]
+        if pr.get("puente"):
+            pu = pr["puente"]
+            quitar.add(pu["tick"])
+            # eventos que caían dentro del puente se quitan: la negra del puente es un solo tempo
+            quitar |= {e["tick"] for e in comun["tempo"] if pu["tick"] < e["tick"] < pr["tick"]}
+            nuevos.append({"tick": pu["tick"], "bpm": pu["bpm"], "pulso_ticks": T.TICKS_NEGRA})
+        tempo = [e for e in comun["tempo"] if e["tick"] not in quitar]
+        tempo.extend(nuevos)
         tempo.sort(key=lambda e: e["tick"])
         comun["tempo"] = tempo
     aplicar(comun, sesion, salida)
