@@ -99,9 +99,17 @@ def proponer(sesion, pista=None, cancion=None, desde_s=None, hasta_s=None, minim
     estable = not m["tramos"] or (max(t["bpm"] for t in m["tramos"]) - min(t["bpm"] for t in m["tramos"])) < 0.03 * m["bpm"]
     out["tempo_estable"] = estable
     if es_show or cancion:
+        # el bpm propuesto rige hasta el siguiente evento de tempo que ya tenga la sesión (una rampa
+        # hecha a mano se respeta); lo que viene después corre en segundos lo que cambie este tramo
+        siguiente = min((e["tick"] for e in comun["tempo"] if e["tick"] > cerca), default=None)
         out["propuesta"] = {"tipo": "cambio de tempo en el pulso más cercano de la grilla actual",
                             "tick": int(cerca), "en_s": round(T.segundos(cerca, mapa), 4), "bpm": m["bpm"],
                             "nota": "no se mueve el tick 0; desde ese pulso la grilla sigue a este bpm"}
+        if siguiente is not None:
+            out["propuesta"]["rige_hasta_s"] = round(T.segundos(siguiente, mapa), 2)
+            if siguiente - cerca < 4 * T.TICKS_NEGRA:
+                out["aviso_tempo"] = (f"la sesión ya tiene otro evento de tempo a {(siguiente - cerca) / T.TICKS_NEGRA:.2f} negras "
+                                      "del pulso (¿una rampa hecha a mano?): el bpm propuesto solo regiría hasta ahí")
         if abs(desvio_ms) > 15:
             # un «puente»: desde la negra anterior al pulso, un tempo que dura justo hasta el pulso,
             # así la negra siguiente cae EN el golpe y desde ahí sigue el bpm medido
@@ -115,6 +123,7 @@ def proponer(sesion, pista=None, cancion=None, desde_s=None, hasta_s=None, minim
             if delta > 0.05:
                 out["propuesta"] = {"tipo": "puente de una negra y cambio de tempo en el golpe",
                                     "tick": int(previo + negras * T.TICKS_NEGRA), "en_s": round(pulso, 4), "bpm": m["bpm"],
+                                    **{k: out["propuesta"][k] for k in ("rige_hasta_s",) if k in out["propuesta"]},
                                     "puente": {"tick": int(previo), "bpm": round(negras * 60.0 / delta, 3), "negras": negras},
                                     "nota": f"no se mueve el tick 0; la negra anterior dura {delta:.3f} s (puente a "
                                             f"{negras * 60.0 / delta:.1f} bpm) para que la siguiente caiga en el golpe"}
@@ -167,6 +176,7 @@ def texto(r):
         l.append("  por tramos: " + ", ".join(f"{t['desde_s']:.0f}s {t['bpm']}" for t in r["tramos"]))
     p = r["propuesta"]
     l.append(f"  propuesta: {p['tipo']} — " + ", ".join(f"{k} {v}" for k, v in p.items() if k not in ("tipo", "nota")) + f" ({p['nota']})")
-    if r.get("aviso"):
-        l.append(f"  aviso: {r['aviso']}")
+    for k in ("aviso", "aviso_tempo"):
+        if r.get(k):
+            l.append(f"  aviso: {r[k]}")
     return "\n".join(l)
