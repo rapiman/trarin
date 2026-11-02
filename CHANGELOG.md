@@ -17,7 +17,11 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   la negra siguiente cae EN el golpe y desde ahí sigue el bpm medido. Antes el
   cambio se ponía en la negra cercana y toda la grilla quedaba corrida (331 ms
   en Sombra en el Desierto). Los eventos de tempo que caían dentro del puente
-  se quitan.
+  se quitan. El bpm propuesto rige hasta el siguiente evento de tempo que ya
+  tenga la sesión (`rige_hasta_s`); si ese evento está a menos de 4 negras del
+  pulso (una rampa hecha a mano, como la de Sombra en el Desierto) se avisa.
+  Para la verificación en Pro Tools se usó Katrümongen: 126,67 bpm medido en
+  Kultrun Katrü R, grilla actual 95 = 3/4, la negra más cercana a 8 ms.
 - **`fichas.Almacen.vigente` recordado por instancia**: cada comprobación hacía
   `stat` de los archivos de audio y una sesión lo pide cientos de veces; con el
   disco cargado eran 4 ms por `stat` y minutos por `nivelar`.
