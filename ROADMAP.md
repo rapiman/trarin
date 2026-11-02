@@ -5,12 +5,14 @@ camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en 
 
 ## Fase 1 — Servidor MCP completo ✅
 
-- ✅ 42 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
-  de audio, comparar versiones, también por canción, uniones entre canciones), revisión
-  (lint), notas del proyecto, consolidar y grupos con su plan, bpm y tempo propuesto,
-  conversión de audio, paneo de Live, shows y su hoja, fichas, parecidos y búsqueda de
-  sonidos, escuchar, niveles, secciones, MIDI (revisar, reparar, salidas, golpes), orden,
-  cruces y escribir.
+- ✅ 53 herramientas: vistas acotadas (resumen por pista o canción, detalle, rutas, archivos
+  de audio, comparar versiones, también por canción, uniones entre canciones, comparar con
+  la sesión original), revisión (lint), notas y respaldos (reemplazar, deshacer), consolidar
+  y grupos con su plan y plantillas con nombre, bpm y tempo propuesto, conversión de audio,
+  paneo de Live, shows, su hoja y sus luces, fichas (audio y MIDI), parecidos y búsqueda de
+  sonidos, onda dibujada, escuchar y exportar a Pizarrita, niveles y nivelar, secciones,
+  editar clips por compás, MIDI (revisar, reparar, salidas, golpes), orden, cruces y
+  escribir.
 - ✅ Trabajos largos al estilo witral (id, avance por líneas nuevas, espera con tope de 40 s,
   matar, recientes).
 - ✅ Al escribir: relee, compara con el original y anota en `trarin/notas.md` junto a la
@@ -76,8 +78,10 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 ## Fase 4 — Escuchar sin abrir Pro Tools
 
 - ✅ `escuchar`: mezcla rápida de un tramo a WAV de 16 bits o MP3 (lameenc), con el fader de
-  los auxiliares por los que pasa cada pista (sin plugins). Pendiente: el puente con
-  Pizarrita.
+  los auxiliares por los que pasa cada pista y el master (sin plugins); una pista sola o
+  todas por separado, con mezcla o en crudo.
+- ✅ Puente con Pizarrita (`exportar_pizarrita`): montaje de Edit Pro + mezcla MP3 + WAV.
+  Pendiente del lado de Pizarrita: importar el montaje en una idea (subir archivos y pegarlo).
 
 Una mezcla rápida de un tramo (clips, clip gain, fundidos, paneo, fader y su automatización,
 mute; sin plugins) en un archivo liviano para escuchar desde cualquier lado.

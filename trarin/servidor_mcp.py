@@ -411,6 +411,30 @@ def crear():
         return out
 
     @herramienta
+    def exportar_pizarrita(ruta: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
+                           desde_s: float = -1, hasta_s: float = -1, pistas: str = "", carpeta: str = "",
+                           con_archivos: bool = False, mezcla: bool = True, subtitulos_compases: bool = False) -> dict:
+        """Exporta una canción (o un tramo) del show como montaje de Pizarrita
+        Edit Pro, para escucharla y comentarla en el navegador: un JSON con las
+        pistas de audio y sus clips (archivo, pedazo, lugar, clip gain,
+        fundidos), fader, paneo, mute, automatización y marcas (y los compases
+        como subtítulos si se pide), más la mezcla rápida en MP3 para oírla de
+        inmediato; con_archivos=True copia los WAV que usa. Va a
+        trarin/pizarrita junto a la sesión (o a 'carpeta'). Lo que falta del
+        lado de Pizarrita: subir los archivos a una idea y pegar el montaje.
+        Corre como trabajo."""
+        from . import trabajos
+        args = {"sesion": _existe(ruta)}
+        for k, v in (("cancion", cancion or None), ("desde_compas", desde_compas or None),
+                     ("hasta_compas", hasta_compas or None), ("desde_s", None if desde_s < 0 else desde_s),
+                     ("hasta_s", None if hasta_s < 0 else hasta_s), ("pistas", pistas or None),
+                     ("carpeta", carpeta or None), ("con_archivos", con_archivos or None),
+                     ("mezcla", None if mezcla else False), ("subtitulos_compases", subtitulos_compases or None)):
+            if v is not None:
+                args[k] = v
+        return {"trabajo": trabajos.lanzar("pizarrita", args)}
+
+    @herramienta
     def plantillas(accion: str = "listar", nombre: str = "", reglas: dict | str | None = None,
                    extra: dict | str | None = None, descripcion: str = "") -> dict:
         """Plantillas de reglas con nombre para consolidar, grupos y el armador:
