@@ -688,6 +688,9 @@ def _clip_al_show(c, i, plan, ini_m, archivos, sesion, comun, ctx=None):
         return {"tipo": "midi", "nombre": c.get("nombre"), "tick": t0,
                 "largo_ticks": largo_show, "notas": notas}
     canciones = plan["canciones"][i]["nombre"]
+    if c["tipo"] == "grupo" or c.get("archivo") is None:
+        raise ErrorShow(f"{canciones}: el clip {c.get('nombre')!r} es un grupo de clips (Clip Group); trarin no puede "
+                        f"llevarlo al show: desagruparlo en Pro Tools (Clip > Ungroup) y volver a leer la sesión")
     escala = ctx.get("escala", 1.0)
     conv = ctx.get("conversor")
     muestra, largo, desde = c["muestra"], c["largo_muestras"], c.get("desde_muestra", 0)

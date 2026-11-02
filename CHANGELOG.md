@@ -5,6 +5,27 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Verificado en Pro Tools** (sesiones `verif\` del show RAPIZUAM, re-guardadas
+  por Pro Tools como `*_pt.ptx`): el clip gain de `nivelar` se ve en Pro Tools
+  (+2.1 dB en un registro corrido, −2.7 dB en un registro nuevo); la grilla de
+  `proponer_tempo` cae en los golpes del kultrun (Katrümongen a 126,67 bpm); las
+  pistas Luz 1/2/3 de `luces` salen con sus notas y por Motu 1/2/3. Comparando
+  lo que trarin escribió con lo que Pro Tools devolvió: tempo, notas MIDI y
+  675 clips de audio idénticos.
+- **Grupos de clips (Clip Groups), bug de lectura encontrado en esa
+  comparación**: una colocación con el byte +20 del `0x104F` en 1 apunta a la
+  lista de grupos `0x262C`, no a la de regiones, y Pro Tools la renumera en cada
+  guardado. trarin la leía como región y en el show RAPIZUAM 10 clips (Bajo,
+  Kultrun Katrü L/R, Kultrun Centro, Pifilka C, Kaskawillas L, Semillas R) eran
+  otro clip cualquiera: por eso `escuchar` sonaba distinto en esas partes,
+  `revisar` veía 5 clips cruzando marcadores (es 1) y tapaba 2 huecos. Ahora
+  `pistas.leer_grupos_clips` lee la lista (nombre, largo) y el modelo común los
+  deja como clips de tipo `grupo` sin archivo: `escuchar`, fichas, `nivelar`,
+  `consolidar` y el show los saltan (el show avisa y pide desagrupar), `revisar`
+  avisa cuáles hay. El contenido de los grupos está en un `0x1054` dentro del
+  `0x2428` pero falta saber cómo se asocia cada grupo a su entrada
+  (`docs/formato_ptx.md` 6.x). Caché del modelo invalidada (`cache.VERSION` 2;
+  `TRARIN_SIN_CACHE` acepta espacios).
 - **Arreglo en `nivelar` / `clip_gain.cambiar`**: en el show real varias
   regiones de una pista comparten el mismo registro de clip gain y la escritura
   caía con «reemplazos solapados». Ahora un registro compartido se corre una

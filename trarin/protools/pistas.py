@@ -113,6 +113,29 @@ def leer_regiones_audio(d, bloques, ganancias=None):
     return regiones
 
 
+def leer_grupos_clips(d, bloques):
+    """Grupos de clips (Clip Groups; bloque 0x262C con hijos 0x262B).
+
+    Cada 0x262B va como una región: nombre («Bombo.grp-01») y los tres puntos
+    (inicio original, desplazamiento = CERO, largo en muestras). Una colocación
+    cuyo byte +20 del 0x104F vale 1 apunta a esta lista, no a la de regiones
+    (Pro Tools renumera los grupos en cada guardado). El contenido de cada
+    grupo (sus clips) va en un 0x1054 aparte dentro del 0x2428, con posiciones
+    relativas a CERO; cómo se asocia cada grupo a su entrada todavía no se
+    sabe, así que trarin no mira dentro."""
+    lista = _primero(bloques, 0x262C)
+    if not lista:
+        return []
+    grupos = []
+    for c in lista.hijos:
+        if c.tipo_contenido != 0x262B:
+            continue
+        nombre, j = _cadena(d, c.inicio + 11)
+        inicio, desplazamiento, largo = _tres_puntos(d, j)
+        grupos.append({"indice": len(grupos), "nombre": nombre, "muestras": largo, "inicio_original": inicio})
+    return grupos
+
+
 def _indice_clip_gain(d, b):
     """Índice de clip gain (int32, -1 = ninguno) de un bloque 0x2628.
 
@@ -220,7 +243,7 @@ def leer_lista_pistas(d, bloques):
     return pistas
 
 
-def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
+def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None, grupos_clips=None):
     """Playlists de audio (bloque 0x1014) con sus canales y regiones colocadas.
 
     Cada playlist trae los números de sus canales; cada número es la posición
@@ -244,9 +267,11 @@ def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
     entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
 
     fundidos = fundidos or []
+    grupos_clips = grupos_clips or []
 
     def colocadas(c):
-        # Evento 0x1050 -> 0x104F: +2 mute, +4 índice, +9 muestra (ancla).
+        # Evento 0x1050 -> 0x104F: +2 mute, +4 índice, +9 muestra (ancla),
+        # +20 vale 1 si el índice apunta a un grupo de clips (lista 0x262C).
         # El primer byte después del 0x104F vale 1 si el índice apunta a un
         # fundido (PT 12.5 deja 1 byte ahí; sesiones más antiguas, 2).
         out, fun = [], []
@@ -264,6 +289,12 @@ def leer_pistas_audio(d, bloques, regiones, activas=None, fundidos=None):
                         f_ = {k: v for k, v in g.items() if k != "pre_roll"}
                         f_["muestra"] = muestra - g["pre_roll"]
                         fun.append(f_)
+                elif f.inicio + 20 < f.fin and d[f.inicio + 20] == 1:
+                    g = grupos_clips[ri] if ri < len(grupos_clips) else {"nombre": f"grupo {ri}", "muestras": 0}
+                    item = {"grupo": g["nombre"], "indice_grupo": ri, "muestra": muestra, "muestras": g["muestras"]}
+                    if d[f.inicio + 2] == 1:
+                        item["mute"] = True
+                    out.append(item)
                 elif ri < len(regiones):
                     item = {"region": regiones[ri]["nombre"], "indice_region": ri, "muestra": muestra}
                     if d[f.inicio + 2] == 1:

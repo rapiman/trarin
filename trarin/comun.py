@@ -120,6 +120,18 @@ def _desde_protools(n):
         if ta and ta["canales"]:
             canal = ta["canales"][0]
             for j, r in enumerate(canal["regiones"]):
+                if "indice_grupo" in r:
+                    # grupo de clips: trarin no mira adentro (ver pistas.leer_grupos_clips)
+                    c = {"id": f"{p['nombre']}#{j}", "tipo": "grupo", "nombre": r["grupo"],
+                         "muestra": r["muestra"], "largo_muestras": r["muestras"],
+                         "tick": T.tick_de_segundos(r["muestra"] / fs, mapa),
+                         "archivo": None, "desde_muestra": 0, "canales": len(ta["canales"]),
+                         "indice_grupo": r["indice_grupo"]}
+                    c["largo_ticks"] = T.tick_de_segundos((r["muestra"] + r["muestras"]) / fs, mapa) - c["tick"]
+                    if r.get("mute"):
+                        c["mute"] = True
+                    clips.append(c)
+                    continue
                 reg = regiones[r["indice_region"]]
                 c = {"id": f"{p['nombre']}#{j}", "tipo": "audio", "nombre": reg["nombre"],
                      "muestra": r["muestra"], "largo_muestras": reg["muestras"],
@@ -136,7 +148,7 @@ def _desde_protools(n):
                     c["mute"] = True
                 if len(ta["canales"]) > 1:
                     c["archivos_canales"] = [
-                        regiones[next((x for x in can["regiones"] if x["muestra"] == r["muestra"]), r)
+                        regiones[next((x for x in can["regiones"] if x["muestra"] == r["muestra"] and "indice_region" in x), r)
                                  ["indice_region"]]["archivo"] for can in ta["canales"]]
                 clips.append(c)
             fades = canal.get("fundidos", [])

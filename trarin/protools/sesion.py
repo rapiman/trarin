@@ -107,7 +107,9 @@ def leer(ruta) -> dict:
     fundidos = P.leer_fundidos(d, bloques)
     lista_pistas = P.leer_lista_pistas(d, bloques)
     nombres = [p["nombre"] for p in lista_pistas]
-    pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None, fundidos)
+    grupos_clips = P.leer_grupos_clips(d, bloques)
+    pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None, fundidos,
+                                                            grupos_clips)
     grupos = P.leer_grupos(d, bloques)
     for g in grupos:
         g["pistas"] = [nombres[i] if i < len(nombres) else i for i in g["pistas"]]
@@ -142,7 +144,7 @@ def leer(ruta) -> dict:
         "tempo": [ubicar(e) for e in tempo],
         "compases": [ubicar(e) for e in compases],
         "marcadores": [_fin(ubicar(e), mapa, compases) for e in marcadores],
-        "audio": {"archivos": archivos, "regiones": regiones},
+        "audio": {"archivos": archivos, "regiones": regiones, "grupos_clips": grupos_clips},
         "pistas": lista_pistas,
         "pistas_audio": pistas_audio,
         "playlists_inactivas": playlists_inactivas,

@@ -44,6 +44,7 @@ def _colocaciones(d, bloques, nombre_playlist):
     en el mismo orden que leer_pistas_audio."""
     regiones = P.leer_regiones_audio(d, bloques)
     fundidos = P.leer_fundidos(d, bloques)
+    grupos = P.leer_grupos_clips(d, bloques)
     lista = _primero(bloques, 0x1015)
     ids = None
     for c in (lista.hijos if lista else []):
@@ -76,6 +77,11 @@ def _colocaciones(d, bloques, nombre_playlist):
                         fun.append({"pos": f.inicio, "ancla": muestra, "inicio": muestra - g["pre_roll"],
                                     "fin": muestra - g["pre_roll"] + g["muestras"], "tipo": g["tipo"],
                                     "bloque": e.pos, "fin_bloque": e.fin})
+                elif f.inicio + 20 < f.fin and d[f.inicio + 20] == 1:
+                    # grupo de clips (mismo orden que leer_pistas_audio)
+                    largo = grupos[ri]["muestras"] if ri < len(grupos) else 0
+                    regs.append({"pos": f.inicio, "muestra": muestra, "largo": largo,
+                                 "indice": ri, "grupo": True, "bloque": e.pos, "fin_bloque": e.fin})
                 elif ri < len(regiones):
                     regs.append({"pos": f.inicio, "muestra": muestra, "largo": regiones[ri]["muestras"],
                                  "indice": ri, "bloque": e.pos, "fin_bloque": e.fin})

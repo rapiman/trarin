@@ -94,7 +94,7 @@ def _regiones_de_clips(sesion, ids):
         j = int(j)
         ref = t["canales"][0]["regiones"][j]
         for canal in t["canales"]:
-            r = next((x for x in canal["regiones"] if x["muestra"] == ref["muestra"]), None)
+            r = next((x for x in canal["regiones"] if x["muestra"] == ref["muestra"] and "indice_region" in x), None)
             if r is not None:
                 out.setdefault(r["indice_region"], []).append(cid)
     return out

@@ -346,6 +346,35 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
     `u32 n | u16 1 | u32 n | u8 1` justo antes de su `0x2010`.
   Sus regiones MIDI quedan en la lista de clips.
 
+### 6.x Grupos de clips (Clip Groups) `0x262C → 0x262B` [verificado 2026-11-02]
+
+Una colocación `0x104F` cuyo byte **+20** vale 1 (el byte que sigue a `03 FE FF`)
+no apunta a la lista de regiones sino a la de **grupos de clips** `0x262C`
+(hijos `0x262B`, uno por grupo). Pro Tools renumera esa lista en cada guardado:
+la misma colocación salió con índice 28, 24, 36 y 19 en cuatro guardados
+seguidos del show RAPIZUAM, con la lista de regiones idéntica. Leída como
+región, daba un clip cualquiera (en el show, un kultrun de 17,8 s donde Pro
+Tools muestra «Kultrun Con efectos.grp-02» de 3:38).
+
+Cada `0x262B` tiene la forma de una región: `5A 01 00 | u32 tamaño | 0x2628`
+con el nombre (`Bombo.grp-01`, `Kultrun estéreo.grp.L`) y los tres puntos
+(inicio original, desplazamiento = CERO, largo en muestras); adentro un
+`0x2523 → 0x2526` con la muestra donde está colocado, su propio índice y un
+identificador de 13 bytes que comparten las copias del mismo grupo
+(`-01`, `-02`…). Una copia por canal en estéreo (`.L`/`.R`).
+
+El **contenido** de los grupos va en un segundo `0x1054` dentro del bloque
+`0x2428` (20 entradas `0x1052` para 40 grupos: las copias comparten
+contenido), con las mismas colocaciones `0x1050 → 0x104F` que una playlist
+pero con las muestras relativas a CERO (10^12). **Cómo se asocia cada grupo a
+su entrada todavía no se sabe** (no es el orden de aparición ni el
+identificador de 13 bytes, que no aparece fuera de `0x262C`). Mientras tanto
+trarin deja el grupo como clip de tipo `grupo` (nombre, posición y largo, sin
+archivo): `escuchar`, `nivelar`, las fichas y el show lo saltan, y `revisar`
+avisa cuáles hay y en qué pista; desagruparlos en Pro Tools (Clip > Ungroup)
+los convierte en clips normales. Al escribir, un grupo se mueve o se mutea
+como cualquier clip (misma colocación).
+
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 
 Lista con u32 cantidad. Cada geometría:
