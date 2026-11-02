@@ -5,6 +5,14 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **Pruebas de regresión** (`pruebas/test_regresion.py`, `python -m unittest
+  discover -s pruebas`): sobre sesiones chicas guardadas por Pro Tools 12 en
+  `pruebas/sesiones/` (plantillas vacías a 44,1, 48 y 96 kHz, una pista de cada
+  tipo, una nota MIDI dibujada en Pro Tools, orden, canal). Cubren cifrado,
+  aplicar sin cambios, tempo con ancla, renombrar y mezcla, la revisión (limpia
+  en lo de Pro Tools, acusa el ancla en un show), la nota MIDI contra el
+  oráculo, quitar en lote = de a una, reordenar y cambiar canal MIDI. 10
+  pruebas en 1 s, sin dependencias.
 - **Luces del show por MIDI** (`trarin/luces.py`): tres pistas MIDI nuevas
   («Luz 1», «Luz 2», «Luz 3», un clip por canción) desde los golpes de la
   percusión según la convención: canal 1 el kultrun o bombo; canales 2 y 3
