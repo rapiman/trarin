@@ -1090,7 +1090,11 @@ def _canal_mezcla(d, bloques, indice):
     raiz = _primero(bloques, 0x2624)
     if not raiz or indice >= len(raiz.hijos):
         raise ErrorEscritura(f"no hay canal de mezcla para la pista {indice}")
-    sb = next((h for h in raiz.hijos[indice].hijos if h.tipo_contenido == 0x261B), None)
+    canal = raiz.hijos[indice]
+    # el fader cuelga del 0x261B; en una pista de instrumento (0x2621), del canal mismo
+    sb = next((h for h in canal.hijos if h.tipo_contenido == 0x261B), None)
+    if sb is None and canal.tipo_contenido == 0x2621:
+        sb = canal
     fader = next((h for h in sb.hijos if h.tipo_contenido == 0x260D), None) if sb else None
     nivel = next((h for h in fader.hijos if h.tipo_contenido == 0x1029), None) if fader else None
     if not nivel:

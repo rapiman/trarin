@@ -88,7 +88,7 @@ def agregar_grupos(d, grupos):
 
 def grupos_por_nombre(pistas, reglas, grupo_midi=None):
     """Grupos a partir de los nombres de las pistas. pistas: [(nombre, tipo)]
-    (tipo como en el modelo común: audio, midi, retorno, 0x0007…); reglas:
+    (tipo como en el modelo común: audio, midi, retorno, instrumento…); reglas:
     [{"nombre", "patron" (expresión regular sobre el nombre en minúsculas y sin
     tildes), "tipo"}]. Una pista va a cada grupo cuyo patrón calce; con
     grupo_midi, además todas las pistas MIDI e instrumento van a ese grupo."""
@@ -100,11 +100,11 @@ def grupos_por_nombre(pistas, reglas, grupo_midi=None):
 
     out = []
     for r in reglas:
-        miembros = [n for n, t in pistas if t in ("audio", "midi", "0x0007") and re.search(r["patron"], normal(n))]
+        miembros = [n for n, t in pistas if t in ("audio", "midi", "instrumento") and re.search(r["patron"], normal(n))]
         if miembros:
             out.append({"nombre": r["nombre"], "pistas": miembros, "tipo": r.get("tipo", "ambos")})
     if grupo_midi:
-        midi = [n for n, t in pistas if t in ("midi", "0x0007")]
+        midi = [n for n, t in pistas if t in ("midi", "instrumento")]
         if midi:
             out.append({"nombre": grupo_midi, "pistas": midi, "tipo": "ambos"})
     return out

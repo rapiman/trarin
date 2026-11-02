@@ -371,7 +371,7 @@ def _instrumentos_nuevos(plan, canciones, desde, pistas, match):
     for i in range(desde, len(canciones)):
         cancion = plan["canciones"][i]["nombre"]
         for p in plan["_temas"][i]["comun"]["pistas"]:
-            if p["tipo"] != "0x0007" or _destino(p, cancion, None, pistas, match) is not None:
+            if p["tipo"] != "instrumento" or _destino(p, cancion, None, pistas, match) is not None:
                 continue
             nombre = p["nombre"]
             if nombre in {q["nombre"] for q in pistas}:
@@ -450,7 +450,7 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
         ctx = {"escala": escala, "corte": corte, "corte_m": corte_m, "conversor": conversor, "fs": fs}
         tema["_ctx"] = ctx
         for p in cs["pistas"]:
-            if p["tipo"] not in ("audio", "midi", "retorno", "0x0007"):
+            if p["tipo"] not in ("audio", "midi", "retorno", "instrumento"):
                 avisos.append(f"{cancion}: la pista {p['nombre']!r} ({p['tipo']}) no se copia (tipo no soportado)")
                 continue
             if buses_show and p["tipo"] == "retorno":
@@ -460,7 +460,7 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
                        for y in (c["contenido"] if c.get("tipo") == "grupo" and c.get("contenido") else [c])]
             clips = [x for x in (_clip_al_show(c, i, plan, ini_m, archivos, sesion, comun, ctx)
                                  for c in sueltos) if x is not None]
-            if not clips and p["tipo"] not in ("retorno", "0x0007"):
+            if not clips and p["tipo"] not in ("retorno", "instrumento"):
                 continue
             externa = p.get("_extra")
             dest = None if externa else _destino(p, cancion, None, pistas_show, show.get("match"))
@@ -496,7 +496,7 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
                 else:
                     copias.append((False, dest, sesion, p["nombre"], p["tipo"], ini_m, cancion))
             q["clips"] += clips
-            if buses_show and p["tipo"] in ("audio", "0x0007"):
+            if buses_show and p["tipo"] in ("audio", "instrumento"):
                 salidas_show[q["nombre"]] = _bus_de(p["nombre"], buses_show)
     if buses_show:
         _auxiliares_show(comun, buses_show)

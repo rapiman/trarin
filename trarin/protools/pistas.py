@@ -349,7 +349,7 @@ def leer_lista_pistas(d, bloques):
     lista = _primero(bloques, 0x2519)
     if not lista:
         return []
-    tipos = {0: "audio", 1: "midi", 2: "auxiliar"}
+    tipos = {0: "audio", 1: "midi", 2: "auxiliar", 7: "instrumento"}
     pistas = []
     for c in lista.hijos:
         if c.tipo_contenido != 0x251A:

@@ -614,8 +614,9 @@ def _pistas_quitadas_pt(comun, quitadas, plantilla, salida):
     from .protools.pistas_quitar import quitar_pistas
     from .protools.reconstruccion import cifrar
     for p in quitadas:
-        if p["tipo"] not in ("audio", "midi", "retorno"):
-            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio, MIDI o auxiliares ({p['id']!r})")
+        if p["tipo"] not in ("audio", "midi", "retorno", "instrumento", "0x0007"):
+            raise ErrorComun(f"Pro Tools: por ahora solo se pueden quitar pistas de audio, MIDI, de instrumento "
+                             f"o auxiliares ({p['id']!r})")
     d = quitar_pistas(leer_descifrado(plantilla), [p["id"] for p in quitadas])
     fd, tmp = tempfile.mkstemp(suffix=".ptx", dir=str(Path(salida).parent))
     try:
@@ -637,7 +638,7 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
     import tempfile
     from .protools import leer
     from .protools.descifrado import leer_descifrado
-    from .protools.pistas_nuevas import agregar_auxiliares, agregar_pistas, agregar_pistas_midi
+    from .protools.pistas_nuevas import agregar_auxiliares, agregar_instrumento, agregar_pistas, agregar_pistas_midi
     from .protools.reconstruccion import cifrar
     usados = {p["nombre"] for p in original["pistas"]}
     nombres = []
@@ -645,20 +646,24 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
         nombre = p.get("nombre")
         if not nombre or nombre in usados:
             raise ErrorComun(f"Pro Tools: una pista nueva necesita un nombre no repetido ({nombre!r})")
-        tipo = p.get("tipo", "audio")
+        tipo = {"0x0007": "instrumento"}.get(p.get("tipo", "audio"), p.get("tipo", "audio"))
         canales = p.get("canales", 2 if tipo == "retorno" else 1)
-        if not (tipo == "midi" or (tipo in ("audio", "retorno") and canales in (1, 2))):
+        if not (tipo in ("midi", "instrumento") or (tipo in ("audio", "retorno") and canales in (1, 2))):
             raise ErrorComun("Pro Tools: por ahora solo se pueden crear pistas de audio o auxiliares "
-                             "(mono o estéreo), o MIDI")
+                             "(mono o estéreo), MIDI o de instrumento")
         if tipo == "retorno" and p.get("clips"):
             raise ErrorComun(f"Pro Tools: un auxiliar no lleva clips ({nombre!r})")
         usados.add(nombre)
         nombres.append((tipo, nombre, canales))
     d = leer_descifrado(plantilla)
+    externa = _plantilla_instrumento_pt(d, original) if any(t == "instrumento" for t, _, _ in nombres) else None
     tramo, tipo_tramo = [], None        # pistas seguidas del mismo tipo: en una sola pasada
     for tipo, nombre, canales in nombres + [(None, None, None)]:
         if tipo != tipo_tramo and tramo:
-            if tipo_tramo == "midi":
+            if tipo_tramo == "instrumento":
+                for n, _ in tramo:
+                    d = agregar_instrumento(d, n, externa)
+            elif tipo_tramo == "midi":
                 d = agregar_pistas_midi(d, [n for n, _ in tramo])
             elif tipo_tramo == "retorno":
                 d = agregar_auxiliares(d, tramo)
@@ -681,17 +686,38 @@ def _pistas_nuevas_pt(comun, original, nuevas, plantilla, salida):
                 b = base[p["nombre"]]
                 if p.get("tipo") == "midi":
                     mezcla = dict(b["mezcla"])
+                elif p.get("tipo") in ("instrumento", "0x0007"):
+                    mezcla = dict(b["mezcla"], volumen_db=0.0, mute=False)
                 else:
                     canales = p.get("canales", 2 if p.get("tipo") == "retorno" else 1)
                     paneo = [-1.0, 1.0] if canales == 2 else 0.0
                     mezcla = dict(b["mezcla"], volumen_db=0.0, paneo=paneo, mute=False)
                 mezcla.update({k: v for k, v in (p.get("mezcla") or {}).items() if v is not None})
-                p = dict(b, mezcla=mezcla, clips=p.get("clips", []))
+                p = dict(b, mezcla=mezcla, clips=p.get("clips", []),
+                         automatizacion=p.get("automatizacion") or b.get("automatizacion") or {})
             pistas.append(p)
         comun2 = dict(comun, pistas=pistas)
         return _a_protools(comun2, original2, nativo2, tmp, salida)
     finally:
         os.unlink(tmp)
+
+
+_PLANTILLA_INSTRUMENTO = Path(__file__).resolve().parent / "plantillas" / "instrumento.ptx"
+
+
+def _plantilla_instrumento_pt(d, original):
+    """(sesión descifrada, nombre) de la pista de instrumento que se copia para una
+    nueva: la primera de la sesión o, si no hay, la de la plantilla que viene con
+    trarin (una pista de instrumento estéreo vacía, guardada en Pro Tools 12). La
+    pista nueva queda vacía (sin clips ni plugins); el ruteo es el de la copiada."""
+    from .protools.descifrado import leer_descifrado
+    propia = next((p["nombre"] for p in original["pistas"] if p["tipo"] in ("instrumento", "0x0007")), None)
+    if propia:
+        return d, propia
+    if not _PLANTILLA_INSTRUMENTO.exists():
+        raise ErrorComun("Pro Tools: la sesión no tiene una pista de instrumento para copiar y falta la plantilla "
+                         f"{_PLANTILLA_INSTRUMENTO}")
+    return leer_descifrado(str(_PLANTILLA_INSTRUMENTO)), "Inst 1"
 
 
 def _cambios_marcadores_pt(nuevos, originales):

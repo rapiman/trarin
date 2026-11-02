@@ -205,15 +205,15 @@ Preguntas abiertas antes de construir:
 
 ## Modelo común
 
-- Pendiente: crear o quitar pistas de instrumento desde el modelo común (el armador
-  de shows ya las copia).
-- Pendiente: automatización de pistas MIDI y de parámetros de plugins.
+- ✅ Crear (vacías) o quitar pistas de instrumento desde el modelo común, contra el
+  oráculo `PRUEBA_instrumento.ptx`.
+- Pendiente: automatización de pistas MIDI (volumen, paneo y mute MIDI) y de parámetros de
+  plugins. La del fader de las pistas de instrumento ya se escribe.
 
 ## Audio
 
 - ✅ Detector de bpm (`trarin bpm`) y conversor de frecuencia (`trarin convertir-audio`).
 - ✅ Medición de RMS por tramos con sonido (en `consolidar`).
 - ✅ Proponer el tempo de una sesión con el detector (`proponer_tempo`): grilla alineada al
-  primer pulso por el ancla; en un show, cambio de tempo en el pulso más cercano. Pendiente:
-  abrir en Pro Tools una sesión escrita con el tempo propuesto y confirmar que la grilla cae
-  en los golpes.
+  primer pulso por el ancla; en un show, cambio de tempo en el pulso más cercano. ✅ Verificado
+  en Pro Tools: la grilla cae en los golpes del kultrun.

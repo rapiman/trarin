@@ -192,10 +192,12 @@ def leer_mezcla(d, bloques, nombres=()):
     nombres = list(nombres)
     for indice, canal in enumerate(raiz[0].hijos):
         sb = next((h for h in canal.hijos if h.tipo_contenido == 0x261B), None)
+        if not sb and canal.tipo_contenido == 0x2621:     # instrumento: nombre, fader e inserts en el canal
+            sb = canal
         if not sb:
             continue
-        info = {"tipo": {0x261C: "audio", 0x261E: "auxiliar", 0x261D: "master"}.get(canal.tipo_contenido,
-                                                                 f"0x{canal.tipo_contenido:04x}")}
+        info = {"tipo": {0x261C: "audio", 0x261E: "auxiliar", 0x261D: "master",
+                         0x2621: "instrumento"}.get(canal.tipo_contenido, f"0x{canal.tipo_contenido:04x}")}
         cab = next((h for h in sb.hijos if h.tipo_contenido == 0x102D), None)
         if cab and cab.hijos:
             nombre_b = cab.hijos[0]

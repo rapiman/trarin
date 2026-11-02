@@ -598,7 +598,7 @@ def consolidar(sesion, reglas, salida, tmp=None, rutas_audio=None, registro=prin
             grupos.setdefault(r["grupo"], []).extend(n for n in r["pistas"] if n in pistas and n not in fuera)
     m3 = leer_comun(str(paso3))
     if reglas.get("grupo_midi"):
-        grupos[reglas["grupo_midi"]] = [p["nombre"] for p in m3["pistas"] if p["tipo"] in ("midi", "0x0007")]
+        grupos[reglas["grupo_midi"]] = [p["nombre"] for p in m3["pistas"] if p["tipo"] in ("midi", "instrumento")]
     existentes = {g["nombre"] for g in (m3.get("nativo") or {}).get("grupos", [])}
     lista = [{"nombre": g, "pistas": v} for g, v in grupos.items() if g not in existentes]
     for g in grupos:

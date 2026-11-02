@@ -29,7 +29,8 @@ SESIONES = RAIZ / "pruebas" / "sesiones"
 VACIAS = ["trarin_vacia_44k.ptx", "trarin_vacia_48k.ptx", "trarin_vacia_96k.ptx"]
 TODAS = VACIAS + ["trarin_pistas_48k.ptx", "PRUEBA_una_nota_vacia.ptx", "PRUEBA_una_nota.ptx",
                   "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx", "PRUEBA_grupos.ptx",
-                  "PRUEBA_crear_grupo_antes.ptx", "PRUEBA_crear_grupo.ptx"]
+                  "PRUEBA_crear_grupo_antes.ptx", "PRUEBA_crear_grupo.ptx",
+                  "PRUEBA_instrumento_antes.ptx", "PRUEBA_instrumento.ptx"]
 
 
 def _sin_ids(comun):
@@ -305,6 +306,71 @@ class GruposDeClips(Base):
         from trarin.protools.escritura import _plantilla_colocacion
         d = leer_descifrado(str(SESIONES / "PRUEBA_grupos.ptx"))
         self.assertEqual(_plantilla_colocacion(d, arbol(d))[16 + 20], 0)
+
+
+def _hojas_distintas(a, b):
+    """Tipos de los bloques hoja (sin el índice) que están en una sesión y no en la otra."""
+    from collections import Counter
+    from trarin.protools.bloques import arbol
+    from trarin.protools.descifrado import leer_descifrado
+
+    def hojas(d, bs, camino=()):
+        for x in bs:
+            if x.tipo_contenido == 0x0002:
+                continue
+            if x.hijos:
+                yield from hojas(d, x.hijos, camino + (x.tipo_contenido,))
+            else:
+                yield camino + (x.tipo_contenido,), bytes(d[x.inicio:x.fin])
+    da, db = leer_descifrado(a), leer_descifrado(b)
+    ca, cb = Counter(hojas(da, arbol(da))), Counter(hojas(db, arbol(db)))
+    return sorted({k[0][-1] for k in (ca - cb) + (cb - ca)})
+
+
+class PistasDeInstrumento(Base):
+    """Oráculo de Pro Tools 12: PRUEBA_instrumento_antes.ptx (Audio 1, Audio 2, Aux 1) y
+    PRUEBA_instrumento.ptx (lo mismo + «Inst 1», pista de instrumento estéreo creada en
+    Pro Tools). Lo único que difiere al crear o quitar con trarin son las marcas de
+    fecha de las entradas de pistas (0x251A) y el registro 0x2067."""
+    ANTES = str(SESIONES / "PRUEBA_instrumento_antes.ptx")
+    DESPUES = str(SESIONES / "PRUEBA_instrumento.ptx")
+
+    def test_se_lee_como_instrumento(self):
+        from trarin.comun import leer_comun
+        p = next(t for t in leer_comun(self.DESPUES)["pistas"] if t["nombre"] == "Inst 1")
+        self.assertEqual(p["tipo"], "instrumento")
+        self.assertEqual(p["mezcla"]["volumen_db"], 0.0)
+
+    def test_quitar_como_pro_tools(self):
+        from trarin.comun import leer_comun, aplicar
+        c = leer_comun(self.DESPUES)
+        c["pistas"] = [p for p in c["pistas"] if p["nombre"] != "Inst 1"]
+        s = self.salida("sin_inst.ptx")
+        aplicar(c, self.DESPUES, s)
+        self.assertEqual(_hojas_distintas(s, self.ANTES), [0x2067, 0x251A])
+
+    def test_crear_como_pro_tools(self):
+        """Sin otra pista de instrumento en la sesión, se copia la de la plantilla de trarin."""
+        from trarin.comun import leer_comun, aplicar
+        from trarin.revision import revisar
+        c = leer_comun(self.ANTES)
+        c["pistas"].append({"nombre": "Inst 1", "tipo": "instrumento"})
+        s = self.salida("con_inst.ptx")
+        aplicar(c, self.ANTES, s)
+        self.assertEqual(_hojas_distintas(s, self.DESPUES), [0x2067, 0x251A])
+        c2 = leer_comun(s)
+        self.assertEqual([(p["nombre"], p["tipo"]) for p in c2["pistas"]][-1], ("Inst 1", "instrumento"))
+        self.assertTrue(revisar(s, c2)["ok"])
+
+    def test_crear_copiando_una_de_la_sesion(self):
+        from trarin.comun import leer_comun, aplicar
+        c = leer_comun(self.DESPUES)
+        c["pistas"].append({"nombre": "Inst 2", "tipo": "instrumento", "mezcla": {"volumen_db": -6.0}})
+        s = self.salida("dos_inst.ptx")
+        aplicar(c, self.DESPUES, s)
+        q = [p for p in leer_comun(s)["pistas"] if p["tipo"] == "instrumento"]
+        self.assertEqual([(p["nombre"], p["mezcla"]["volumen_db"], p["clips"]) for p in q],
+                         [("Inst 1", 0.0, []), ("Inst 2", -6.0, [])])
 
 
 class SalidasMidi(Base):

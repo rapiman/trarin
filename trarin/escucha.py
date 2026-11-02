@@ -173,7 +173,7 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
             activas.append((p, clips))
     if not activas:
         raise ErrorEscucha("no hay audio en el tramo pedido")
-    otros = [p["nombre"] for p in ses.comun["pistas"] if p["tipo"] in ("midi", "0x0007")]
+    otros = [p["nombre"] for p in ses.comun["pistas"] if p["tipo"] in ("midi", "instrumento")]
     if otros:
         avisos.append(f"las pistas MIDI y de instrumento no suenan ({len(otros)})")
     master = next((x for x in (ses.comun.get("nativo") or {}).get("master") or [] if x.get("tipo") == "master"), None)
