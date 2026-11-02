@@ -153,6 +153,13 @@ def _contenido_grupo_pt(c, r, ta, grupos_clips, regiones, fs, mapa):
                     arch.append(reg["archivo"])
             s["archivos_canales"] = arch
         out.append(s)
+    # fundidos de adentro del grupo, con el mismo criterio que en una playlist
+    fades = [dict(x, muestra=r["muestra"] + x["muestra"]) for x in g.get("fundidos_contenido") or []]
+    for s in out:
+        ini, fin = s["muestra"], s["muestra"] + s["largo_muestras"]
+        f = [x for x in fades if ini <= x["muestra"] < fin or ini < x["muestra"] + x["muestras"] <= fin]
+        if f:
+            s["fundidos"] = f
     return out
 
 

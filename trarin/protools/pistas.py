@@ -182,26 +182,39 @@ def _familias_grupos(grupos):
 
 
 def _contenido_grupos(d, bloques, grupos, regiones):
+    """Pone en cada grupo "contenido" (ver leer_grupos_clips) y "fundidos_contenido":
+    los fundidos de adentro, como en una playlist ({tipo, muestras, pendiente,
+    curvas, "muestra": inicio del fundido desde el inicio de la ventana})."""
     b2428 = _primero(bloques, 0x2428)
     mapa = next((h for h in b2428.hijos if h.tipo_contenido == 0x1054), None) if b2428 else None
     entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
     if len(entradas) != len({g["dueno"] for g in grupos if g["dueno"] is not None}):
         for g in grupos:          # no calza la cantidad: mejor no inventar contenido
             g["contenido"] = None
+            g["fundidos_contenido"] = []
         return
+    geometrias = leer_fundidos(d, bloques)
 
     def eventos(e):
-        out = []
+        clips, fundidos = [], []
         for ev in e.hijos:
             if ev.tipo_contenido != 0x1050:
                 continue
             for f in ev.hijos:
-                if f.tipo_contenido != 0x104F or d[f.fin] == 1:      # los fundidos no se leen aún
+                if f.tipo_contenido != 0x104F:
                     continue
                 idx = struct.unpack_from("<I", d, f.inicio + 4)[0]
+                ancla = _entero(d, f.inicio + 9, 5) - CERO
+                if d[f.fin] == 1:                    # fundido: el ancla menos su pre-roll
+                    if idx < len(geometrias):
+                        g = geometrias[idx]
+                        x = {k: v for k, v in g.items() if k != "pre_roll"}
+                        x["muestra"] = ancla - g["pre_roll"]
+                        fundidos.append(x)
+                    continue
                 es_grupo = f.inicio + 20 < f.fin and d[f.inicio + 20] == 1
-                out.append((_entero(d, f.inicio + 9, 5) - CERO, idx, es_grupo, d[f.inicio + 2] == 1))
-        return sorted(out)
+                clips.append((ancla, idx, es_grupo, d[f.inicio + 2] == 1))
+        return sorted(clips), fundidos
 
     hechos, en_curso = {}, set()
 
@@ -213,13 +226,15 @@ def _contenido_grupos(d, bloques, grupos, regiones):
             return None
         en_curso.add(gi)
         a, b = g["desplazamiento"], g["desplazamiento"] + g["muestras"]
-        out = []
-        for p, idx, es_grupo, mute in eventos(entradas[g["entrada"]]):
+        out, fun = [], []
+        clips, fundidos = eventos(entradas[g["entrada"]])
+        for p, idx, es_grupo, mute in clips:
             if es_grupo:
                 sub = expandir(idx) if idx < len(grupos) else None
                 if sub is None:
                     continue
-                piezas = [(p + q, r, x, L, mute or m) for q, r, x, L, m in sub]
+                piezas = [(p + q, r, x, L, mute or m) for q, r, x, L, m in sub[0]]
+                fundidos = fundidos + [dict(x, muestra=p + x["muestra"]) for x in sub[1]]
             elif idx < len(regiones):
                 piezas = [(p, idx, 0, regiones[idx]["muestras"], mute)]
             else:
@@ -228,12 +243,17 @@ def _contenido_grupos(d, bloques, grupos, regiones):
                 x0, x1 = max(ini, a), min(ini + L, b)
                 if x1 > x0:
                     out.append((x0 - a, r, x + (x0 - ini), x1 - x0, m))
+        for x in fundidos:                           # los que tocan la ventana
+            if x["muestra"] < b and x["muestra"] + x["muestras"] > a:
+                fun.append(dict(x, muestra=x["muestra"] - a))
         en_curso.discard(gi)
-        hechos[gi] = sorted(out)
+        hechos[gi] = (sorted(out), sorted(fun, key=lambda x: x["muestra"]))
         return hechos[gi]
 
     for g in grupos:
-        g["contenido"] = expandir(g["indice"])
+        r = expandir(g["indice"])
+        g["contenido"] = r[0] if r else None
+        g["fundidos_contenido"] = r[1] if r else []
 
 
 def _indice_clip_gain(d, b):

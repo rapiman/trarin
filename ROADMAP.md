@@ -159,8 +159,8 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   la grilla de `proponer_tempo` y las pistas de `luces`, y apareció el cuarto error grave:
   los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
   RAPIZUAM eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
-  trarin lee el contenido de los grupos (ver `docs/formato_ptx.md` 6.x). Pendiente: los
-  fundidos de adentro de un grupo, y agregar o duplicar grupos al escribir.
+  trarin lee el contenido de los grupos y sus fundidos (ver `docs/formato_ptx.md` 6.x).
+  Pendiente: agregar o duplicar grupos al escribir (hoy se rechaza con un mensaje claro).
 
 ## Rendimiento
 

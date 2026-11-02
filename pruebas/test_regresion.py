@@ -215,6 +215,11 @@ class GruposDeClips(Base):
                 self.assertGreaterEqual(x["muestra"], g["muestra"])
                 self.assertLessEqual(x["muestra"] + x["largo_muestras"], g["muestra"] + g["largo_muestras"])
         self.assertEqual(len([x for x in clips_audio(p) if x.get("en_grupo")]), 6)
+        # fundidos de adentro: los mismos que en la sesión original (fuera de la ventana, ninguno)
+        f = lambda x: [(y["tipo"], y["muestra"], y["muestras"]) for y in x.get("fundidos", [])]
+        self.assertEqual(f(g1["contenido"][2]), [("cruzado", 6156800, 6656), ("salida", 6251612, 45302)])
+        self.assertEqual(f(g1["contenido"][3]), [("entrada", 6342215, 9401)])
+        self.assertEqual(f(g2["contenido"][0]), [])
 
     def test_plantilla_no_es_de_grupo(self):
         """Un clip nuevo nunca hereda la marca de grupo (+20 del 0x104F) de la plantilla."""
