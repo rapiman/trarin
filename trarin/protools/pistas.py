@@ -113,16 +113,27 @@ def leer_regiones_audio(d, bloques, ganancias=None):
     return regiones
 
 
-def leer_grupos_clips(d, bloques):
-    """Grupos de clips (Clip Groups; bloque 0x262C con hijos 0x262B).
+def leer_grupos_clips(d, bloques, regiones=None, ganancias=None):
+    """Grupos de clips (Clip Groups; bloque 0x262C con hijos 0x262B) y su contenido.
 
-    Cada 0x262B va como una región: nombre («Bombo.grp-01») y los tres puntos
-    (inicio original, desplazamiento = CERO, largo en muestras). Una colocación
-    cuyo byte +20 del 0x104F vale 1 apunta a esta lista, no a la de regiones
-    (Pro Tools renumera los grupos en cada guardado). El contenido de cada
-    grupo (sus clips) va en un 0x1054 aparte dentro del 0x2428, con posiciones
-    relativas a CERO; cómo se asocia cada grupo a su entrada todavía no se
-    sabe, así que trarin no mira dentro."""
+    Cada 0x262B va como una región: nombre («Bombo.grp-01»), un byte (0 = el grupo
+    es dueño de un contenido, 1 = copia de otro grupo), los tres puntos (inicio
+    original, CERO + desplazamiento, largo en muestras) y, como en una región, el
+    índice de su clip gain. Una colocación cuyo byte +20 del 0x104F vale 1 apunta a
+    esta lista, no a la de regiones (Pro Tools la renumera en cada guardado).
+
+    El contenido va en un 0x1054 dentro del 0x2428: una entrada 0x1052 por familia
+    (un dueño y sus copias), en el orden en que cada familia aparece por primera vez
+    en la lista. Una copia no apunta a su dueño: es el dueño con el mismo inicio base
+    (inicio original − desplazamiento) cuya ventana la contiene (desempate: la misma
+    ventana; después, el primero). Verificado en el show RAPIZUAM: 15 de 40 grupos
+    aparecen clip por clip, sueltos, en otra versión del show (docs/formato_ptx.md).
+    Las posiciones del contenido son CERO + muestra relativa al inicio de la ventana
+    del dueño sin recortar; una colocación del contenido puede ser otro grupo.
+
+    Con 'regiones', cada grupo trae "contenido": [(muestra desde el inicio de su
+    ventana, índice de región, muestras extra de «desde» dentro de la región, largo,
+    mute)] ya recortado a su ventana y con los grupos anidados expandidos."""
     lista = _primero(bloques, 0x262C)
     if not lista:
         return []
@@ -132,8 +143,97 @@ def leer_grupos_clips(d, bloques):
             continue
         nombre, j = _cadena(d, c.inicio + 11)
         inicio, desplazamiento, largo = _tres_puntos(d, j)
-        grupos.append({"indice": len(grupos), "nombre": nombre, "muestras": largo, "inicio_original": inicio})
+        off = desplazamiento - CERO if desplazamiento >= CERO else desplazamiento
+        g = {"indice": len(grupos), "nombre": nombre, "muestras": largo, "inicio_original": inicio,
+             "copia": d[j] == 1, "desplazamiento": off, "base": inicio - off}
+        b = next((h for h in c.hijos if h.tipo_contenido == 0x2628), None)
+        if b is not None and ganancias:
+            i = _indice_clip_gain(d, b)
+            if 0 <= i < len(ganancias):
+                nodos = ganancias[i]
+                if len(nodos) == 1:
+                    g["clip_gain_db"] = nodos[0]["db"]
+                else:
+                    g["clip_gain"] = nodos
+        grupos.append(g)
+    _familias_grupos(grupos)
+    if regiones is not None:
+        _contenido_grupos(d, bloques, grupos, regiones)
     return grupos
+
+
+def _familias_grupos(grupos):
+    """'dueno' (índice del grupo dueño del contenido) y 'entrada' (índice de la
+    entrada del 0x2428) de cada grupo; None si una copia no tiene dueño reconocible."""
+    duenos = [g for g in grupos if not g["copia"]]
+    entradas = {}
+    for g in grupos:
+        if not g["copia"]:
+            g["dueno"] = g["indice"]
+        else:
+            a, b = g["desplazamiento"], g["desplazamiento"] + g["muestras"]
+            cand = [o for o in duenos if o["base"] == g["base"]
+                    and o["desplazamiento"] <= a and b <= o["desplazamiento"] + o["muestras"]]
+            cand.sort(key=lambda o: (not (o["desplazamiento"] == a and o["muestras"] == g["muestras"]), o["indice"]))
+            g["dueno"] = cand[0]["indice"] if cand else None
+        if g["dueno"] is not None and g["dueno"] not in entradas:
+            entradas[g["dueno"]] = len(entradas)
+        g["entrada"] = entradas.get(g["dueno"])
+
+
+def _contenido_grupos(d, bloques, grupos, regiones):
+    b2428 = _primero(bloques, 0x2428)
+    mapa = next((h for h in b2428.hijos if h.tipo_contenido == 0x1054), None) if b2428 else None
+    entradas = [c for c in mapa.hijos if c.tipo_contenido == 0x1052] if mapa else []
+    if len(entradas) != len({g["dueno"] for g in grupos if g["dueno"] is not None}):
+        for g in grupos:          # no calza la cantidad: mejor no inventar contenido
+            g["contenido"] = None
+        return
+
+    def eventos(e):
+        out = []
+        for ev in e.hijos:
+            if ev.tipo_contenido != 0x1050:
+                continue
+            for f in ev.hijos:
+                if f.tipo_contenido != 0x104F or d[f.fin] == 1:      # los fundidos no se leen aún
+                    continue
+                idx = struct.unpack_from("<I", d, f.inicio + 4)[0]
+                es_grupo = f.inicio + 20 < f.fin and d[f.inicio + 20] == 1
+                out.append((_entero(d, f.inicio + 9, 5) - CERO, idx, es_grupo, d[f.inicio + 2] == 1))
+        return sorted(out)
+
+    hechos, en_curso = {}, set()
+
+    def expandir(gi):
+        if gi in hechos:
+            return hechos[gi]
+        g = grupos[gi]
+        if gi in en_curso or g["entrada"] is None or g["entrada"] >= len(entradas):
+            return None
+        en_curso.add(gi)
+        a, b = g["desplazamiento"], g["desplazamiento"] + g["muestras"]
+        out = []
+        for p, idx, es_grupo, mute in eventos(entradas[g["entrada"]]):
+            if es_grupo:
+                sub = expandir(idx) if idx < len(grupos) else None
+                if sub is None:
+                    continue
+                piezas = [(p + q, r, x, L, mute or m) for q, r, x, L, m in sub]
+            elif idx < len(regiones):
+                piezas = [(p, idx, 0, regiones[idx]["muestras"], mute)]
+            else:
+                continue
+            for ini, r, x, L, m in piezas:
+                x0, x1 = max(ini, a), min(ini + L, b)
+                if x1 > x0:
+                    out.append((x0 - a, r, x + (x0 - ini), x1 - x0, m))
+        en_curso.discard(gi)
+        hechos[gi] = sorted(out)
+        return hechos[gi]
+
+    for g in grupos:
+        g["contenido"] = expandir(g["indice"])
 
 
 def _indice_clip_gain(d, b):

@@ -357,23 +357,62 @@ región, daba un clip cualquiera (en el show, un kultrun de 17,8 s donde Pro
 Tools muestra «Kultrun Con efectos.grp-02» de 3:38).
 
 Cada `0x262B` tiene la forma de una región: `5A 01 00 | u32 tamaño | 0x2628`
-con el nombre (`Bombo.grp-01`, `Kultrun estéreo.grp.L`) y los tres puntos
-(inicio original, desplazamiento = CERO, largo en muestras); adentro un
-`0x2523 → 0x2526` con la muestra donde está colocado, su propio índice y un
-identificador de 13 bytes que comparten las copias del mismo grupo
-(`-01`, `-02`…). Una copia por canal en estéreo (`.L`/`.R`).
+con el nombre (`Bombo.grp-01`, `Kultrun estéreo.grp.L`), **un byte** (0 = el
+grupo es dueño de un contenido, 1 = copia de otro grupo) y los tres puntos
+(inicio original, CERO + desplazamiento, largo en muestras). Adentro, uno o más
+`0x2523 → 0x2526`, uno por instancia del grupo: u32 en +39 = id de instancia
+(correlativo, se reutiliza al deshacer), u32 en +75 = instancia padre
+(`FFFFFFFF` si está en una pista; si no, la instancia del grupo que lo contiene)
+y dos posiciones de 5 bytes con CERO (inicio y fin de la ventana). El `0x2628`
+termina, como el de una región, con el **índice de clip gain** del grupo
+(int32, −1 = ninguno): los grupos también llevan clip gain. Hay un grupo por
+canal en estéreo (`.L`/`.R`), cada uno con su contenido.
 
 El **contenido** de los grupos va en un segundo `0x1054` dentro del bloque
 `0x2428` (20 entradas `0x1052` para 40 grupos: las copias comparten
 contenido), con las mismas colocaciones `0x1050 → 0x104F` que una playlist
-pero con las muestras relativas a CERO (10^12). **Cómo se asocia cada grupo a
-su entrada todavía no se sabe** (no es el orden de aparición ni el
-identificador de 13 bytes, que no aparece fuera de `0x262C`). Mientras tanto
-trarin deja el grupo como clip de tipo `grupo` (nombre, posición y largo, sin
-archivo): `escuchar`, `nivelar`, las fichas y el show lo saltan, y `revisar`
-avisa cuáles hay y en qué pista; desagruparlos en Pro Tools (Clip > Ungroup)
-los convierte en clips normales. Al escribir, un grupo se mueve o se mutea
-como cualquier clip (misma colocación).
+pero con las muestras relativas a CERO (10^12) **y al inicio original del
+grupo**: un clip que en la sesión estaba en la muestra m queda en
+`CERO + (m − inicio_original)` (oráculo `PRUEBA_cruces\PRUEBA_grupos.ptx`,
+guardado desde Pro Tools 12: `Synth ModelD_01-05` en 0 dentro de un grupo que
+empieza en 770126 → `CERO − 770126`). Una colocación dentro de una entrada
+puede ser a su vez un grupo (byte +20 = 1: grupos anidados). Pegar el mismo
+grupo dos veces en una pista no crea otro registro `0x262B`: las dos
+colocaciones apuntan al mismo índice.
+
+**Cómo se asocia cada grupo a su entrada** [verificado 2026-11-02]: hay una
+entrada por **familia** (un dueño, byte 0, y sus copias, byte 1), en el orden en
+que cada familia aparece por primera vez en la lista `0x262C`. La copia no
+apunta a su dueño (fuera del nombre y ese byte son idénticos); el dueño es el
+grupo dueño con el mismo **inicio base** (`inicio original − desplazamiento`)
+cuya ventana contiene la de la copia; si hay más de uno, el de la misma
+ventana y después el primero. Las posiciones del contenido son relativas a ese
+inicio base, y la ventana de cada grupo es `[desplazamiento, desplazamiento +
+largo)`: el contenido se recorta ahí. Se comprobó así:
+
+- oráculo `PRUEBA_grupos.ptx` (5 grupos, 4 dueños, 4 entradas; grp-04 copia de
+  grp-02, que contiene a grp-01, que contiene a grp): el contenido expandido
+  calza con los clips de `PRUEBA_cruces_original.ptx`, de donde salieron;
+- show RAPIZUAM (40 grupos, 20 dueños, 20 entradas): 15 contenidos aparecen
+  clip por clip (nombre, «desde», largo y distancias) sueltos en la pista del
+  mismo nombre de otra versión del show (`rapizuam_show.ptx`), entre ellos
+  «Kultrum mic.grp» con 115 clips y «Kultrum mic.grp-01» con 49, dueños y
+  copias, y el caso ambiguo Bajo / Kaskawillas-04 (mismo inicio base).
+
+trarin lee el contenido (`pistas.leer_grupos_clips`) y lo pone en el modelo
+común como `contenido` de cada clip de tipo `grupo`: clips de audio con
+posición absoluta y el clip gain del grupo sumado. Todo lo que escucha o mide
+usa `comun.clips_audio(pista)`, que los incluye; el armador de shows y
+`consolidar` los llevan como clips sueltos (como desagrupar). Al escribir, un
+grupo se mueve, se mutea o se quita como cualquier clip (misma colocación);
+agregar o duplicar un grupo no está soportado. Los fundidos de adentro de un
+grupo todavía no se leen.
+
+**Cuidado al escribir**: un clip nuevo se arma copiando una colocación de la
+sesión; si esa plantilla era de un grupo, el clip nuevo heredaba el byte +20 y
+Pro Tools lo leía como grupo (pasó en los shows del 2026-10-28: 860
+colocaciones marcadas). `escritura._plantilla_colocacion` ya no toma una
+colocación de grupo y cada clip nuevo lleva el byte en 0.
 
 ## 7. Fundidos `0x2630 → 0x262F` [verificado en 16 124 geometrías]
 

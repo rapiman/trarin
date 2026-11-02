@@ -83,6 +83,9 @@ def a_comun(n):
         for c in p["clips"]:
             c["posicion"] = T.compas_tiempo(c["tick"], compases)
             c["segundos"] = round(T.segundos(c["tick"], mapa), 6)
+            for x in c.get("contenido") or []:
+                x["posicion"] = T.compas_tiempo(x["tick"], compases)
+                x["segundos"] = round(T.segundos(x["tick"], mapa), 6)
     for m in base["marcadores"]:
         m["posicion"] = T.compas_tiempo(m["tick"], compases)
     return base
@@ -98,10 +101,66 @@ def _marcador(m, id_):
 
 # ---- Pro Tools
 
+def clips_audio(pista):
+    """Los clips de audio de una pista del modelo común, con el contenido de sus
+    grupos de clips como clips más (id «pista#j.k», 'en_grupo': j). Es lo que tiene
+    que usar todo lo que escucha o mide; lo que escribe usa pista["clips"]."""
+    for c in pista.get("clips") or []:
+        if c.get("tipo") == "audio":
+            yield c
+        elif c.get("tipo") == "grupo" and c.get("contenido"):
+            for x in c["contenido"]:
+                if c.get("mute") and not x.get("mute"):
+                    x = dict(x, mute=True)
+                yield x
+
+
+def _contenido_grupo_pt(c, r, ta, grupos_clips, regiones, fs, mapa):
+    """Clips de audio de un grupo colocado (posiciones absolutas), o None si su
+    contenido no se pudo leer. Un grupo estéreo tiene un grupo por canal en la
+    misma muestra; sus piezas se emparejan en orden."""
+    gi = r["indice_grupo"]
+    g = grupos_clips[gi] if gi < len(grupos_clips) else None
+    if not g or g.get("contenido") is None:
+        return None
+    por_canal = []
+    for can in ta["canales"]:
+        x = next((y for y in can["regiones"] if y["muestra"] == r["muestra"] and "indice_grupo" in y), None)
+        gx = grupos_clips[x["indice_grupo"]] if x and x["indice_grupo"] < len(grupos_clips) else None
+        por_canal.append(gx.get("contenido") if gx else None)
+    g_db = g.get("clip_gain_db", 0.0)
+    out = []
+    for k, (q, ri, extra, largo, mute) in enumerate(g["contenido"]):
+        reg = regiones[ri]
+        m0 = r["muestra"] + q
+        s = {"id": f"{c['id']}.{k}", "tipo": "audio", "nombre": reg["nombre"], "muestra": m0,
+             "largo_muestras": largo, "tick": T.tick_de_segundos(m0 / fs, mapa),
+             "archivo": reg["archivo"], "desde_muestra": reg["desde_muestra"] + extra,
+             "canales": len(ta["canales"]), "indice_region": ri, "en_grupo": c["id"]}
+        s["largo_ticks"] = T.tick_de_segundos((m0 + largo) / fs, mapa) - s["tick"]
+        if reg.get("clip_gain"):
+            s["ganancia_curva"] = [{"muestra": n_["muestra"] - extra, "db": n_["db"] + g_db} for n_ in reg["clip_gain"]]
+        elif "clip_gain_db" in reg or g_db:
+            s["ganancia_db"] = round(reg.get("clip_gain_db", 0.0) + g_db, 2)
+        if mute:
+            s["mute"] = True
+        if len(ta["canales"]) > 1:
+            arch = []
+            for cont in por_canal:
+                if cont and k < len(cont) and cont[k][0] == q:
+                    arch.append(regiones[cont[k][1]]["archivo"])
+                else:
+                    arch.append(reg["archivo"])
+            s["archivos_canales"] = arch
+        out.append(s)
+    return out
+
+
 def _desde_protools(n):
     fs = n["origen"].get("frecuencia_muestreo") or 48000
     mapa = T.MapaTempo(n["tempo"])
     regiones = n["audio"]["regiones"]
+    grupos_clips = n["audio"].get("grupos_clips") or []
     midi = n["midi"]["regiones"]
     mezcla = {m.get("nombre"): m for m in n.get("mezcla", [])}
     tracks_audio = {p["nombre"]: p for p in n["pistas_audio"]}
@@ -121,7 +180,8 @@ def _desde_protools(n):
             canal = ta["canales"][0]
             for j, r in enumerate(canal["regiones"]):
                 if "indice_grupo" in r:
-                    # grupo de clips: trarin no mira adentro (ver pistas.leer_grupos_clips)
+                    # grupo de clips: se escribe como una colocación más; su audio va en
+                    # "contenido" (clips de audio con posición absoluta, ver clips_audio)
                     c = {"id": f"{p['nombre']}#{j}", "tipo": "grupo", "nombre": r["grupo"],
                          "muestra": r["muestra"], "largo_muestras": r["muestras"],
                          "tick": T.tick_de_segundos(r["muestra"] / fs, mapa),
@@ -130,6 +190,7 @@ def _desde_protools(n):
                     c["largo_ticks"] = T.tick_de_segundos((r["muestra"] + r["muestras"]) / fs, mapa) - c["tick"]
                     if r.get("mute"):
                         c["mute"] = True
+                    c["contenido"] = _contenido_grupo_pt(c, r, ta, grupos_clips, regiones, fs, mapa)
                     clips.append(c)
                     continue
                 reg = regiones[r["indice_region"]]
@@ -471,7 +532,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                     fundidos_pista += c.get("fundidos") or []
                 continue
             vistos.add(c["id"])
-            if c["tipo"] != "audio":
+            if c["tipo"] == "midi":
                 libres = _SOLO_LECTURA | {"tick", "notas"}
                 if {k: v for k, v in c.items() if k not in libres} != {k: v for k, v in x.items() if k not in libres}:
                     raise ErrorComun(f"Pro Tools: en el clip MIDI {c['id']} solo se puede cambiar la posición y las notas")
@@ -488,7 +549,7 @@ def _a_protools(comun, original, nativo, plantilla, salida):
                 cambio["muestra"] = round(T.segundos(c["tick"], nativo["tempo"]) * fs)
             if bool(c.get("mute")) != bool(x.get("mute")):
                 cambio["mute"] = bool(c.get("mute"))
-            libres = _SOLO_LECTURA | {"muestra", "tick", "mute", "largo_ticks", "fundidos"}
+            libres = _SOLO_LECTURA | {"muestra", "tick", "mute", "largo_ticks", "fundidos", "contenido"}
             fun = lambda y: [{k: v for k, v in f.items() if k != "muestra"} for f in y.get("fundidos", [])]
             if ({k: v for k, v in c.items() if k not in libres} != {k: v for k, v in x.items() if k not in libres}
                     or fun(c) != fun(x)):
@@ -689,6 +750,9 @@ def _clip_nuevo_pt(c, pista, original, nativo, fs, clips_nuevos, altas, comun):
     estéreo, con los archivos mono de 'archivos_canales' y nombres .L y .R), y
     cada archivo que no esté en la sesión se agrega: debe venir en 'archivos'
     con su 'ruta' absoluta (WAV mono a la frecuencia de la sesión)."""
+    if c.get("tipo") == "grupo":
+        raise ErrorComun(f"Pro Tools: agregar o duplicar un grupo de clips ({c.get('nombre')!r}) aún no está soportado; "
+                         f"se pueden agregar sus clips sueltos (su 'contenido')")
     if c.get("tipo") != "audio":
         raise ErrorComun("Pro Tools: agregar clips MIDI aún no está soportado")
     canales = next((len(t["canales"]) for t in nativo["pistas_audio"] if t["nombre"] == pista["id"]), None)

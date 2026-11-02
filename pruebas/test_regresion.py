@@ -28,7 +28,7 @@ os.environ["TRARIN_SIN_CACHE"] = "1"
 SESIONES = RAIZ / "pruebas" / "sesiones"
 VACIAS = ["trarin_vacia_44k.ptx", "trarin_vacia_48k.ptx", "trarin_vacia_96k.ptx"]
 TODAS = VACIAS + ["trarin_pistas_48k.ptx", "PRUEBA_una_nota_vacia.ptx", "PRUEBA_una_nota.ptx",
-                  "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx"]
+                  "PRUEBA_orden_A.ptx", "PRUEBA_canal_A.ptx", "PRUEBA_grupos.ptx"]
 
 
 def _sin_ids(comun):
@@ -174,6 +174,55 @@ class Orden(Base):
         c2 = leer_comun(s)
         self.assertEqual([p["nombre"] for p in c2["pistas"]], ["Audio 1", "Audio 2"])
         self.assertEqual(verificar_orden(c, c2, ["Audio 1", "Audio 2"]), [])
+
+
+class GruposDeClips(Base):
+    """Oráculo PRUEBA_grupos.ptx (Pro Tools 12): en Synth ModelD hay tres grupos de
+    clips colocados (el tercero es copia pegada del segundo: mismo índice)."""
+    def test_se_leen_como_grupos(self):
+        from trarin.comun import leer_comun
+        from trarin import revision
+        ruta = str(SESIONES / "PRUEBA_grupos.ptx")
+        c = leer_comun(ruta)
+        p = next(t for t in c["pistas"] if t["nombre"] == "Synth ModelD")
+        grupos = [x for x in p["clips"] if x["tipo"] == "grupo"]
+        self.assertEqual([g["indice_grupo"] for g in grupos], [2, 3, 3])
+        self.assertEqual([g["nombre"] for g in grupos], ["Synth ModelD.grp-04", "Synth ModelD.grp-03", "Synth ModelD.grp-03"])
+        self.assertEqual([g["largo_muestras"] for g in grupos], [12276717, 9150911, 9150911])
+        self.assertTrue(all(g["archivo"] is None for g in grupos))
+        self.assertFalse([x for x in p["clips"] if x["tipo"] == "audio" and x["largo_muestras"] in (12276717, 9150911)])
+        r = revision.revisar(ruta, c)
+        self.assertEqual(r["revisado"].get("grupos_de_clips"), 3)
+        self.assertFalse(any("no se pudo leer" in a for a in r["avisos"]), r["avisos"])
+
+    def test_contenido_de_los_grupos(self):
+        """El contenido calza con la sesión de la que salieron (PRUEBA_cruces_original):
+        grp-04 es copia de grp-02, que contiene a grp-01 (anidado), que contiene a grp."""
+        from trarin.comun import leer_comun, clips_audio
+        c = leer_comun(str(SESIONES / "PRUEBA_grupos.ptx"))
+        p = next(t for t in c["pistas"] if t["nombre"] == "Synth ModelD")
+        g1, g2, g3 = [x for x in p["clips"] if x["tipo"] == "grupo"]
+        self.assertEqual([x["nombre"] for x in g1["contenido"]],
+                         ["Synth ModelD_01-05", "Synth ModelD_01-08", "Synth ModelD_01-07", "Synth ModelD_01-03"])
+        a = g1["contenido"][0]
+        self.assertEqual((a["muestra"], a["largo_muestras"]), (770126, 5345582))   # recortado a la ventana de grp
+        self.assertEqual(g1["contenido"][2]["muestra"], 6161009)                    # 01-07 donde estaba: 128,35 s
+        self.assertEqual([x["nombre"] for x in g2["contenido"]], ["Synth ModelD_01-04"])
+        self.assertEqual(g2["contenido"][0]["muestra"], g2["muestra"])
+        self.assertEqual(g3["contenido"][0]["muestra"], g3["muestra"])
+        for g in (g1, g2, g3):
+            for x in g["contenido"]:
+                self.assertGreaterEqual(x["muestra"], g["muestra"])
+                self.assertLessEqual(x["muestra"] + x["largo_muestras"], g["muestra"] + g["largo_muestras"])
+        self.assertEqual(len([x for x in clips_audio(p) if x.get("en_grupo")]), 6)
+
+    def test_plantilla_no_es_de_grupo(self):
+        """Un clip nuevo nunca hereda la marca de grupo (+20 del 0x104F) de la plantilla."""
+        from trarin.protools.bloques import arbol
+        from trarin.protools.descifrado import leer_descifrado
+        from trarin.protools.escritura import _plantilla_colocacion
+        d = leer_descifrado(str(SESIONES / "PRUEBA_grupos.ptx"))
+        self.assertEqual(_plantilla_colocacion(d, arbol(d))[16 + 20], 0)
 
 
 class SalidasMidi(Base):

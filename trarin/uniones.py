@@ -14,11 +14,12 @@ def _fs(comun):
 
 def _tramos(comun, mapa):
     """[(inicio_s, fin_s, pista, tipo, mute)] de todos los clips, ordenados."""
+    from .comun import clips_audio
     fs = _fs(comun)
     out = []
     for p in comun["pistas"]:
         mute_pista = bool((p.get("mezcla") or {}).get("mute"))
-        for k in p.get("clips") or []:
+        for k in list(clips_audio(p)) + [x for x in p.get("clips") or [] if x.get("tipo") == "midi"]:
             if k.get("tipo") == "audio":
                 a = k["muestra"] / fs
                 out.append((a, (k["muestra"] + k["largo_muestras"]) / fs, p["nombre"], "audio",
@@ -59,7 +60,8 @@ def por_cancion(comun, margen_s=3.0):
         for p in comun["pistas"]:
             if (p.get("mezcla") or {}).get("mute"):
                 continue
-            for k in p.get("clips") or []:
+            from .comun import clips_audio
+            for k in list(clips_audio(p)) + [x for x in p.get("clips") or [] if x.get("tipo") == "midi"]:
                 if k.get("tipo") == "audio" and not k.get("mute"):
                     a = k["muestra"] / fs
                     if s0 - margen_s <= a < s1 - margen_s:

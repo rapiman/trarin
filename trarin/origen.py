@@ -33,8 +33,9 @@ def _clips(comun, rutas, fs, a=-1e18, b=1e18, con_mute=True):
     out = []
     for p in comun["pistas"]:
         mp = bool((p.get("mezcla") or {}).get("mute"))
-        for k in p.get("clips") or []:
-            if k.get("tipo") != "audio" or k.get("archivo") is None:
+        from .comun import clips_audio
+        for k in clips_audio(p):
+            if k.get("archivo") is None:
                 continue
             ini = k["muestra"] / fs
             if not a <= ini < b:

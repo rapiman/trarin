@@ -158,9 +158,9 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   guardarlo como `*_pt.ptx` y comparar los dos modelos. Así se vio el clip gain de `nivelar`,
   la grilla de `proponer_tempo` y las pistas de `luces`, y apareció el cuarto error grave:
   los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
-  RAPIZUAM eran otro clip). Pendiente: una sesión chica con dos o tres grupos guardada
-  desde Pro Tools (oráculo) para averiguar cómo se asocia cada grupo a su contenido en el
-  `0x2428` y así poder mirar adentro (hoy se saltan y `revisar` avisa).
+  RAPIZUAM eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
+  trarin lee el contenido de los grupos (ver `docs/formato_ptx.md` 6.x). Pendiente: los
+  fundidos de adentro de un grupo, y agregar o duplicar grupos al escribir.
 
 ## Rendimiento
 

@@ -25,7 +25,8 @@ NOMBRES = ("Luz 1", "Luz 2", "Luz 3")
 
 
 def _audio_en(p, fs, a, b):
-    return sum(k["largo_muestras"] for k in p.get("clips") or [] if k.get("tipo") == "audio" and not k.get("mute")
+    from .comun import clips_audio
+    return sum(k["largo_muestras"] for k in clips_audio(p) if not k.get("mute")
                and a <= k["muestra"] / fs < b)
 
 

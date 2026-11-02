@@ -455,8 +455,11 @@ def _armar(show, salida, plan, canciones, base, desde, tmp):
                 continue
             if buses_show and p["tipo"] == "retorno":
                 continue                            # los auxiliares de las canciones se reemplazan
+            # un grupo de clips entra al show como su contenido, en clips sueltos (como desagrupar)
+            sueltos = [y for c in p["clips"]
+                       for y in (c["contenido"] if c.get("tipo") == "grupo" and c.get("contenido") else [c])]
             clips = [x for x in (_clip_al_show(c, i, plan, ini_m, archivos, sesion, comun, ctx)
-                                 for c in p["clips"]) if x is not None]
+                                 for c in sueltos) if x is not None]
             if not clips and p["tipo"] not in ("retorno", "0x0007"):
                 continue
             externa = p.get("_extra")
@@ -689,8 +692,8 @@ def _clip_al_show(c, i, plan, ini_m, archivos, sesion, comun, ctx=None):
                 "largo_ticks": largo_show, "notas": notas}
     canciones = plan["canciones"][i]["nombre"]
     if c["tipo"] == "grupo" or c.get("archivo") is None:
-        raise ErrorShow(f"{canciones}: el clip {c.get('nombre')!r} es un grupo de clips (Clip Group); trarin no puede "
-                        f"llevarlo al show: desagruparlo en Pro Tools (Clip > Ungroup) y volver a leer la sesión")
+        raise ErrorShow(f"{canciones}: el grupo de clips {c.get('nombre')!r} no tiene contenido legible; trarin no "
+                        f"puede llevarlo al show: desagruparlo en Pro Tools (Clip > Ungroup) y volver a leer la sesión")
     escala = ctx.get("escala", 1.0)
     conv = ctx.get("conversor")
     muestra, largo, desde = c["muestra"], c["largo_muestras"], c.get("desde_muestra", 0)

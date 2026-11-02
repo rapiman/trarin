@@ -5,6 +5,30 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 
 ## 2026-11-02
 
+- **trarin lee el contenido de los grupos de clips.** Cada `0x262B` lleva un
+  byte tras el nombre (0 = dueño de un contenido, 1 = copia) y su propio índice
+  de clip gain; las entradas del `0x2428` van una por familia (dueño + copias)
+  en orden de primera aparición, y el dueño de una copia es el que tiene el
+  mismo inicio base y una ventana que la contiene. Verificado con el oráculo
+  `PRUEBA_grupos.ptx` (contra la sesión original) y en el show RAPIZUAM (15 de
+  40 contenidos aparecen clip por clip sueltos en otra versión del show, uno
+  con 115 clips). El modelo común trae el `contenido` de cada grupo como clips
+  de audio con posición absoluta y `comun.clips_audio(pista)` los incluye:
+  `escuchar`, fichas, `nivelar` (también escribe el clip gain de esas
+  regiones), `proponer_tempo`, `luces`, `pizarrita`, `origen`, `uniones` y
+  `revisar` ya los ven (en el show: 219 clips que estaban escondidos); el
+  armador de shows y `consolidar` los llevan como clips sueltos. Al escribir,
+  un grupo se mueve, se mutea o se quita como un clip; `editar` ya no deja los
+  grupos atrás al mover un tramo y avisa si uno cruza un borde. Escribir una
+  sesión con grupos sin cambios fallaba (el escritor los tomaba por MIDI):
+  arreglado. Pendiente: fundidos de adentro de un grupo; recalcular las fichas
+  del show para que `nivelar` mida esos clips.
+- **Bug de escritura: clips nuevos marcados como grupo.** La plantilla para
+  colocar un clip nuevo era la primera colocación de la sesión; si era de un
+  grupo, el clip nuevo heredaba el byte +20 y Pro Tools lo leía como grupo
+  (en los respaldos del 2026-10-28 hay 860 colocaciones así). La plantilla ya
+  no puede ser de un grupo y cada clip nuevo lleva el byte en 0. Pruebas: 13
+  (nuevas: contenido de los grupos, plantilla, ida y vuelta con grupos).
 - **Verificado en Pro Tools** (sesiones `verif\` del show RAPIZUAM, re-guardadas
   por Pro Tools como `*_pt.ptx`): el clip gain de `nivelar` se ve en Pro Tools
   (+2.1 dB en un registro corrido, −2.7 dB en un registro nuevo); la grilla de

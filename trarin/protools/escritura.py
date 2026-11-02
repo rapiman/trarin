@@ -445,10 +445,14 @@ def _entradas_playlist(d, bloques, nombre_playlist):
 
 
 def _plantilla_colocacion(d, bloques):
-    """Bytes de un 0x1050 de región (no de fundido) de la sesión."""
+    """Bytes de un 0x1050 de región (no de fundido ni de grupo de clips) de la sesión.
+
+    Una colocación de grupo (byte +20 del 0x104F en 1) no sirve: copiada, cada clip
+    nuevo quedaría marcado como grupo y Pro Tools leería su índice en la lista de
+    grupos 0x262C (pasó en los shows del 2026-10-28: 860 colocaciones marcadas)."""
     for e in buscar(bloques, 0x1050):
         f = next((h for h in e.hijos if h.tipo_contenido == 0x104F), None)
-        if f is not None and d[f.fin] == 0 and e.tamano == 44:
+        if f is not None and d[f.fin] == 0 and e.tamano == 44 and d[f.inicio + 20] == 0:
             return bytes(d[e.pos:e.fin])
     raise ErrorEscritura("no hay una colocación de región que sirva de plantilla en esta sesión")
 
@@ -567,6 +571,7 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
                 raise ErrorEscritura(f"{pista}: posición negativa")
             col = bytearray(plantilla)
             col[18] = 0
+            col[16 + 20] = 0      # +20 del 0x104F: 1 = grupo de clips; un clip nuevo es una región
             struct.pack_into("<I", col, 20, indices[k])
             col[25:30] = int(muestra).to_bytes(5, "little")
             col[16 + 17] = 3      # +17 del 0x104F: 3 en las regiones (22 715 de 23 121 en el corpus); con
@@ -575,6 +580,7 @@ def _altas_bajas_clips(d, bloques, pista, nuevos, borrados, fundidos=()):
         for indice, ancla in fundidos_k:
             col = bytearray(plantilla)
             col[18] = 0
+            col[16 + 20] = 0
             struct.pack_into("<I", col, 20, indice)
             col[25:30] = int(ancla).to_bytes(5, "little")
             col[16 + struct.unpack_from("<I", col, 12)[0]] = 1     # byte tras el 0x104F

@@ -103,11 +103,12 @@ def leer(ruta) -> dict:
         return ev
 
     archivos = P.leer_archivos_audio(d, bloques)
-    regiones = P.leer_regiones_audio(d, bloques, P.leer_clip_gain(d, bloques))
+    ganancias = P.leer_clip_gain(d, bloques)
+    regiones = P.leer_regiones_audio(d, bloques, ganancias)
     fundidos = P.leer_fundidos(d, bloques)
     lista_pistas = P.leer_lista_pistas(d, bloques)
     nombres = [p["nombre"] for p in lista_pistas]
-    grupos_clips = P.leer_grupos_clips(d, bloques)
+    grupos_clips = P.leer_grupos_clips(d, bloques, regiones, ganancias)
     pistas_audio, playlists_inactivas = P.leer_pistas_audio(d, bloques, regiones, set(nombres) or None, fundidos,
                                                             grupos_clips)
     grupos = P.leer_grupos(d, bloques)

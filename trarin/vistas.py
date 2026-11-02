@@ -111,7 +111,9 @@ def detalle(comun, pista, max_clips=60):
     out = {k: v for k, v in p.items() if k != "clips"}
     clips = p.get("clips") or []
     out["clips_total"] = len(clips)
-    out["clips"] = [{k: v for k, v in c.items() if k not in ("notas",)} | ({"notas": len(c["notas"])} if "notas" in c else {})
+    out["clips"] = [{k: v for k, v in c.items() if k not in ("notas", "contenido")}
+                    | ({"notas": len(c["notas"])} if "notas" in c else {})
+                    | ({"contenido": len(c["contenido"] or [])} if "contenido" in c else {})
                     for c in clips[:max_clips]]
     if len(clips) > max_clips:
         out["clips_omitidos"] = len(clips) - max_clips

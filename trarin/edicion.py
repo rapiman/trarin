@@ -83,7 +83,7 @@ def planear(sesion, accion, pista, cancion=None, desde_compas=None, hasta_compas
                 if ini is None or not a <= ini < b:
                     continue
                 d = segundos or _segundos_de_compases(reloj, ini, compases)
-                if c.get("tipo") == "audio":
+                if c.get("tipo") in ("audio", "grupo"):
                     nuevo = int(round(c["muestra"] + d * fs))
                     if nuevo < 0:
                         avisos.append(f"{p['nombre']}: un clip quedaría antes del 0, no se mueve")
@@ -100,6 +100,11 @@ def planear(sesion, accion, pista, cancion=None, desde_compas=None, hasta_compas
         t = reloj.segundo_de_compas(primero + compas - 1)
         for p in pistas:
             for c in p.get("clips") or []:
+                if c.get("tipo") == "grupo":
+                    ini, fin = c["muestra"] / fs, (c["muestra"] + c["largo_muestras"]) / fs
+                    if ini + 0.001 < t < fin - 0.001:
+                        avisos.append(f"{p['nombre']}: el grupo de clips {c['nombre']!r} cruza el corte y no se parte")
+                    continue
                 if c.get("tipo") != "audio":
                     continue
                 ini, fin = c["muestra"] / fs, (c["muestra"] + c["largo_muestras"]) / fs
@@ -114,12 +119,16 @@ def planear(sesion, accion, pista, cancion=None, desde_compas=None, hasta_compas
             raise ErrorEdicion(f"{accion}: indicar la canción o los compases")
         for p in pistas:
             for c in p.get("clips") or []:
-                if c.get("tipo") != "audio":
+                if c.get("tipo") not in ("audio", "grupo"):
                     continue
                 ini, fin = c["muestra"] / fs, (c["muestra"] + c["largo_muestras"]) / fs
                 if fin <= a or ini >= b:
                     continue
                 cortes = [x for x in (a, b) if ini + 0.001 < x < fin - 0.001]
+                if c.get("tipo") == "grupo" and cortes:
+                    avisos.append(f"{p['nombre']}: el grupo de clips {c['nombre']!r} cruza el borde del tramo; no se "
+                                  f"parte ni se {'mutea' if accion == 'silenciar' else 'quita'}: desagruparlo en Pro Tools")
+                    continue
                 if cortes and c.get("fundidos"):
                     avisos.append(f"{p['nombre']}: el clip en {ini:.2f} s cruza el borde y tiene fundidos; "
                                   f"no se puede partir, así que se {'mutea' if accion == 'silenciar' else 'deja'} entero")
