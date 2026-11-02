@@ -156,6 +156,17 @@ def main(argv=None):
     go.add_argument("--destino", help="pista MIDI destino (por defecto «<pista> MIDI», nueva)")
     go.add_argument("-o", "--salida", help="sesión .ptx nueva con las notas; sin -o ni --mid solo muestra el plan")
     go.add_argument("--mid", help="archivo .mid nuevo con las notas")
+    ed = sub.add_parser("editar", help="mover, cortar, silenciar o quitar clips de una pista por compás de la canción; sin -o solo muestra el plan")
+    ed.add_argument("sesion")
+    ed.add_argument("accion", choices=["mover", "cortar", "silenciar", "quitar"])
+    ed.add_argument("pista")
+    ed.add_argument("--cancion")
+    ed.add_argument("--desde-compas", type=int)
+    ed.add_argument("--hasta-compas", type=int)
+    ed.add_argument("--compas", type=int, help="cortar: compás de la canción donde cortar")
+    ed.add_argument("--compases", type=float, default=0.0, help="mover: cuántos compases (negativo = antes)")
+    ed.add_argument("--segundos", type=float, default=0.0, help="mover: cuántos segundos (en vez de compases)")
+    ed.add_argument("-o", "--salida", help="sesión .ptx nueva con el cambio")
     og = sub.add_parser("origen", help="compara una canción del show con la sesión de la que salió: clips hallados, faltantes, muteados, movidos, agregados, pistas no llevadas y faders (solo lee)")
     og.add_argument("show")
     og.add_argument("cancion")
@@ -209,6 +220,26 @@ def main(argv=None):
     if a.orden == "_trabajo":
         from .trabajos import correr
         correr(a.carpeta)
+        return
+    if a.orden == "editar":
+        from pathlib import Path
+        from . import edicion as ED
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        try:
+            plan = ED.planear(a.sesion, a.accion, a.pista, a.cancion, a.desde_compas, a.hasta_compas, a.compas,
+                              a.compases, a.segundos)
+            print(ED.texto(plan))
+            if a.salida:
+                if Path(a.salida).exists():
+                    p.error(f"{a.salida} ya existe")
+                r = ED.escribir(plan, a.salida)
+                print(f"escrito {a.salida}; " + (r["verificacion"].get("texto") or "")
+                      + ("" if r["verificacion"].get("revision", {}).get("ok", True) else " — REVISAR"))
+                for x in r.get("avisos") or []:
+                    print(f"  aviso: {x}")
+        except ED.ErrorEdicion as e:
+            p.error(str(e))
         return
     if a.orden == "origen":
         from . import origen as O
