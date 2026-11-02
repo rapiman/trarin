@@ -76,7 +76,8 @@ def _t_escuchar(a, registro):
     from . import escucha
     return escucha.mezclar(a["sesion"], a.get("cancion"), a.get("desde_compas"), a.get("hasta_compas"),
                            a.get("desde_s"), a.get("hasta_s"), a.get("pistas"), a.get("frecuencia"),
-                           registro=registro)
+                           registro=registro, formato=a.get("formato") or "wav", mp3_kbps=a.get("mp3_kbps") or 192,
+                           auxiliares=a.get("auxiliares", True))
 
 
 TAREAS = {"armar_show": _t_armar_show, "escuchar": _t_escuchar, "consolidar": _t_consolidar,
