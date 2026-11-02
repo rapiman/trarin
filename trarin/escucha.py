@@ -133,11 +133,14 @@ def _codificador_mp3(fs, kbps):
 
 def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=None, hasta_s=None,
             pistas=None, frecuencia=None, salida=None, registro=print, formato="wav", mp3_kbps=192,
-            auxiliares=True):
+            auxiliares=True, crudo=False, exacta=False):
     """Escribe la mezcla rápida del tramo pedido. Devuelve {salida, desde,
     hasta, segundos, pistas, bajada_db, avisos}. formato: "wav" (16 bits) o
     "mp3" (lameenc). auxiliares: aplicar el fader de los auxiliares por los que
-    pasa cada pista."""
+    pasa cada pista. crudo: solo clip gain y fundidos (sin fader, paneo, mute,
+    solo, auxiliares ni master; una pista mono va igual a los dos lados): «la
+    pista tal cual está grabada». exacta: 'pistas' es el nombre exacto de una
+    pista, no una expresión regular."""
     import numpy as np
     from . import audio, fichas
     from .vistas import _normal
@@ -149,13 +152,18 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
 
     todas = [p for p in ses.comun["pistas"] if p["tipo"] == "audio" and p.get("clips")]
     en_solo = [p for p in todas if (p.get("mezcla") or {}).get("solo")]
-    if en_solo:
+    if en_solo and not crudo and not pistas:
         avisos.append(f"hay pistas en solo: suenan solo esas ({', '.join(p['nombre'] for p in en_solo)})")
         todas = en_solo
     if pistas:
-        todas = [p for p in todas if re.search(pistas, _normal(p["nombre"]))]
+        if exacta:
+            todas = [p for p in todas if p["nombre"] == pistas]
+        else:
+            todas = [p for p in todas if re.search(pistas, _normal(p["nombre"]))]
         if not todas:
             raise ErrorEscucha(f"ninguna pista calza con {pistas!r}")
+    if crudo:
+        auxiliares = False
     activas = []
     for p in todas:
         clips = [c for c in p["clips"] if c.get("tipo") == "audio" and c.get("archivo") is not None
@@ -168,8 +176,8 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     if otros:
         avisos.append(f"las pistas MIDI y de instrumento no suenan ({len(otros)})")
     master = next((x for x in (ses.comun.get("nativo") or {}).get("master") or [] if x.get("tipo") == "master"), None)
-    g_master = 10 ** (float((master or {}).get("volumen_db") or 0.0) / 20)
-    if master and master.get("inserts"):
+    g_master = 1.0 if crudo else 10 ** (float((master or {}).get("volumen_db") or 0.0) / 20)
+    if master and master.get("inserts") and not crudo:
         avisos.append("el master tiene plugins (" + ", ".join(i.get("plugin", "?") for i in master["inserts"])
                       + ") que aquí no se aplican")
     retornos = {}
@@ -193,16 +201,20 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
     if formato not in ("wav", "mp3"):
         raise ErrorEscucha("formato: wav o mp3")
     ext = "." + formato
+    if pistas:
+        nombre += " [" + (pistas if exacta else ", ".join(p["nombre"] for p in todas[:3]) + ("…" if len(todas) > 3 else "")) + "]"
+    if crudo:
+        nombre += " crudo"
     salida = Path(salida) if salida else _salida_libre(fichas.carpeta_fichas(ses.sesion).parent / "escuchas", nombre, ext)
     if salida.suffix.lower() != ext:
         salida = salida.with_suffix(ext)
-    crudo = salida.with_suffix(".f32.tmp")
+    temporal = salida.with_suffix(".f32.tmp")
     pico = 0.0
     total = m1 - m0
     paso = int(TRAMO_S * fs)
     registro(f"mezclando {nombre}: {len(activas)} pistas, {total / fs:.0f} s")
     try:
-        with open(crudo, "wb") as fcrudo:
+        with open(temporal, "wb") as fcrudo:
             for c0 in range(m0, m1, paso):
                 c1 = min(c0 + paso, m1)
                 n = c1 - c0
@@ -263,6 +275,13 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
                         hay = True
                     if not hay:
                         continue
+                    if crudo:                                  # tal cual está grabada
+                        if can == 1:
+                            suma[:, 0] += buf[:, 0]
+                            suma[:, 1] += buf[:, 0]
+                        else:
+                            suma += buf
+                        continue
                     # fader, mute y paneo; después, el fader de cada auxiliar de su cadena
                     mz = p.get("mezcla") or {}
                     au = p.get("automatizacion") or {}
@@ -304,7 +323,7 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
             flujo = soxr.ResampleStream(fs, fs_sal, 2, dtype="float32", quality="HQ")
         enc = _codificador_mp3(fs_sal, mp3_kbps) if formato == "mp3" else None
         destino = open(salida, "wb") if enc else wave.open(str(salida), "wb")
-        with destino as w, open(crudo, "rb") as fcrudo:
+        with destino as w, open(temporal, "rb") as fcrudo:
             if not enc:
                 w.setnchannels(2)
                 w.setsampwidth(2)
@@ -325,12 +344,60 @@ def mezclar(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=
                 if ultimo:
                     break
     finally:
-        if crudo.exists():
-            crudo.unlink()
+        if temporal.exists():
+            temporal.unlink()
     if faltan:
         avisos.append(f"faltan {len(faltan)} archivos de audio (esos clips no suenan)")
     if bajada:
         avisos.append(f"la suma pasaba 0 dBFS (pico {20 * math.log10(pico):+.1f} dBFS): se bajó todo {bajada} dB")
-    avisos.append("sin plugins" + ("" if usados else " ni auxiliares") + ": es una referencia, no la mezcla final")
+    if crudo:
+        avisos.append("crudo: solo clip gain y fundidos; sin fader, paneo, mute, auxiliares, master ni plugins")
+    else:
+        avisos.append("sin plugins" + ("" if usados else " ni auxiliares") + ": es una referencia, no la mezcla final")
     return {"salida": str(salida), "desde": ses.reloj(a), "hasta": ses.reloj(b), "segundos": round(b - a, 1),
-            "pistas": len(activas), "bajada_db": bajada, "frecuencia": fs_sal, "avisos": avisos}
+            "pistas": len(activas), "nombres": [p["nombre"] for p, _ in activas], "bajada_db": bajada,
+            "frecuencia": fs_sal, "avisos": avisos}
+
+
+def por_pista(sesion, cancion=None, desde_compas=None, hasta_compas=None, desde_s=None, hasta_s=None,
+              pistas=None, frecuencia=None, carpeta=None, registro=print, formato="wav", mp3_kbps=192,
+              crudo=False, auxiliares=True):
+    """Un archivo por pista de audio con sonido en el tramo («dame las pistas
+    sin efectos»), en trarin/escuchas/<tramo>/ junto a la sesión. Cada pista
+    con su fader, paneo y auxiliares (sin plugins); con crudo=True, tal cual
+    grabada. Devuelve {carpeta, archivos: [{pista, salida, bajada_db}], avisos}."""
+    import re as _re
+    from . import fichas
+    from .vistas import _normal
+    ses = fichas.Sesion(sesion)
+    a, b, nombre = _rango(ses, cancion, desde_compas, hasta_compas, desde_s, hasta_s)
+    fs = ses.fs
+    m0, m1 = int(round(a * fs)), int(round(b * fs))
+    candidatas = []
+    for p in ses.comun["pistas"]:
+        if p["tipo"] != "audio" or (pistas and not _re.search(pistas, _normal(p["nombre"]))):
+            continue
+        if any(c.get("tipo") == "audio" and c.get("muestra") is not None and c["muestra"] < m1
+               and c["muestra"] + c["largo_muestras"] > m0 for c in p.get("clips") or []):
+            candidatas.append(p["nombre"])
+    if not candidatas:
+        raise ErrorEscucha("no hay pistas de audio con sonido en el tramo pedido")
+    carpeta = Path(carpeta) if carpeta else fichas.carpeta_fichas(ses.sesion).parent / "escuchas" / \
+        (_re.sub(r'[<>:"/\\|?*]+', "_", nombre).strip() + (" crudo" if crudo else ""))
+    carpeta.mkdir(parents=True, exist_ok=True)
+    archivos, avisos = [], set()
+    registro(f"{len(candidatas)} pistas en {nombre} → {carpeta}")
+    for k, n in enumerate(candidatas, 1):
+        salida = _salida_libre(carpeta, n, "." + formato)
+        try:
+            r = mezclar(sesion, cancion, desde_compas, hasta_compas, desde_s, hasta_s, pistas=n, frecuencia=frecuencia,
+                        salida=salida, registro=lambda *x: None, formato=formato, mp3_kbps=mp3_kbps,
+                        auxiliares=auxiliares, crudo=crudo, exacta=True)
+        except ErrorEscucha as e:                  # una pista muteada o sin archivos no frena el resto
+            registro(f"  {k}/{len(candidatas)} {n}: {e}")
+            continue
+        archivos.append({"pista": n, "salida": r["salida"], "bajada_db": r["bajada_db"]})
+        avisos.update(x for x in r["avisos"] if "MIDI" not in x and not x.startswith("el master"))
+        registro(f"  {k}/{len(candidatas)} {n}")
+    return {"carpeta": str(carpeta), "desde": ses.reloj(a), "hasta": ses.reloj(b), "archivos": archivos,
+            "avisos": sorted(avisos)}

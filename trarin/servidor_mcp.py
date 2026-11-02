@@ -294,18 +294,23 @@ def crear():
     @herramienta
     def escuchar(ruta: str, cancion: str = "", desde_compas: int = 0, hasta_compas: int = 0,
                  desde_s: float = -1, hasta_s: float = -1, pistas: str = "", frecuencia: int = 0,
-                 formato: str = "wav", mp3_kbps: int = 192, auxiliares: bool = True) -> dict:
+                 formato: str = "wav", mp3_kbps: int = 192, auxiliares: bool = True, crudo: bool = False,
+                 por_pista: bool = False) -> dict:
         """Mezcla rápida de un tramo de una sesión de Pro Tools en un WAV estéreo
         de 16 bits o un MP3 (formato="mp3", liviano para mandar o escuchar desde
         cualquier lado), en trarin/escuchas junto a la sesión, siempre un
         archivo nuevo, para escuchar sin abrir Pro Tools. Tramo: una canción (y,
         si se indican, sus compases desde_compas–hasta_compas contados desde su
         inicio), compases de la sesión o segundos. pistas: expresión regular para
-        escuchar solo algunas («pif|kultrun»). frecuencia: p. ej. 22050 para un
-        WAV más liviano. Suma clip gain, fundidos, paneo, fader, su
+        escuchar solo algunas («bombo», «pif|kultrun»). frecuencia: p. ej. 22050
+        para un WAV más liviano. Suma clip gain, fundidos, paneo, fader, su
         automatización, mute, solo, el fader de los auxiliares por los que pasa
         cada pista (auxiliares=False para no aplicarlo) y el fader del master;
-        sin plugins. Corre como trabajo; el resultado trae la ruta del archivo."""
+        sin plugins. crudo=True: solo clip gain y fundidos, sin fader, paneo,
+        mute, auxiliares ni master («la pista tal cual está grabada»).
+        por_pista=True: un archivo por pista («dame las pistas sin efectos»), en
+        una carpeta del tramo, cada una con su fader y paneo (o tal cual grabada
+        con crudo=True). Corre como trabajo; el resultado trae la ruta."""
         from . import trabajos
         args = {"sesion": _existe(ruta)}
         for k, v in (("cancion", cancion or None), ("desde_compas", desde_compas or None),
@@ -313,7 +318,8 @@ def crear():
                      ("hasta_s", None if hasta_s < 0 else hasta_s), ("pistas", pistas or None),
                      ("frecuencia", frecuencia or None), ("formato", formato if formato != "wav" else None),
                      ("mp3_kbps", mp3_kbps if mp3_kbps != 192 else None),
-                     ("auxiliares", False if not auxiliares else None)):
+                     ("auxiliares", False if not auxiliares else None),
+                     ("crudo", crudo if (crudo or por_pista) else None), ("por_pista", True if por_pista else None)):
             if v is not None:
                 args[k] = v
         return {"trabajo": trabajos.lanzar("escuchar", args)}
