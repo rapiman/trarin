@@ -11,3 +11,5 @@ __pycache__/
 *.aif
 *.mp3
 muestras/
+# guiones sueltos de exploración (no son pruebas)
+pruebas/_*.py

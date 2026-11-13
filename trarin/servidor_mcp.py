@@ -439,12 +439,12 @@ def crear():
                    extra: dict | str | None = None, descripcion: str = "") -> dict:
         """Plantillas de reglas con nombre para consolidar, grupos y el armador:
         categorías, buses, auxiliares, grupos y reglas MIDI de un show guardadas
-        para el próximo (viene «rapizuam»). accion: "listar"; "ver" (la
+        para el próximo (trarin no trae ninguna). accion: "listar"; "ver" (la
         plantilla 'nombre'); "guardar" (unas 'reglas' —objeto o ruta JSON— como
         plantilla propia, sin lo propio del show: canciones, rutas, borrar…);
         "armar" (las reglas listas: la plantilla con 'extra' encima, las listas
         se suman). En consolidar, plan_consolidar, crear_grupos y plan_grupos,
-        reglas="plantilla:rapizuam" o "plantilla:rapizuam+extra.json" las usa
+        reglas="plantilla:nombre" o "plantilla:nombre+extra.json" las usa
         directamente."""
         from . import plantillas as PL
         if accion == "listar":

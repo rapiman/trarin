@@ -105,7 +105,7 @@ y §24), que se reutiliza:
 
 ## Fase 5 — Lo que sale de lo anterior
 
-- ✅ **Plantillas de reglas** con nombre (`plantillas`; viene «rapizuam»), usables como
+- ✅ **Plantillas de reglas** con nombre (`plantillas`; cada quien guarda las suyas), usables como
   `reglas="plantilla:nombre[+extra.json]"` en consolidar y grupos.
 - ✅ **Luces por MIDI** (`luces`): las tres pistas del show según la convención. Pendiente:
   verlas en Pro Tools.

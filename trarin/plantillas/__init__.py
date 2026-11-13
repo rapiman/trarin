@@ -1,14 +1,14 @@
 """Plantillas de reglas con nombre (fase 5): las categorías, buses, auxiliares,
-grupos y reglas MIDI de un show, guardadas para el próximo. Las que vienen con
-trarin están en esta carpeta (`rapizuam.json`); las propias van en
-`~/.trarin/plantillas/` (o TRARIN_PLANTILLAS). Lo propio de cada show
+grupos y reglas MIDI de un show, guardadas para el próximo. Van en
+`~/.trarin/plantillas/` (o TRARIN_PLANTILLAS); trarin no trae ninguna (si
+alguna vez trae, van en esta carpeta). Lo propio de cada show
 (canciones, pistas por ruta, qué borrar, carpeta de Live) no va en la
 plantilla: se agrega al armar las reglas.
 
 `armar(nombre, extra)` devuelve las reglas listas para consolidar o grupos: la
 plantilla con `extra` encima (las listas se suman, lo demás se reemplaza).
-En las herramientas MCP, `reglas="plantilla:rapizuam"` (o
-`"plantilla:rapizuam+ruta.json"`) usa una plantilla directamente."""
+En las herramientas MCP, `reglas="plantilla:nombre"` (o
+`"plantilla:nombre+ruta.json"`) usa una plantilla directamente."""
 
 import json
 import os
