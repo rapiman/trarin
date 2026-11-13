@@ -41,7 +41,7 @@ Reglas:
   lo pide (`fichas_calcular`, trabajo); después `resumen_sesion` trae una línea de sonido por
   pista, `ficha` da el detalle de una pista, de una canción o de un WAV suelto,
   `mapa_cancion` muestra qué entra y sale por compases, `que_suena` lo que suena en un
-  compás («el compás 40 de Aliwen»), `revisar_niveles` los picos sobre 0 dBFS con fader y
+  compás («el compás 40 de una canción»), `revisar_niveles` los picos sobre 0 dBFS con fader y
   automatización y `marcar_secciones` escribe los marcadores de sección. Para oír lo que dice
   la ficha, `escuchar` arma una mezcla rápida de un tramo en un WAV. Son aproximadas: describen el audio con el clip gain,
   sin fader, plugins ni fundidos. Al conversar, traducirlas a palabras simples para
@@ -275,7 +275,7 @@ def crear():
         """Qué pistas suenan en un compás, de la más fuerte a la más suave, con
         su color en ese momento. compas: número de compás de la sesión o, si se
         indica 'cancion', contado desde el inicio de esa canción («el compás 40
-        de Aliwen»). O bien 'segundo' de la sesión. Necesita fichas_calcular."""
+        de una canción»). O bien 'segundo' de la sesión. Necesita fichas_calcular."""
         from . import fichas
         ses = fichas.Sesion(_existe(ruta))
         if not ses.hay():

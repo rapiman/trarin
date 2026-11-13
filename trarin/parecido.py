@@ -1,7 +1,7 @@
 """Comparar sonidos a partir de las fichas (fase 3): qué pistas se parecen a
 una pista o a un WAV dado («busca en el show lo que se parezca a este golpe»),
 y buscar pistas por una descripción en palabras («agudas y percusivas en
-Aliwen»). Trabaja sobre las fichas ya calculadas (fichas_calcular); no abre los
+una canción»). Trabaja sobre las fichas ya calculadas (fichas_calcular); no abre los
 archivos de audio. Solo lee.
 
 El parecido mira el timbre y la manera de tocar, no el nivel: color (bandas,

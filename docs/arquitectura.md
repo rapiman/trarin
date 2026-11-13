@@ -79,7 +79,7 @@ Decisiones tomadas para el armador de shows (en desarrollo):
   {"buses": [{"bus": "Bus 1", "aux": "Aux 1", "patron": "kultr|cultr"},
              {"bus": "Bus 2", "aux": "Aux 2", "patron": "pif|puf"}],
    "salida_principal": "Windows 1-2",
-   "plantilla_aux": {"sesion": "…/I3000.ptx", "pista": "Aux Percuciones"},
+   "plantilla_aux": {"sesion": "…/base.ptx", "pista": "Aux Percuciones"},
    "quitar_pistas": ["Audio 1", "Audio 2", "Aux 1", "Aux 2", "MIDI 1"]}
   ```
 

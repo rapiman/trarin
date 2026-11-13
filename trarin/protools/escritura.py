@@ -1440,7 +1440,7 @@ def _cambios_tempo(d, bloques, tempo, fs=None):
         # Se escribe la del tick 0 según 'inicio_segundos' del modelo (0 si no
         # lo trae, como en un show armado por trarin); los demás eventos van en
         # 0, como los guarda Pro Tools. Antes se conservaba la de la plantilla,
-        # que podía pertenecer a otro tick: el show RAPIZUAM quedó con todo lo
+        # que podía pertenecer a otro tick: un show real quedó con todo lo
         # que va en ticks 13 s después que el audio.
         inicio = float(tempo[0].get("inicio_segundos") or 0.0)
         if fs is None:

@@ -51,7 +51,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   de clip gain; las entradas del `0x2428` van una por familia (dueño + copias)
   en orden de primera aparición, y el dueño de una copia es el que tiene el
   mismo inicio base y una ventana que la contiene. Verificado con el oráculo
-  `PRUEBA_grupos.ptx` (contra la sesión original) y en el show RAPIZUAM (15 de
+  `PRUEBA_grupos.ptx` (contra la sesión original) y en un show real (15 de
   40 contenidos aparecen clip por clip sueltos en otra versión del show, uno
   con 115 clips). El modelo común trae el `contenido` de cada grupo como clips
   de audio con posición absoluta y `comun.clips_audio(pista)` los incluye:
@@ -74,18 +74,18 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   (en los respaldos del 2026-10-28 hay 860 colocaciones así). La plantilla ya
   no puede ser de un grupo y cada clip nuevo lleva el byte en 0. Pruebas: 13
   (nuevas: contenido de los grupos, plantilla, ida y vuelta con grupos).
-- **Verificado en Pro Tools** (sesiones `verif\` del show RAPIZUAM, re-guardadas
+- **Verificado en Pro Tools** (sesiones `verif\` de un show real, re-guardadas
   por Pro Tools como `*_pt.ptx`): el clip gain de `nivelar` se ve en Pro Tools
   (+2.1 dB en un registro corrido, −2.7 dB en un registro nuevo); la grilla de
-  `proponer_tempo` cae en los golpes del kultrun (Katrümongen a 126,67 bpm); las
+  `proponer_tempo` cae en los golpes del kultrun (una canción a 126,67 bpm); las
   pistas Luz 1/2/3 de `luces` salen con sus notas y por Motu 1/2/3. Comparando
   lo que trarin escribió con lo que Pro Tools devolvió: tempo, notas MIDI y
   675 clips de audio idénticos.
 - **Grupos de clips (Clip Groups), bug de lectura encontrado en esa
   comparación**: una colocación con el byte +20 del `0x104F` en 1 apunta a la
   lista de grupos `0x262C`, no a la de regiones, y Pro Tools la renumera en cada
-  guardado. trarin la leía como región y en el show RAPIZUAM 10 clips (Bajo,
-  Kultrun Katrü L/R, Kultrun Centro, Pifilka C, Kaskawillas L, Semillas R) eran
+  guardado. trarin la leía como región y en un show real 10 clips (Bajo,
+  Kultrun L/R, Kultrun Centro, Pifilka C, Kaskawillas L, Semillas R) eran
   otro clip cualquiera: por eso `escuchar` sonaba distinto en esas partes,
   `revisar` veía 5 clips cruzando marcadores (es 1) y tapaba 2 huecos. Ahora
   `pistas.leer_grupos_clips` lee la lista (nombre, largo) y el modelo común los
@@ -106,12 +106,12 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   desde la negra anterior al pulso un tempo que dura justo hasta el golpe, así
   la negra siguiente cae EN el golpe y desde ahí sigue el bpm medido. Antes el
   cambio se ponía en la negra cercana y toda la grilla quedaba corrida (331 ms
-  en Sombra en el Desierto). Los eventos de tempo que caían dentro del puente
+  en una canción). Los eventos de tempo que caían dentro del puente
   se quitan. El bpm propuesto rige hasta el siguiente evento de tempo que ya
   tenga la sesión (`rige_hasta_s`); si ese evento está a menos de 4 negras del
-  pulso (una rampa hecha a mano, como la de Sombra en el Desierto) se avisa.
-  Para la verificación en Pro Tools se usó Katrümongen: 126,67 bpm medido en
-  Kultrun Katrü R, grilla actual 95 = 3/4, la negra más cercana a 8 ms.
+  pulso (una rampa hecha a mano, como la de una canción) se avisa.
+  Para la verificación en Pro Tools se usó una canción: 126,67 bpm medido en
+  Kultrun R, grilla actual 95 = 3/4, la negra más cercana a 8 ms.
 - **`fichas.Almacen.vigente` recordado por instancia**: cada comprobación hacía
   `stat` de los archivos de audio y una sesión lo pide cientos de veces; con el
   disco cargado eran 4 ms por `stat` y minutos por `nivelar`.
@@ -123,7 +123,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   pistas de audio con clips `{f, a, b, en}`, clip gain en lineal, fundidos de
   entrada y salida, fader, paneo, mute, automatización de volumen y paneo,
   marcas y, si se pide, los compases como subtítulos), más la mezcla rápida en
-  MP3 y, con `con_archivos`, los WAV que usa. Aliwen: 19 pistas, 28 clips, 37
+  MP3 y, con `con_archivos`, los WAV que usa. Una canción: 19 pistas, 28 clips, 37
   archivos. Lo que falta está del lado de Pizarrita: subir los archivos a una
   idea y pegar el montaje. CLI `trarin pizarrita`; MCP `exportar_pizarrita`
   (trabajo).
@@ -143,16 +143,16 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   hay en la canción; se puede fijar a mano por canción. Escribe la sesión y
   les pone puerto (el más usado en la sesión) y canal 1, 2 y 3 con
   `cambiar_salidas`. Probado con el show: 9820 notas, salidas Motu 1/2/3,
-  revisión limpia (Sombra queda sin luz principal: no tiene kultrun ni bombo
+  revisión limpia (una canción queda sin luz principal: no tiene kultrun ni bombo
   en audio). CLI `trarin luces sesion.ptx [--puerto …] [--fijar JSON] [-o …]`;
   MCP `luces`. Pendiente: verlo en Pro Tools.
 - **Plantillas de reglas con nombre** (`trarin/plantillas/`): categorías,
   buses, auxiliares, grupos y reglas MIDI de un show guardadas para el
-  próximo; viene «rapizuam». Lo propio de cada show (canciones, rutas, borrar,
+  próximo. Lo propio de cada show (canciones, rutas, borrar,
   carpeta de Live) se agrega al armar. En consolidar, plan_consolidar,
-  crear_grupos y plan_grupos, `reglas="plantilla:rapizuam"` o
-  `"plantilla:rapizuam+extra.json"`. Probado: la plantilla más lo propio de
-  RAPIZUAM da el mismo plan de consolidación. MCP `plantillas` (listar, ver,
+  crear_grupos y plan_grupos, `reglas="plantilla:nombre"` o
+  `"plantilla:nombre+extra.json"`. Probado: la plantilla más lo propio de
+  un show real da el mismo plan de consolidación. MCP `plantillas` (listar, ver,
   guardar, armar); propias en `~/.trarin/plantillas/`.
 - **Instalador** (`trarin instalar`): escribe la entrada «trarin» en
   `claude_desktop_config.json` (Windows, macOS, Linux) con el Python actual y
@@ -176,7 +176,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   con los golpes detectados, los marcadores de canción y la grilla de
   compases. Sin dependencias: SVG con etiquetas y PNG pintado a mano (zlib),
   en `trarin/ondas/` junto a la sesión. CLI `trarin onda sesion.ptx [--cancion
-  …] [--pistas …] [-o base]`; MCP `onda`. Dibujada Aliwen del show (7 pistas).
+  …] [--pistas …] [-o base]`; MCP `onda`. Dibujada una canción del show (7 pistas).
 - **Nivelar** (`trarin/nivelar.py`): propone el clip gain que deja cada pista a
   un RMS objetivo (−18 dBFS) por canción sin que el pico pase un tope, y con
   `parejas` iguala la sonoridad de las canciones a la más fuerte (o a un LUFS
@@ -199,8 +199,8 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   la canción (la canción empieza 3 s antes de su marcador). Un clip con
   fundidos no se parte y uno con fundido cruzado no se borra: se avisa y se
   mutea entero. Plan primero; con salida escribe por `aplicar`, revisa y anota.
-  Probado con el show (mover el bombo de Aliwen un compás, cortar la pifilka C
-  de Katrümongen en el 20, silenciar kaskawillas 12–20 de Aliwen, quitar
+  Probado con el show (mover el bombo de una canción un compás, cortar la pifilka C
+  de una canción en el 20, silenciar kaskawillas 12–20 de una canción, quitar
   semillas 10–14 de Üñümngeiñ): la revisión da limpio y los clips quedan como
   se pidió. CLI `trarin editar sesion.ptx accion pista [--cancion …] [--compas
   N] [--desde-compas A --hasta-compas B] [--compases N | --segundos S] [-o …]`;
@@ -233,15 +233,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   `por_pista=True` (`escucha.por_pista`) escribe un archivo por pista de audio
   con sonido en el tramo, en una carpeta del tramo («dame las pistas sin
   efectos»); cada una con su fader y paneo, o crudas. El nombre del archivo
-  lleva las pistas pedidas y «crudo» («Aliwen c12-20 [Bombo] crudo.wav»).
-  Probado: el bombo de Aliwen en crudo da 3 dB más que con su paneo al centro.
+  lleva las pistas pedidas y «crudo» («Canción c12-20 [Bombo] crudo.wav»).
+  Probado: el bombo de una canción en crudo da 3 dB más que con su paneo al centro.
 
 ## 2026-11-01
 
 - **`escuchar` con auxiliares y MP3**: se aplica el fader (automatización y
   mute) de los auxiliares por los que pasa cada pista (pista → bus → retorno →
   bus…, hasta 4 niveles; el paneo del aux no), y se avisa cuáles y qué plugins
-  de ellos no suenan; `auxiliares=False` lo apaga. En el show, Katrümongen
+  de ellos no suenan; `auxiliares=False` lo apaga. En el show, una canción
   pasa de +4,4 a +1,3 dBFS de pico por los faders de Aux Kultrum (−5,3) y Aux
   Percuciones (−11,9). `formato="mp3"` escribe MP3 con lameenc (extra
   `trarin[mp3]`, sin ffmpeg; 16 compases: 711 KB contra 5,7 MB del WAV);
@@ -274,7 +274,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   pista de audio y MIDI (compás de la canción y minuto del show). Sale de los
   clips; no necesita fichas. Escribe `trarin/hoja_del_show.md` junto a la
   sesión. CLI `trarin hoja sesion.ptx [-o hoja.md] [--titulo …] [--json]`; MCP
-  `hoja_show`. Generada para el show RAPIZUAM.
+  `hoja_show`. Generada para un show real.
 - **Comparar sonidos (fase 3)**: `trarin/parecido.py`. `parecidos`: las pistas
   que más se parecen a una pista de la sesión o a un WAV, por un vector de
   rasgos de la ficha (bandas, brillo, planitud, ataque, golpes por segundo,
@@ -316,7 +316,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   canción va desde 3 s antes de su marcador hasta 3 s antes del siguiente. CLI
   `trarin uniones sesion.ptx [--comparar otra.ptx] [--json]`; MCP `uniones` y
   `comparar_sesiones(..., por_cancion=True)`. Viene de las sondas con las que se
-  revisó el show RAPIZUAM.
+  revisó un show real.
 - **Regiones que no empiezan en el inicio del archivo (corregido)**: el `0x2628`
   de una región nueva ahora se escribe como Pro Tools (desplazamiento, largo, dos
   veces el desplazamiento, 8 bytes FF, anchos en el 4.º byte y 8 en el 5.º). Sin
@@ -334,17 +334,17 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   muestra Pro Tools en el show (MOTU 1–3, Motu 3, UR242 4). MCP `salidas_midi`.
 - `golpes`: separar los redobles (`separar_redobles`, rachas de golpes a menos
   de 120 ms), un canal de una pista estéreo (`senal(..., canal)`) y rearme tras
-  cada golpe. En las pifilkas de Katrümongen los golpes del audio coinciden uno a
+  cada golpe. En las pifilkas de una canción los golpes del audio coinciden uno a
   uno con su MIDI (327/327, 240/240, 568/568).
 - **MIDI desde los golpes de una percusión**: `golpes.py` (`planear`, `escribir`,
   `escribir_mid`, `texto`). Para kultrun o bombo: una nota por golpe, con la
   fuerza en la velocidad y el largo de lo que suena; cuantizada a la grilla
   (1/16 por omisión, con la fase corrida a los golpes: en el show la grilla de
-  Katrümongen está 36 ms corrida respecto de la de la sesión); el plan avisa si
+  una canción está 36 ms corrida respecto de la de la sesión); el plan avisa si
   muchos golpes caen lejos de la grilla. Va a una pista MIDI nueva o existente
   de la sesión (copia nueva) o a un `.mid`. CLI `trarin golpes sesion.ptx pista
   [--cancion …] [-o salida.ptx] [--mid archivo.mid]`; MCP `golpes_a_midi`.
-  Probado con el kultrun de Katrümongen: las 576 notas del MIDI Bombo (alineado
+  Probado con el kultrun de una canción: las 576 notas del MIDI Bombo (alineado
   a mano) tienen un golpe detectado a menos de 50 ms.
 - `fichas` (y con eso `escuchar` y los tramos por canción): una canción termina
   en el siguiente marcador de nombre único; antes terminaba en el primer
@@ -368,7 +368,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   audio por grupo y primer clip, MIDI por grupo) y `verificar_orden`. CLI
   `trarin ordenar sesion.ptx (--lista nombres.txt | --grupos "A,B") [-o salida.ptx]`;
   MCP `ordenar_pistas` (plan por omisión). Verificado en Pro Tools 12 con dos
-  pistas de audio y con el show RAPIZUAM (v8): cada pista conserva contenido,
+  pistas de audio y con un show real (v8): cada pista conserva contenido,
   color, salida y volumen.
 - **Ancla de la línea de tiempo (corregido)**: el primer evento de tempo de
   Pro Tools guarda en qué muestra cae su tick (int64 en TMS+11). trarin la
@@ -376,15 +376,15 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   evento del mapa lleva `inicio_segundos` (dónde cae el tick 0); `MapaTempo`,
   `segundos` y `tick_de_segundos` la usan; el modelo común la conserva; al
   escribir el tempo se pone la del modelo (0 en un show) en vez de la de la
-  plantilla. El show RAPIZUAM la tenía en 13,09 s (copiada de Katrümongen, donde
+  plantilla. Un show real la tenía en 13,09 s (copiada de una canción, donde
   vale para otro tick): MIDI, marcadores y compases caían 13 s después que el
   audio. Verificado con los contadores de Pro Tools 12 (antes y después).
-- Armador de shows: el mapa de cada canción lleva su ancla (Katrümongen: tick 0
+- Armador de shows: el mapa de cada canción lleva su ancla (una canción: tick 0
   en −2,067 s), así su MIDI queda junto a su audio.
 - **Clips MIDI vacíos en Pro Tools (corregido)**: un clip MIDI nuevo en una sesión
   cuyo primer chunk de notas no lleva CERO (`10**12`) quedaba con las notas fuera
   de la ventana de su región; Pro Tools lo mostraba vacío y no lo tocaba, aunque
-  trarin leía las notas. Así quedaron 94 clips del show RAPIZUAM. Ahora las notas
+  trarin leía las notas. Así quedaron 94 clips de un show real. Ahora las notas
   de un clip nuevo usan la misma convención que su región. Verificado en Pro
   Tools 12: en una sesión vacía con una nota y en el show.
 - `protools/midi_revision.py`: `revisar_midi` (cuenta los clips que Pro Tools
@@ -424,7 +424,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   y mute (y si la causa es el clip gain, el fader o ambos), y la sonoridad de
   cada canción con la mezcla.
 - `marcar_secciones`: escribe en una sesión nueva los marcadores de sección de
-  una canción («Aliwen B», «Aliwen C»…), en los compases pedidos o en los que
+  una canción («Canción B», «Canción C»…), en los compases pedidos o en los que
   propone `mapa_cancion`; verifica y anota.
 
 ### Armador de shows en lotes
@@ -432,7 +432,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   automatización de las canciones que caen en pistas existentes van cada uno
   en un lote (un solo reconstruir por fase); el ruteo se separa de su
   corrimiento para poder agruparlo. Mismos bytes que antes en los 10 shows de
-  prueba y en el de RAPIZUAM; el de RAPIZUAM pasó de 132 s a 53 s.
+  prueba y en un show real, que pasó de 132 s a 53 s.
 
 ### Fichas de sonido (fase 2, segunda parte)
 - Articulación: golpes detectados con envolvente de 10 ms, golpes por segundo,
@@ -449,7 +449,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   variable (medida bloque a bloque con ventana para que lo grave no se cuele; la
   variable es típica del soplo o de mover el instrumento cerca del micrófono) e
   infrasonido bajo 20 Hz. En el show: las pifilkas no tienen continua;
-  ballenas_acordes tiene continua fija de 0,10 y Kaskawilla_Audio2, variable.
+  una pista tiene continua fija de 0,10 y otra, variable.
 - Estéreo: cuántos dB pierde (o gana) al sumarse en mono.
 - `mapa_cancion`: la canción por tramos de compases, qué entra y sale,
   sonoridad de la suma y posibles marcadores de sección. `que_suena`: lo que
@@ -610,7 +610,7 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
 - Ableton (.als) y FL Studio (.flp): lectura completa y escritura de cambios sobre una
   sesión del mismo programa (sin crear pistas ni clips).
 - Plantillas vacías de Pro Tools (44,1, 48 y 96 kHz y una con pistas modelo) y de FL
-  Studio, en `_trarin_pruebas\plantillas` (aún fuera del repositorio).
+  Studio, en una carpeta de pruebas (aún fuera del repositorio).
 
 ## 2026-10-20
 

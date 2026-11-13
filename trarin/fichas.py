@@ -694,7 +694,7 @@ def _color(b, cent, plan):
         p.append("opaco")
     elif cent > 3500:
         p.append("brillante")
-    # planitud del espectro (calibrada con el show RAPIZUAM): pifilkas y sintes ~0,
+    # planitud del espectro (calibrada con un show real): pifilkas y sintes ~0,
     # cascabeles 0,001-0,005, kaskawillas 0,004-0,03; lo grave siempre se ve tonal
     if plan < 0.0005 and sub + graves < 0.5:
         p.append("tonal")

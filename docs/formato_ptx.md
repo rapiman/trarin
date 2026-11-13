@@ -213,7 +213,7 @@ byte a byte a las de Pro Tools. El índice `0x0002` no apunta a estos bloques.
   sin mover las `0x1057`, mostró las pistas MIDI en el orden viejo con la mezcla de otra pista
   (Pro Tools asocia canal MIDI y playlist por posición). `protools/pistas_orden.reordenar` hace
   todo esto sin cambiar tamaños; verificado abriendo en Pro Tools una sesión de dos pistas y el
-  show RAPIZUAM (126 pistas, 42 MIDI).
+  show real (126 pistas, 42 MIDI).
 - **Playlists de audio**: `0x1015` con hijos `0x1014`: nombre, luego una lista de números de canal.
   Cada número indexa una entrada `0x1052` del mapa `0x1054`. Las playlists cuyo nombre no es el de
   una pista activa son alternativas guardadas [verificado].
@@ -352,7 +352,7 @@ Una colocación `0x104F` cuyo byte **+20** vale 1 (el byte que sigue a `03 FE FF
 no apunta a la lista de regiones sino a la de **grupos de clips** `0x262C`
 (hijos `0x262B`, uno por grupo). Pro Tools renumera esa lista en cada guardado:
 la misma colocación salió con índice 28, 24, 36 y 19 en cuatro guardados
-seguidos del show RAPIZUAM, con la lista de regiones idéntica. Leída como
+seguidos de un show real, con la lista de regiones idéntica. Leída como
 región, daba un clip cualquiera (en el show, un kultrun de 17,8 s donde Pro
 Tools muestra «Kultrun Con efectos.grp-02» de 3:38).
 
@@ -393,9 +393,9 @@ largo)`: el contenido se recorta ahí. Se comprobó así:
 - oráculo `PRUEBA_grupos.ptx` (5 grupos, 4 dueños, 4 entradas; grp-04 copia de
   grp-02, que contiene a grp-01, que contiene a grp): el contenido expandido
   calza con los clips de `PRUEBA_cruces_original.ptx`, de donde salieron;
-- show RAPIZUAM (40 grupos, 20 dueños, 20 entradas): 15 contenidos aparecen
+- show real (40 grupos, 20 dueños, 20 entradas): 15 contenidos aparecen
   clip por clip (nombre, «desde», largo y distancias) sueltos en la pista del
-  mismo nombre de otra versión del show (`rapizuam_show.ptx`), entre ellos
+  mismo nombre de otra versión del show (`otro_show.ptx`), entre ellos
   «Kultrum mic.grp» con 115 clips y «Kultrum mic.grp-01» con 49, dueños y
   copias, y el caso ambiguo Bajo / Kaskawillas-04 (mismo inicio base).
 
@@ -520,20 +520,20 @@ que empieza dentro de él.
   releyendo].
 - **CERO en las posiciones de las notas** [verificado en Pro Tools 12, 2026-10-27]: las
   posiciones de un chunk pueden llevar CERO (`10**12`) o no; Pro Tools crea chunks con CERO, pero
-  hay sesiones (todas las del disco RAPIZUAM) cuyos chunks no lo llevan y sus regiones tienen
+  hay sesiones (todas las de un mismo disco) cuyos chunks no lo llevan y sus regiones tienen
   desplazamiento sin CERO. La región y las notas de su chunk deben usar la misma convención: si la
   ventana no contiene ninguna nota, Pro Tools muestra el clip vacío y no lo toca, aunque las notas
   estén en el archivo (trarin las leía igual porque quita el CERO al leer). Un clip nuevo lleva
   desplazamiento CERO, así que su chunk se escribe con CERO aunque el chunk de base no lo tenga
   (hasta el 2026-10-27 se copiaba la convención del primer chunk de la sesión: así quedaron vacíos
-  94 clips del show RAPIZUAM). `midi_revision.reparar_desplazamientos` corrige regiones ya escritas
+  94 clips de un show real). `midi_revision.reparar_desplazamientos` corrige regiones ya escritas
   bajando el desplazamiento (mismo ancho de campo, sin correr bloques).
 - **Ancla de la línea de tiempo** [verificado en Pro Tools 12, 2026-10-27]: cada evento de tempo
   (`Const` … `TMS`) lleva tras `TMS`: +10 u8 (1 en el primer evento) y +11 int64 = la muestra en
   la que cae el tick de ese primer evento (+19). Pro Tools pone 0 en los demás. El tiempo de un
   tick es `ancla / fs + segundos(tick) − segundos(tick del primer evento)`. Sesiones vistas:
   0 en el tick 0 (la mayoría), 648000 en el tick 17 280 000, 628364 en el tick 23 040 000
-  (Katrümongen) y 307200 en el tick 3 840 000. Si el ancla no corresponde, todo lo que va en
+  (una canción) y 307200 en el tick 3 840 000. Si el ancla no corresponde, todo lo que va en
   ticks (MIDI, marcadores, compases, tempo) queda corrido respecto del audio, que va en muestras.
 - Importar un `.mid` en un show con muchos cambios de tempo (File › Import › MIDI, sin importar el
   mapa de tempo) deja las notas corridas varios segundos que crecen a lo largo de la sesión, aunque

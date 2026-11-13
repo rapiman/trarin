@@ -1,6 +1,6 @@
 """Nivelar: proponer y escribir el clip gain que deja cada pista a un nivel
 objetivo, por canción, y que las canciones queden parejas entre sí. Es lo que
-se hizo a mano en el show RAPIZUAM (clip gain a −18 dBFS por pista y canción).
+se hizo a mano en un show real (clip gain a −18 dBFS por pista y canción).
 
 Mide con las series de las fichas (fichas_calcular antes): el RMS de los
 bloques con sonido de cada pista en cada canción, con su clip gain actual, y

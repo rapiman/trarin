@@ -15,11 +15,11 @@ pasar del golpe siguiente.
 Las notas se cuantizan a la grilla ('1/16' por omisión, según el mapa de tempo
 de la sesión; 'no' para dejar el tiempo exacto). Con fase 'auto' (por omisión)
 la grilla se corre lo que calce mejor con los golpes: en un show la grilla de
-una canción puede no coincidir con la de la sesión (Katrümongen: 36 ms). Dos
+una canción puede no coincidir con la de la sesión (en un caso real, 36 ms). Dos
 golpes en el mismo lugar de la grilla quedan en uno (el más fuerte). El plan
 dice qué parte de los golpes queda lejos de la grilla, y con cuál calzarían mejor.
 
-Probado con el kultrun de Katrümongen (show RAPIZUAM): las 576 notas del MIDI
+Probado con el kultrun de una canción (show real): las 576 notas del MIDI
 Bombo, que está alineado a mano, tienen un golpe detectado a menos de 50 ms
 (mediana −4 ms antes de cuantizar)."""
 import struct
@@ -124,7 +124,7 @@ def detectar(y, fs, subida_db=9.0, separacion_ms=60.0, piso_db=-36.0, caida_db=2
 def separar_redobles(golpes, intervalo_ms=120.0, minimo=3):
     """(golpes sueltos, golpes de redoble): un redoble es una racha de al menos
     'minimo' golpes seguidos a menos de 'intervalo_ms' uno de otro (en el bombo
-    de Sombra en el Desierto, unos 13 por segundo)."""
+    de una canción, unos 13 por segundo)."""
     sueltos, redobles, racha = [], [], []
 
     def cerrar():

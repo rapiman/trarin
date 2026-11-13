@@ -64,16 +64,16 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 - **Revisión de nivel**: con el clip gain y el fader, avisar picos sobre 0 dBFS (por ejemplo
   tras normalizar Wenu Mapu con +26 dB).
 - **Mapa de la canción**: marcadores, tempo y fichas juntos: «qué suena en el compás 40 de
-  Aliwen», «dónde entra el bombo»; proponer marcadores de sección.
+  una canción», «dónde entra el bombo»; proponer marcadores de sección.
 
 ## Fase 3 — Comparar sonidos ✅
 
 - ✅ Parecido entre fichas (`parecidos`): «busca en el show lo que se parezca a este golpe»,
   con una pista o un WAV de referencia, y en qué difiere cada resultado.
 - ✅ Búsquedas por descripción (`buscar_sonidos`): «qué pistas son agudas y percusivas en
-  Aliwen», «nota la», «que saturen».
+  una canción», «nota la», «que saturen».
 - Pendiente: afinar los pesos de los rasgos con casos reales (hoy calibrados a ojo con el
-  show RAPIZUAM) y comparar tramos (un golpe suelto, no la pista entera).
+  show real) y comparar tramos (un golpe suelto, no la pista entera).
 
 ## Fase 4 — Escuchar sin abrir Pro Tools
 
@@ -124,11 +124,10 @@ y §24), que se reutiliza:
 - ✅ Frecuencias distintas (conversión con soxr), corte por compás, pistas desde
   archivos WAV y MIDI, buses propios del show.
 - ✅ Grupos por nombre (también MIDI) y consolidar pistas por instrumento.
-- ✅ **Show RAPIZUAM** (`_trarin_pruebas\show_rapizuam`): hecho y tocado; salió bien.
+- ✅ **Primer show real**: hecho y tocado.
   Archivo de trabajo `base_show.ptx`, respaldos en Session File Backups, notas en
   `trarin/notas.md`.
-- ⏳ **Prueba con las cinco canciones de I3000** (Bailando en el paradero, Guerra,
-  Sin Tierra, Sombra en el Desierto y Viaje a Cunco), con separación negativa y
+- ⏳ **Prueba con cinco canciones de otro disco**, con separación negativa y
   cambios de tempo.
 - Investigar por qué un show grande tarda varios minutos en cerrarse en Pro Tools, aunque
   abre y guarda bien (experimento barato: medir con y sin `WaveCache.wfm`, con la mitad de
@@ -158,7 +157,7 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   guardarlo como `*_pt.ptx` y comparar los dos modelos. Así se vio el clip gain de `nivelar`,
   la grilla de `proponer_tempo` y las pistas de `luces`, y apareció el cuarto error grave:
   los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
-  RAPIZUAM eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
+  real eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
   trarin lee el contenido de los grupos y sus fundidos (ver `docs/formato_ptx.md` 6.x).
   ✅ Duplicar o mover grupos al escribir, verificado en Pro Tools (abre, muestra y guarda
   igual). ✅ Crear grupos nuevos (agrupar clips, mono y estéreo) contra el oráculo
@@ -175,7 +174,7 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 - ✅ Agregar varias MIDI y auxiliares en una pasada; ruteo, color, plugins y automatización
   en lote; lectura con el mapa de tempo preparado y descifrado de una vez (leer el show: de
   8,7 s a 1,1 s; consolidar: de 6,7 min a menos de 2).
-- ✅ Armador de shows en lotes: el show RAPIZUAM de 132 s a 53 s, mismos bytes.
+- ✅ Armador de shows en lotes: un show real de 132 s a 53 s, mismos bytes.
 - ✅ Caché del modelo común en disco (`~/.trarin/cache`, llave ruta + fecha + tamaño): leer el
   show de 0,45 s a 0,04 s en las llamadas repetidas del MCP.
 

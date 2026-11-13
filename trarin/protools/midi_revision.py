@@ -13,7 +13,7 @@ están en el archivo. trarin las leía bien porque quita el CERO al leer.
 
 reparar_desplazamientos baja el desplazamiento de esas regiones a la convención
 de sus notas. Es un cambio del mismo tamaño (el campo conserva su ancho): no
-corre ningún bloque. Verificado en Pro Tools 12 con el show RAPIZUAM (94
+corre ningún bloque. Verificado en Pro Tools 12 con un show real (94
 regiones: las notas aparecen en su lugar)."""
 
 import struct

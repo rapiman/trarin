@@ -206,7 +206,7 @@ def copiar_ruteo(d, pista, d_origen, pista_origen, desplazamiento=0, cancion="",
     se buscan por clase y nombre en d.
 
     sufijo_buses: si no está vacío, cada bus de la pista de origen va a un bus
-    propio con ese sufijo en el nombre («Aux 1» → «Aux 1 (Sombra)»), que se
+    propio con ese sufijo en el nombre («Aux 1» → «Aux 1 (Canción)»), que se
     crea si no existe; si está vacío, al bus del mismo nombre.
 
     renombrar: {nombre de ruta en el origen: nombre en d} (p. ej. el bus de

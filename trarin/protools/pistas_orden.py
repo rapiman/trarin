@@ -19,7 +19,7 @@ de mover pistas a mano) y que reordenar() reproduce:
   grupos) ordenadas de menor a mayor, como las deja Pro Tools.
 Todo se mueve sin cambiar tamaños, así que nada más se corre.
 Verificado en Pro Tools 12 [2026-10-27]: dos pistas de audio con sus entradas,
-y el show RAPIZUAM (126 pistas, 42 MIDI): contenido, color, salida y volumen de
+y un show real (126 pistas, 42 MIDI): contenido, color, salida y volumen de
 cada pista iguales a la sesión original."""
 import struct
 

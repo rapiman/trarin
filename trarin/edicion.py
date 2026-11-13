@@ -1,5 +1,5 @@
 """Editar clips por compás de la canción, desde el MCP: «corre el bombo de
-Aliwen un compás», «corta la pifilka en el compás 40», «silencia las
+una canción un compás», «corta la pifilka en el compás 40», «silencia las
 kaskawillas entre el 12 y el 20». Capa en compases sobre el modelo común; la
 escritura va por `aplicar` (ya verificada en Pro Tools). Siempre plan primero;
 con salida se escribe una copia nueva y se revisa.

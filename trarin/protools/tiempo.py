@@ -36,7 +36,7 @@ def leer_tempo(d, bloques, fs=None):
     """Eventos de tempo. El evento marcado como primero (byte en TMS+10 = 1) lleva
     en TMS+11 (int64) la muestra en la que cae su tick: el ancla de la línea de
     tiempo. Con 'fs', el primer evento de la lista lleva 'inicio_segundos': los
-    segundos en que cae el tick 0 (puede no ser 0: el show RAPIZUAM lo tenía en
+    segundos en que cae el tick 0 (puede no ser 0: un show real lo tenía en
     13,09 s y todo lo que va en ticks —MIDI, marcadores, compases— caía 13 s
     después que el audio) [verificado en Pro Tools 12 con los contadores]."""
     t = _tramo(d, bloques, 0x2028)

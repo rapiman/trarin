@@ -126,7 +126,7 @@ def leer_grupos_clips(d, bloques, regiones=None, ganancias=None):
     (un dueño y sus copias), en el orden en que cada familia aparece por primera vez
     en la lista. Una copia no apunta a su dueño: es el dueño con el mismo inicio base
     (inicio original − desplazamiento) cuya ventana la contiene (desempate: la misma
-    ventana; después, el primero). Verificado en el show RAPIZUAM: 15 de 40 grupos
+    ventana; después, el primero). Verificado en un show real: 15 de 40 grupos
     aparecen clip por clip, sueltos, en otra versión del show (docs/formato_ptx.md).
     Las posiciones del contenido son CERO + muestra relativa al inicio de la ventana
     del dueño sin recortar; una colocación del contenido puede ser otro grupo.

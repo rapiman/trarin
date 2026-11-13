@@ -3,7 +3,7 @@
 El show se describe en un JSON (o YAML, con pyyaml):
 
     {
-      "salida": "D:/Grabaciones/Pro tool/Show/show.ptx",
+      "salida": "D:/Shows/show.ptx",
       "base": "D:/.../Base.ptx",                 # opcional; si no, la primera canción
       "separacion": {"compases": 2},             # o {"segundos": 4}; puede ser negativa
       "cambio_tempo": {"modo": "antes", "negras": 2},   # o {"modo": "mitad"}
@@ -129,7 +129,7 @@ def planear(show, leer_comun=None):
             c["_comun"] = comun
         # el ancla de la sesión ('inicio_segundos': dónde cae su tick 0) va con
         # el mapa: sin ella el MIDI de una canción cuyo tick 0 no cae en la
-        # muestra 0 (Katrümongen: −2,067 s) quedaba corrido respecto de su audio
+        # muestra 0 (una canción: −2,067 s) quedaba corrido respecto de su audio
         tempo = [{"tick": e["tick"], "bpm": e["bpm"],
                   **({"inicio_segundos": e["inicio_segundos"]} if e.get("inicio_segundos") else {})}
                  for e in comun["tempo"]] or [{"tick": 0, "bpm": 120.0}]

@@ -4,7 +4,7 @@ Cada canal MIDI (0x2620/0x2621) apunta con un 0x2036 (u32 en +14, desde 1; 0 =
 ninguna) a una entrada 0x2005 de la lista 0x2004. Una entrada con salida lleva
 el nombre del puerto tres veces: en un 0x2006 (seguido del canal, u8), en un
 0x2086 (seguido de u8 0 y del canal, u8, y dos ceros) y en un 0x208C. El canal se
-guarda desde 0 [verificado con el show RAPIZUAM: MOTU canal 1, 2 y 3 = 0, 1, 2;
+guarda desde 0 [verificado con un show real: MOTU canal 1, 2 y 3 = 0, 1, 2;
 «Motu» canal 5 = 4]. Una entrada vacía (sin salida) es solo el 0x2005 con ceros."""
 import struct
 
