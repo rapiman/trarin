@@ -1,7 +1,7 @@
 """Plantillas de reglas con nombre (fase 5): las categorías, buses, auxiliares,
-grupos y reglas MIDI de un show, guardadas para el próximo. Las que vienen con
-trarin están en esta carpeta (`nombre.json`); las propias van en
-`~/.trarin/plantillas/` (o TRARIN_PLANTILLAS). Lo propio de cada show
+grupos y reglas MIDI de un show, guardadas para el próximo. Van en
+`~/.trarin/plantillas/` (o TRARIN_PLANTILLAS); trarin no trae ninguna (si
+alguna vez trae, van en esta carpeta). Lo propio de cada show
 (canciones, pistas por ruta, qué borrar, carpeta de Live) no va en la
 plantilla: se agrega al armar las reglas.
 
