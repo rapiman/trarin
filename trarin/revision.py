@@ -77,10 +77,12 @@ def _regiones_mal_formadas(d, b):
     return mal, sin_inicio
 
 
-def revisar(ruta, comun=None):
+def revisar(ruta, comun=None, archivos_en_disco=True):
     """Devuelve {"ok", "errores": [...], "avisos": [...], "revisado": {...}}.
     Un error es algo que Pro Tools mostrará roto; un aviso, algo que conviene
-    mirar. comun: el modelo ya leído, si se tiene (evita releer)."""
+    mirar. comun: el modelo ya leído, si se tiene (evita releer).
+    archivos_en_disco=False: no mira si el audio existe (sesiones de prueba,
+    que viajan sin su audio)."""
     ruta = str(ruta)
     d = leer_descifrado(ruta)
     b = arbol(d)
@@ -160,7 +162,7 @@ def revisar(ruta, comun=None):
         (errores if len(canciones) > 1 else avisos).append(msg)
 
     from .vistas import archivos_audio
-    faltan = [a["nombre"] for a in archivos_audio(ruta)["archivos"] if not a["existe"]]
+    faltan = [a["nombre"] for a in archivos_audio(ruta)["archivos"] if not a["existe"]] if archivos_en_disco else []
     if faltan:
         errores.append(f"{len(faltan)} archivos de audio no están en el disco: " + ", ".join(Path(x).name for x in faltan[:8]))
 
