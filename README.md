@@ -1,22 +1,34 @@
 # trarin
 
-Herramienta para armar shows a partir de sesiones de DAW. Lee cada sesión y la
-vuelca a un archivo de texto (JSON) que cualquier persona o IA puede leer y
-editar. Sobre esa representación se calcula dónde debe caer cada canción en el
-show, sin desfases de audio, MIDI ni mapa de tempo.
+Lee sesiones de DAW y las vuelca a texto (JSON) que cualquier persona o IA puede
+leer y editar; sobre esa representación arma shows (varias canciones en una sola
+sesión, sin desfases de audio, MIDI ni mapa de tempo), revisa, compara, mide el
+sonido y escribe los cambios de vuelta en una sesión nueva. Se usa por línea de
+comandos o como servidor MCP, para trabajar una sesión conversando con una IA.
 
 *Trarin* (mapudungun): amarrar, atar.
 
+> Proyecto independiente. No está afiliado a Avid (Pro Tools), Ableton ni
+> Image-Line (FL Studio), ni cuenta con su respaldo. Los formatos se descifraron
+> mirando archivos propios; pueden fallar con versiones o casos no vistos.
+> **Trabajar siempre con respaldo de las sesiones.**
+
 ## Estado
 
-Versión 0.1.
+Versión 0.1 (alfa).
 
-- **Pro Tools** `.ptx` (lectura): probado con 12.5 (Windows), 12.8, 2019 y 2026 (Mac).
+- **Pro Tools** `.ptx` (lectura y escritura): probado con 12.5 (Windows), 12.8,
+  2019 y 2026 (Mac). La escritura está verificada abriendo los resultados en
+  Pro Tools 12.
 - **Ableton Live** `.als` (lectura y escritura): probado con Live 12.
 - **FL Studio** `.flp` (lectura y escritura): probado con FL 12, 20 y 21.
 
-Detalle por DAW y decisiones abiertas en [`docs/arquitectura.md`](docs/arquitectura.md).
-La tabla siguiente es de Pro Tools.
+Detalle por programa y decisiones abiertas en [`docs/arquitectura.md`](docs/arquitectura.md);
+lo descifrado del formato de Pro Tools, con el grado de confianza de cada dato, en
+[`docs/formato_ptx.md`](docs/formato_ptx.md). Lo que viene, en [`ROADMAP.md`](ROADMAP.md);
+lo hecho, en [`CHANGELOG.md`](CHANGELOG.md).
+
+Qué se lee de una sesión de Pro Tools:
 
 | Dato de la sesión                   | Estado    |
 |-------------------------------------|-----------|
@@ -28,8 +40,10 @@ La tabla siguiente es de Pro Tools.
 | Pistas de audio (canales, colocaciones, mute de región) | listo |
 | Fundidos (entrada, salida, cruzados, pendiente y curva) | listo |
 | Clip gain (fijo y curvas)           | listo     |
+| Grupos de clips (contenido y fundidos) | listo  |
 | Timecode: cadencia, inicio y duración de sesión | listo |
-| MIDI (regiones, notas, pistas)      | listo     |
+| MIDI (regiones, notas, pistas, puerto y canal) | listo |
+| Pistas de instrumento               | listo     |
 | Volumen, paneo, mute, solo          | listo     |
 | Envíos (destino y nivel)            | listo     |
 | Plugins (cuáles hay en cada canal)  | listo     |
@@ -40,38 +54,53 @@ La tabla siguiente es de Pro Tools.
 | Colores de pista, grupos, playlists alternativas | listo |
 | Significado de cada parámetro en el estado propio de un plugin | no está en el archivo |
 
-Ver la hoja de ruta en `ROADMAP.md`.
+## Instalación
 
-## Uso
+Requiere Python 3.10 o posterior. El núcleo no tiene dependencias; lo demás es
+opcional:
 
 ```
-pip install -e .
-python -m trarin leer "Mi canción.ptx" --resumen
-python -m trarin leer "Mi canción.ptx" -o "Mi canción.json"
-python -m trarin leer "Mi canción.ptx" --yaml     # requiere pip install pyyaml
-python -m trarin leer "Mi tema.als" -o tema.json  # también .flp
-python -m trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als"
-python -m trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # qué tan compatibles son antes de juntarlas
-python -m trarin show plan show.json      # cómo quedarían las canciones juntas (solo lee)
-python -m trarin show armar show.json     # escribe la sesión del show
-python -m trarin grupos show.ptx grupos.json -o show_grupos.ptx   # grupos de pistas por nombre
-python -m trarin consolidar show.ptx reglas.json -o show_v2.ptx   # junta pistas del mismo instrumento (--plan: solo muestra)
-python -m trarin bpm bombo.wav            # calcula el tempo de un audio (requiere trarin[audio])
-python -m trarin convertir-audio voz.wav voz48 --frecuencia 48000 --mono   # voz48.L.wav y voz48.R.wav
+git clone https://github.com/rapiman/trarin
+cd trarin
+pip install -e .              # leer y escribir sesiones
+pip install -e ".[audio]"     # numpy y soxr: fichas, escuchar, bpm, golpes, nivelar, conversión de frecuencia
+pip install -e ".[mp3]"       # lameenc: escuchar en MP3
+pip install -e ".[mcp]"       # servidor MCP
+pip install -e ".[yaml]"      # shows descritos en YAML
+pip install -e ".[todo]"      # todo lo anterior
 ```
 
-`pip install -e ".[audio]"` instala numpy y soxr, que usan `bpm`,
-`convertir-audio` y el armador de shows cuando las canciones tienen otra
-frecuencia de muestreo o se agregan archivos sueltos.
+## Uso por línea de comandos
 
-Opciones del show (además de `canciones`, `separacion`, `cambio_tempo`, `base` y
-`match`): `"buses": "juntar"` (por defecto: el bus «Aux 1» de cada canción va al
-«Aux 1» del show) o `"separar"` (cada canción usa buses y auxiliares propios,
-«Aux 1 (canción)»), y `"copiar_solo": true` para copiar el solo de las pistas
-(por defecto no, para que una canción no silencie a las demás).
+```
+trarin leer "Mi canción.ptx" --resumen
+trarin leer "Mi canción.ptx" -o "Mi canción.json"       # también .als y .flp; --yaml con pyyaml
+trarin escribir tema.json --plantilla "Mi tema.als" -o "Mi tema v2.als"
+trarin revisar show.ptx                                  # lo que Pro Tools mostraría roto
+trarin compatibilidad "Canción 1.ptx" "Canción 2.ptx"   # antes de juntarlas
+trarin show plan show.json                               # cómo quedarían las canciones juntas (solo lee)
+trarin show armar show.json                              # escribe la sesión del show
+trarin grupos show.ptx grupos.json -o show_grupos.ptx    # grupos de pistas por nombre
+trarin consolidar show.ptx reglas.json -o show_v2.ptx    # junta pistas del mismo instrumento (--plan: solo muestra)
+trarin bpm bombo.wav                                     # tempo de un audio
+trarin convertir-audio voz.wav voz48 --frecuencia 48000 --mono   # voz48.L.wav y voz48.R.wav
+```
 
-Más opciones:
+`trarin --help` lista todas las órdenes (`midi`, `ordenar`, `cruces`, `golpes`,
+`luces`, `onda`, `nivelar`, `editar`, `origen`, `respaldos`, `tempo`, `hoja`,
+`parecidos`, `ficha-midi`, `buscar`, `uniones`, `pizarrita`, `instalar`) y
+`trarin <orden> --help`, sus opciones. Sin instalar el paquete, `python -m trarin`
+hace lo mismo.
 
+### Describir un show
+
+El show se describe en un JSON (`canciones`, `separacion`, `cambio_tempo`, `base`,
+`match`); el formato completo está al comienzo de `trarin/show.py`. Opciones:
+
+* `"buses": "juntar"` (por defecto: el bus «Aux 1» de cada canción va al «Aux 1»
+  del show) o `"separar"` (cada canción usa buses y auxiliares propios,
+  «Aux 1 (canción)»), y `"copiar_solo": true` para copiar el solo de las pistas
+  (por defecto no, para que una canción no silencie a las demás).
 * `"frecuencia": 48000`: el show va a esa frecuencia; el audio de las canciones
   con otra se convierte (a «Audio Files» junto al show) y las posiciones se
   recalculan.
@@ -80,64 +109,83 @@ Más opciones:
   `"cortar": false` solo la usa para ubicar la siguiente).
 * En una canción, `"cambio_tempo"` propio; con `{"modo": "fin"}` el tempo de esa
   canción rige desde que termina la anterior (si la anterior acaba muy lenta).
-* En una canción, `"pistas_extra"`: pistas armadas desde archivos WAV (por
-  ejemplo grabaciones de Live, con su posición en segundos) o desde un .mid (con
-  el tempo con que se leen sus negras y el tramo); ver `_con_extras` en show.py.
-  `"sesion"` también puede ser un modelo común (una canción sin sesión de Pro
-  Tools, armada solo con pistas_extra).
+* En una canción, `"pistas_extra"`: pistas armadas desde archivos WAV (con su
+  posición en segundos) o desde un .mid (con el tempo con que se leen sus negras
+  y el tramo); ver `_con_extras` en `show.py`. `"sesion"` también puede ser un
+  modelo común (una canción sin sesión de Pro Tools, armada solo con
+  `pistas_extra`).
 * `"buses_show"`: buses y auxiliares del show. Cada pista de audio va al bus
   cuyo patrón calza con su nombre (o a la salida principal), sin envíos, y los
   auxiliares de las canciones no se copian; cada bus tiene un auxiliar estéreo
   que lo recibe. Ver el ejemplo en `docs/arquitectura.md`.
 
-### Servidor MCP
+## Servidor MCP
 
 ```
 pip install -e ".[mcp]"
-python -m trarin mcp          # servidor MCP por stdio
+trarin instalar            # agrega «trarin» a la configuración de Claude Desktop y revisa dependencias
+trarin instalar --revisar  # solo revisa, no escribe
 ```
 
-Herramientas (30), pensadas para que la IA sepa lo necesario sin leer la sesión
+`trarin instalar` escribe la entrada en `claude_desktop_config.json` apuntando al
+Python con que se corrió. A mano, dentro de `mcpServers`:
+
+```json
+"trarin": {"command": "/ruta/a/python", "args": ["-m", "trarin", "mcp"],
+           "env": {"PYTHONIOENCODING": "utf-8"}}
+```
+
+Cualquier otro cliente MCP sirve igual: el servidor es `trarin mcp`, por stdio.
+
+Herramientas (53), pensadas para que la IA sepa lo necesario sin leer la sesión
 entera:
 
 | Grupo | Herramientas |
 |---|---|
-| Mirar (solo leen) | `resumen_sesion` (una línea por pista, filtrable por nombre o canción), `detalle_pista`, `rutas_sesion`, `archivos_audio`, `comparar_sesiones`, `leer_sesion`, `paneo_live` |
+| Mirar (solo leen) | `resumen_sesion`, `detalle_pista`, `rutas_sesion`, `archivos_audio`, `leer_sesion`, `comparar_sesiones`, `comparar_con_original`, `uniones`, `revisar`, `revisar_midi`, `paneo_live` |
 | Notas del proyecto | `notas`, `anotar` |
-| Shows | `compatibilidad`, `planear_show`, `armar_show` |
-| Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `marcar_secciones`, `escribir_sesion` |
-| Sonido | `fichas_calcular`, `ficha`, `mapa_cancion`, `que_suena`, `revisar_niveles`, `escuchar`, `medir_bpm`, `convertir_audio` |
+| Shows | `compatibilidad`, `planear_show`, `armar_show`, `hoja_show`, `luces` |
+| Cambiar una sesión | `plan_consolidar`, `consolidar`, `plan_grupos`, `crear_grupos`, `plantillas`, `ordenar_pistas`, `editar_clips`, `cruces`, `marcar_secciones`, `reparar_midi`, `salidas_midi`, `golpes_a_midi`, `nivelar`, `proponer_tempo`, `escribir_sesion` |
+| Una sola sesión con respaldos | `reemplazar_sesion`, `respaldos_sesion`, `deshacer` |
+| Sonido | `fichas_calcular`, `ficha`, `ficha_midi`, `parecidos`, `buscar_sonidos`, `mapa_cancion`, `que_suena`, `revisar_niveles`, `onda`, `escuchar`, `exportar_pizarrita`, `medir_bpm`, `convertir_audio` |
 | Trabajos | `trabajo_esperar`, `trabajo_estado`, `trabajo_matar`, `trabajos_recientes` |
 
-- Las que escriben piden un archivo de salida que no exista, vuelven a leer lo
-  escrito, lo comparan con el original y agregan una línea en las notas.
-- Lo que tarda (armar y consolidar, fichas, escuchar, bpm, convertir audio) corre como **trabajo**
-  en un proceso aparte: la herramienta devuelve un id y `trabajo_esperar`
-  entrega el avance (solo las líneas nuevas) hasta 40 s por llamada. Los
-  trabajos quedan en `%LOCALAPPDATA%\trarin\trabajos` (o `TRARIN_TRABAJOS`).
-- **Fichas de sonido** (`trarin/fichas.py`): se calculan una vez por sesión, a
-  pedido, y quedan en `trarin/fichas/` junto a ella (solo se recalcula lo que
-  cambió). Por pista, canción o archivo: dónde suena de verdad, silencios, pico,
-  RMS, LUFS (BS.1770), rango, momentos más fuertes, saturación, picos sobre
-  0 dBFS por el clip gain, clics, cortes, continua, mono o estéreo (y cuánto
-  pierde en mono), bandas, nota más presente, golpes y pulso, forma de la curva
-  de nivel y una línea en palabras
-  («grave, opaco, tonal; suena el 60 % (de 0:05.0 (c. 3|1) a …); -14.6 LUFS…»).
-  Aproximadas: con el clip gain, sin fader, plugins ni fundidos.
-- **Notas del proyecto**: `trarin/notas.md` junto a la sesión, con decisiones,
-  lo hecho y lo pendiente, para retomar en otra conversación.
+- Lo que tarda (armar, consolidar, fichas, escuchar, bpm, convertir audio) corre
+  como **trabajo** en un proceso aparte: la herramienta devuelve un id y
+  `trabajo_esperar` entrega el avance hasta 40 s por llamada.
+- **Fichas de sonido**: se calculan una vez por sesión, a pedido, y quedan en
+  `trarin/fichas/` junto a ella. Por pista, canción o archivo: dónde suena de
+  verdad, silencios, pico, RMS, LUFS (BS.1770), saturación, clics, cortes, mono o
+  estéreo, bandas, nota más presente, golpes y pulso, forma de la curva de nivel
+  y una línea en palabras. Son aproximadas: con el clip gain, sin fader, plugins
+  ni fundidos.
+- **Notas del proyecto**: `trarin/notas.md` junto a la sesión, con decisiones, lo
+  hecho y lo pendiente, para retomar en otra conversación.
+- **Plantillas de reglas** (categorías, buses, grupos) con nombre, para reutilizar
+  entre shows: van en `~/.trarin/plantillas/`.
 
-Para Claude Desktop (`claude_desktop_config.json`, dentro de `mcpServers`):
+## Qué toca trarin en el disco
 
-```json
-"trarin": {"command": "C:\\...\\python.exe", "args": ["-m", "trarin", "mcp"],
-           "env": {"PYTHONPATH": "/ruta/a/trarin", "PYTHONIOENCODING": "utf-8"}}
-```
+- **Las herramientas que escriben una sesión piden un archivo de salida que no
+  exista**; la sesión de origen no se modifica. Después de escribir, vuelven a
+  leer lo escrito, lo revisan, lo comparan con el origen y agregan una línea en
+  las notas.
+- **`reemplazar_sesion` y `deshacer` (y `trarin respaldos`) sí mueven la sesión
+  de trabajo**: es su función. La sesión vigente pasa a `Session File Backups`
+  (`<nombre>.trarin.<fecha>_<n>.ptx`) y la nueva queda en su lugar; `deshacer`
+  vuelve atrás y tampoco borra nada.
+- Junto a cada sesión se crea una carpeta `trarin/` (notas, fichas, escuchas,
+  ondas, hoja del show).
+- En la carpeta del usuario: `~/.trarin/cache` (modelos ya leídos),
+  `~/.trarin/plantillas` y los trabajos (`%LOCALAPPDATA%\trarin\trabajos` en
+  Windows, `~/.trarin/trabajos` en los demás).
+- El servidor MCP lee y escribe en cualquier ruta que le indique el cliente, con
+  los permisos de quien lo corre.
 
-`escribir` aplica el JSON editado sobre una copia del archivo original y nunca
-sobrescribe la plantilla.
-
-trarin nunca modifica la sesión original.
+Variables de entorno: `TRARIN_TRABAJOS`, `TRARIN_CACHE` y `TRARIN_PLANTILLAS`
+cambian esas carpetas; `TRARIN_SIN_CACHE=1` apaga la caché. La caché se guarda
+con `pickle`: no apuntar `TRARIN_CACHE` a una carpeta donde otras personas puedan
+escribir.
 
 ## Representación (`formato: trarin/0`)
 
@@ -150,37 +198,18 @@ trarin nunca modifica la sesión original.
   480000 = corchea.
 - Antes del primer evento de tempo rige el BPM de ese primer evento.
 
-## Formato Pro Tools 12 (lo descifrado hasta ahora)
+El modelo común a los tres programas (`trarin leer … --comun`, `formato: trarin/1`)
+está en [`docs/modelo_comun.md`](docs/modelo_comun.md).
 
-La especificación completa, con el grado de confianza de cada dato y las
-diferencias con Pro Tools 2024, está en [`docs/formato_ptx.md`](docs/formato_ptx.md).
+## Pruebas
 
-Ver `trarin/protools/tiempo.py`. Resumen:
+```
+python -m unittest discover -s pruebas
+```
 
-- Bloque `0x2028` "Tempo": eventos `Const` + `TMS`; desde el inicio de `TMS`:
-  `+19` posición (int64, cero = 10^12), `+29` BPM (double), `+37` pulso (u32).
-- Bloque `0x2029` "Meter": cantidad (u32) y eventos de 36 bytes:
-  posición (int64), compás (u32), numerador (u32), denominador (u32).
-- Bloque `0x2077` (dentro de `0x271A` "Markers"): número (u16), largo (u32),
-  nombre UTF-8, posición (40 bits).
-- Tempo, compases y marcadores aparecen dos veces con el mismo contenido.
-
-- Lista de pistas: `0x2519`/`0x251A` (nombre de la playlist activa y tipo).
-- Playlists de audio: lista `0x1015`/`0x1014` (nombre y canales) y mapa `0x1054`;
-  una playlist cuyo nombre no está en la lista de pistas es una alternativa
-  guardada.
-  cada canal es una entrada `0x1052` y cada colocación un `0x1050` con hijo
-  `0x104F` (índice de región en `+4`, muestra de inicio en `+9`, 5 bytes).
-  Si el último byte del `0x1050` vale 1, la entrada es un fade o crossfade.
-- MIDI: notas en `0x2000` (bloques `MdNLB`, eventos de 35 bytes), regiones en
-  `0x2634` (ventana sobre un bloque de notas) y pistas en `0x1058`/`0x1057`.
-
-- Grupos: `0x202B`/`0x202A`: nombre, tipo, identificador, cantidad e índices
-  de pistas.
-- Mezcla: bloque `0x2624`, un hijo por canal (ver `trarin/protools/mezcla.py`).
-  Volumen en décimas de dB, paneo de -100 a 100. Descifrado con sesiones de
-  prueba hechas en Pro Tools, cada una con un solo cambio respecto de la
-  anterior: volumen, paneo, mute, solo, plugin, envío y automatización.
+Sin dependencias; corren sobre sesiones chicas guardadas por Pro Tools
+(`pruebas/sesiones/`), varias de ellas «oráculos»: lo que escribe trarin se
+compara con lo que guardó Pro Tools al hacer lo mismo a mano.
 
 ## Preguntas abiertas
 
@@ -195,3 +224,5 @@ GNU LGPL 2.1 o posterior (ver `LICENSE`).
 `trarin/protools/descifrado.py` es un port de
 [libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit), que tiene
 la misma licencia.
+
+Pro Tools, Ableton Live y FL Studio son marcas de sus respectivos dueños.

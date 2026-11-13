@@ -1,8 +1,10 @@
 """Servidor MCP de trarin (stdio).
 
 Requiere el paquete `mcp` (pip install "trarin[mcp]"). Se inicia con
-`python -m trarin mcp`. Nunca sobrescribe archivos: las herramientas que
-escriben piden una salida nueva y fallan si ya existe.
+`python -m trarin mcp`. Las herramientas que escriben una sesión piden una
+salida nueva y fallan si ya existe; las únicas que mueven la sesión de trabajo
+son `reemplazar_sesion` y `deshacer`, y dejan lo anterior en Session File
+Backups.
 """
 
 import json
@@ -12,9 +14,11 @@ INSTRUCCIONES = """\
 trarin lee y escribe sesiones de Pro Tools (.ptx), Ableton Live (.als) y FL Studio (.flp).
 
 Reglas:
-- Nunca modifica una sesión original: lo que escribe va a un archivo nuevo (salida) que no
-  puede existir. Al terminar vuelve a leer lo escrito, lo compara con el origen y lo anota en
-  `trarin/notas.md` junto a la sesión.
+- Lo que escribe va a un archivo nuevo (salida) que no puede existir; la sesión de origen no
+  se toca. Al terminar vuelve a leer lo escrito, lo compara con el origen y lo anota en
+  `trarin/notas.md` junto a la sesión. Las únicas que mueven la sesión de trabajo son
+  `reemplazar_sesion` y `deshacer` (lo anterior queda en Session File Backups): usarlas solo
+  cuando la persona lo pide.
 - Antes de trabajar en un proyecto, leer sus notas (herramienta `notas`): ahí están las
   decisiones (buses, categorías, nombres), lo hecho y lo pendiente. Las decisiones nuevas que
   tome la persona se anotan con `anotar`.
