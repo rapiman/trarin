@@ -156,7 +156,7 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   guardarlo como `*_pt.ptx` y comparar los dos modelos. Así se vio el clip gain de `nivelar`,
   la grilla de `proponer_tempo` y las pistas de `luces`, y apareció el cuarto error grave:
   los **grupos de clips** (byte +20 del `0x104F`) se leían como regiones (10 clips del show
-  un show real eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
+  real eran otro clip). ✅ Resuelto el mismo día con el oráculo `PRUEBA_grupos.ptx`:
   trarin lee el contenido de los grupos y sus fundidos (ver `docs/formato_ptx.md` 6.x).
   ✅ Duplicar o mover grupos al escribir, verificado en Pro Tools (abre, muestra y guarda
   igual). ✅ Crear grupos nuevos (agrupar clips, mono y estéreo) contra el oráculo

@@ -15,7 +15,7 @@ pasar del golpe siguiente.
 Las notas se cuantizan a la grilla ('1/16' por omisión, según el mapa de tempo
 de la sesión; 'no' para dejar el tiempo exacto). Con fase 'auto' (por omisión)
 la grilla se corre lo que calce mejor con los golpes: en un show la grilla de
-una canción puede no coincidir con la de la sesión (una canción: 36 ms). Dos
+una canción puede no coincidir con la de la sesión (en un caso real, 36 ms). Dos
 golpes en el mismo lugar de la grilla quedan en uno (el más fuerte). El plan
 dice qué parte de los golpes queda lejos de la grilla, y con cuál calzarían mejor.
 
