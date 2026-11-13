@@ -104,7 +104,7 @@ class Revision(Base):
     def test_lo_de_pro_tools_da_limpio(self):
         from trarin.revision import revisar
         for n in TODAS:
-            r = revisar(str(SESIONES / n))
+            r = revisar(str(SESIONES / n), archivos_en_disco=False)
             self.assertTrue(r["ok"], f"{n}: {r['errores']}")
 
     def test_acusa_ancla_en_show(self):
@@ -244,7 +244,7 @@ class GruposDeClips(Base):
         self.assertEqual([(x["nombre"], x["muestra"] - d["muestra"]) for x in d["contenido"]],
                          [(x["nombre"], x["muestra"] - g["muestra"]) for x in g["contenido"]])
         from trarin.revision import revisar
-        self.assertTrue(revisar(s)["ok"])
+        self.assertTrue(revisar(s, archivos_en_disco=False)["ok"])
 
     def test_crear_grupo_como_pro_tools(self):
         """Agrupar Audio 4_03-04 y 4_03-05 en Bombo (oráculo: PRUEBA_crear_grupo.ptx, hecho
@@ -269,7 +269,7 @@ class GruposDeClips(Base):
                                for y in x.get("contenido") or []])
                              for x in next(t for t in leer_comun(r)["pistas"] if t["nombre"] == "Bombo")["clips"]]
         self.assertEqual(resumen(s), resumen(str(SESIONES / "PRUEBA_crear_grupo.ptx")))
-        self.assertTrue(revisar(s)["ok"])
+        self.assertTrue(revisar(s, archivos_en_disco=False)["ok"])
 
     def test_crear_grupo_estereo(self):
         """En estéreo va un grupo por canal (.L y .R); los fundidos cruzados de adentro
@@ -360,7 +360,7 @@ class PistasDeInstrumento(Base):
         self.assertEqual(_hojas_distintas(s, self.DESPUES), [0x2067, 0x251A])
         c2 = leer_comun(s)
         self.assertEqual([(p["nombre"], p["tipo"]) for p in c2["pistas"]][-1], ("Inst 1", "instrumento"))
-        self.assertTrue(revisar(s, c2)["ok"])
+        self.assertTrue(revisar(s, c2, archivos_en_disco=False)["ok"])
 
     def test_crear_copiando_una_de_la_sesion(self):
         from trarin.comun import leer_comun, aplicar
