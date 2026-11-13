@@ -267,6 +267,10 @@ def main(argv=None):
     un.add_argument("--json", action="store_true")
     tj = sub.add_parser("_trabajo", help=argparse.SUPPRESS)
     tj.add_argument("carpeta")
+    # la ayuda y los textos llevan «→» y tildes: una consola o una tubería en cp1252 no los puede escribir
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(encoding="utf-8", errors="replace")
     a = p.parse_args(argv)
     if a.orden == "_trabajo":
         from .trabajos import correr

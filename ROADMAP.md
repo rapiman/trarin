@@ -1,6 +1,6 @@
 # Hoja de ruta
 
-Estado al 2026-11-01. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
+Estado al 2026-11-13. Lo marcado ✅ está hecho y verificado; ⏳ está en curso o a medio
 camino; lo demás está pendiente. Las fases van en orden: cada una se apoya en la anterior.
 
 ## Fase 1 — Servidor MCP completo ✅
@@ -62,7 +62,7 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
   tiempo o si se pide. Es información de referencia, no exacta.
 - `resumen_sesion` muestra la ficha de cada pista cuando existe.
 - **Revisión de nivel**: con el clip gain y el fader, avisar picos sobre 0 dBFS (por ejemplo
-  tras normalizar Wenu Mapu con +26 dB).
+  tras normalizar una canción con +26 dB).
 - **Mapa de la canción**: marcadores, tempo y fichas juntos: «qué suena en el compás 40 de
   una canción», «dónde entra el bombo»; proponer marcadores de sección.
 
@@ -86,8 +86,7 @@ Objetivo: que la IA pueda conversar sobre el sonido con alguien que apenas sabe 
 Una mezcla rápida de un tramo (clips, clip gain, fundidos, paneo, fader y su automatización,
 mute; sin plugins) en un archivo liviano para escuchar desde cualquier lado.
 
-Lo aprendido en Pizarrita Edit Pro y PizarriSound (`/srv/pizarrita/wt-3d`, ARQUITECTURA §19
-y §24), que se reutiliza:
+Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 
 - **La onda se calcula una vez y se guarda** (`picos.php`): pares mínimo/máximo por
   centésima, en una caché cuya llave lleva la fecha del archivo. Lo mismo sirve para las
@@ -140,7 +139,7 @@ y §24), que se reutiliza:
 Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
 regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 
-- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 10 pruebas, 1 s):
+- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 22 pruebas, 2 s):
   descifrar → cifrar mismos bytes; aplicar sin cambios deja el modelo igual; tempo con ancla,
   renombrar y mezcla sobreviven la ida y vuelta; la revisión da limpio en lo guardado por Pro
   Tools y acusa un ancla distinta de 0 en un show; una nota MIDI escrita por trarin se lee
