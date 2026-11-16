@@ -34,6 +34,11 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   3.10, 3.12 y 3.13, Windows y Mac con 3.12. Prueba de humo del servidor MCP
   (`pruebas/test_servidor.py`): las 53 herramientas, con descripción, una lectura y
   un error con su mensaje.
+- **Carpetas permitidas** (`TRARIN_RAICES`, apagado por omisión): con la variable, el
+  servidor MCP solo acepta rutas dentro de esas carpetas (sesiones, salidas, reglas y
+  las rutas absolutas dentro de un show). **Herramientas anotadas**: las que solo leen
+  van marcadas como de solo lectura y `reemplazar_sesion`, `deshacer` y
+  `trabajo_matar` como destructivas.
 - Las plantillas de reglas ya no vienen con trarin: cada quien guarda las suyas en
   `~/.trarin/plantillas`.
 

@@ -106,7 +106,7 @@ def _claro(f):
 
 
 def _salida_nueva(salida):
-    p = Path(salida).resolve()
+    p = _dentro(salida)
     if p.exists():
         raise ValueError(f"{p} ya existe: elija otro nombre")
     if not p.parent.exists():
@@ -115,7 +115,7 @@ def _salida_nueva(salida):
 
 
 def _existe(ruta):
-    p = Path(ruta).resolve()
+    p = _dentro(ruta)
     if not p.exists():
         raise ValueError(f"no existe {ruta}")
     return str(p)
@@ -126,19 +126,92 @@ def _reglas(reglas):
     "plantilla:nombre[+extra.json]" (ver trarin.plantillas)."""
     if isinstance(reglas, str) and reglas.startswith("plantilla:"):
         from . import plantillas
-        return plantillas.resolver(reglas)
+        extra = reglas.partition("+")[2].strip()
+        if extra:
+            _existe(extra)
+        return _rutas_dentro(plantillas.resolver(reglas))
     if isinstance(reglas, str):
-        return json.loads(Path(reglas).read_text(encoding="utf-8-sig"))
-    return reglas
+        return _rutas_dentro(json.loads(Path(_existe(reglas)).read_text(encoding="utf-8-sig")))
+    return _rutas_dentro(reglas)
 
 
 def _sin_internos(plan):
     return {k: v for k, v in plan.items() if not k.startswith("_")}
 
 
+# Lo que cada herramienta le hace al disco, para que el cliente pueda aprobar solas las que
+# solo leen y pedir confirmación en las que mueven la sesión de trabajo o detienen un proceso.
+# Las que no figuran escriben archivos nuevos (o pueden hacerlo según sus argumentos).
+SOLO_LEEN = {
+    "resumen_sesion", "detalle_pista", "rutas_sesion", "archivos_audio", "leer_sesion", "comparar_sesiones",
+    "comparar_con_original", "uniones", "revisar", "revisar_midi", "paneo_live", "notas", "compatibilidad",
+    "planear_show", "plan_consolidar", "plan_grupos", "respaldos_sesion", "ficha_midi",
+    "buscar_sonidos", "revisar_niveles", "trabajo_esperar", "trabajo_estado", "trabajos_recientes",
+}       # «parecidos» y «ficha» no: con un WAV suelto calculan y guardan su ficha
+MUEVEN_O_DETIENEN = {"reemplazar_sesion", "deshacer", "trabajo_matar"}
+
+
+def _anotacion(nombre):
+    """ToolAnnotations de la herramienta (o None si esta versión de mcp no las tiene)."""
+    try:
+        from mcp.types import ToolAnnotations
+    except ImportError:
+        return None
+    valores = (nombre in SOLO_LEEN, nombre in MUEVEN_O_DETIENEN, False)      # nunca sale a la red
+    for campos in (("readOnlyHint", "destructiveHint", "openWorldHint"),         # mcp 1.x
+                   ("read_only_hint", "destructive_hint", "open_world_hint")):   # mcp 2.x
+        try:
+            a = ToolAnnotations(**dict(zip(campos, valores)))
+        except Exception:
+            continue
+        if any(getattr(a, c, None) == valores[0] for c in ("readOnlyHint", "read_only_hint")):
+            return a
+    return None
+
+
+def _rutas_permitidas():
+    """Carpetas de TRARIN_RAICES (separadas por ; en Windows y : en los demás), o [] si no
+    está: sin la variable no hay límite."""
+    import os
+    return [Path(x).resolve() for x in os.environ.get("TRARIN_RAICES", "").split(os.pathsep) if x.strip()]
+
+
+def _dentro(p):
+    """Con TRARIN_RAICES, las rutas que entrega el cliente tienen que caer dentro de una de
+    esas carpetas. Devuelve la ruta resuelta."""
+    p = Path(p).resolve()
+    raices = _rutas_permitidas()
+    if raices and not any(p == r or r in p.parents for r in raices):
+        raise ValueError(f"{p} está fuera de las carpetas permitidas (TRARIN_RAICES)")
+    return p
+
+
+def _rutas_dentro(objeto):
+    """Lo mismo para un argumento con forma de datos (la descripción de un show, unas
+    reglas): cada texto que sea una ruta absoluta tiene que caer adentro."""
+    if not _rutas_permitidas():
+        return objeto
+    if isinstance(objeto, dict):
+        for v in objeto.values():
+            _rutas_dentro(v)
+    elif isinstance(objeto, (list, tuple)):
+        for v in objeto:
+            _rutas_dentro(v)
+    elif isinstance(objeto, str) and "\n" not in objeto and len(objeto) < 1024 and Path(objeto).is_absolute():
+        _dentro(objeto)
+    return objeto
+
+
 def crear():
     srv = _servidor()
-    herramienta = lambda f: srv.tool()(_claro(f))
+
+    def herramienta(f):
+        a = _anotacion(f.__name__)
+        try:
+            decorar = srv.tool(annotations=a) if a is not None else srv.tool()
+        except TypeError:                           # una versión de mcp sin 'annotations'
+            decorar = srv.tool()
+        return decorar(_claro(f))
 
     # ------------------------------------------------------------ conocer una sesión
 
@@ -226,6 +299,8 @@ def crear():
         sin_misma_pista: no comparar con la propia pista de la referencia.
         Necesita fichas_calcular. Solo lee."""
         from . import parecido as PR
+        if Path(referencia).is_absolute():          # la referencia es un archivo, no el nombre de una pista
+            _dentro(referencia)
         r = PR.parecidos(_existe(ruta), referencia, cancion or None, cuantos, por_cancion, desde_compas or None,
                          hasta_compas or None, ventana_compases, sin_misma_pista)
         return {"referencia": r["referencia"], "palabras_referencia": r["palabras_referencia"],
@@ -404,7 +479,7 @@ def crear():
         devuelve la ruta; formato "datos" devuelve además los datos. Solo lee
         la sesión."""
         from . import hoja as H
-        r, h = H.escribir(_existe(ruta), salida or None, titulo or None)
+        r, h = H.escribir(_existe(ruta), str(_dentro(salida)) if salida else None, titulo or None)
         out = {"escrito": r, "canciones": len(h["canciones"]), "total": h["total"]}
         if formato == "datos":
             out["datos"] = h
@@ -432,7 +507,7 @@ def crear():
         for k, v in (("cancion", cancion or None), ("desde_compas", desde_compas or None),
                      ("hasta_compas", hasta_compas or None), ("desde_s", None if desde_s < 0 else desde_s),
                      ("hasta_s", None if hasta_s < 0 else hasta_s), ("pistas", pistas or None),
-                     ("carpeta", carpeta or None), ("con_archivos", con_archivos or None),
+                     ("carpeta", str(_dentro(carpeta)) if carpeta else None), ("con_archivos", con_archivos or None),
                      ("mezcla", None if mezcla else False), ("subtitulos_compases", subtitulos_compases or None)):
             if v is not None:
                 args[k] = v
@@ -451,6 +526,9 @@ def crear():
         reglas="plantilla:nombre" o "plantilla:nombre+extra.json" las usa
         directamente."""
         from . import plantillas as PL
+        for x in (reglas, extra):                   # si vienen como ruta a un JSON, que exista y esté permitida
+            if isinstance(x, str):
+                _existe(x)
         if accion == "listar":
             return {"plantillas": PL.listar(), "carpeta_propia": str(PL.carpeta_propia())}
         if accion == "ver":
@@ -674,7 +752,7 @@ def crear():
         Tools (en el orden del show): frecuencias, tempos, pistas que coinciden
         (propuesta de match), ruteo y plugins. Solo lee."""
         from . import compatibilidad as C
-        inf = C.informe(sesiones)
+        inf = C.informe([_existe(s) for s in sesiones])
         return {"informe": inf, "texto": C.texto(inf)}
 
     @herramienta
@@ -684,7 +762,7 @@ def crear():
         ({"canciones": [{"sesion": ..., "fin_compas": ...}], "separacion": ...,
         "cambio_tempo": ..., "base": ..., "match": ..., "buses_show": ...})."""
         from .show import planear, texto
-        plan = planear(show)
+        plan = planear(_rutas_dentro(show))
         return {"plan": _sin_internos(plan), "texto": texto(plan)}
 
     @herramienta
@@ -692,7 +770,7 @@ def crear():
         """Escribe la sesión de Pro Tools del show en 'salida' (un .ptx nuevo).
         Corre como trabajo: devuelve su id (ver trabajo_esperar)."""
         from . import trabajos
-        ident = trabajos.lanzar("armar_show", {"show": show, "salida": str(_salida_nueva(salida))},
+        ident = trabajos.lanzar("armar_show", {"show": _rutas_dentro(show), "salida": str(_salida_nueva(salida))},
                                 despues="verificar")
         return {"trabajo": ident}
 
@@ -887,6 +965,7 @@ def crear():
         """Aplica un modelo común editado (leído con leer_sesion) sobre una copia
         de 'plantilla' y la guarda en 'salida' (archivo nuevo, misma extensión)."""
         from .comun import aplicar
+        plantilla = _existe(plantilla)
         p = _salida_nueva(salida)
         if p.suffix.lower() != Path(plantilla).suffix.lower():
             raise ValueError("la salida debe tener la misma extensión que la plantilla")

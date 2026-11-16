@@ -139,7 +139,7 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
 regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 
-- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 41 pruebas, 15 s; corren solas en GitHub en Linux,
+- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 43 pruebas, 15 s; corren solas en GitHub en Linux,
   Windows y Mac con cada cambio):
   descifrar → cifrar mismos bytes; aplicar sin cambios deja el modelo igual; tempo con ancla,
   renombrar y mezcla sobreviven la ida y vuelta; la revisión da limpio en lo guardado por Pro
@@ -163,6 +163,24 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   igual). ✅ Crear grupos nuevos (agrupar clips, mono y estéreo) contra el oráculo
   `PRUEBA_crear_grupo.ptx`; pendiente: agrupar a través de un fundido que cruza el borde
   (Pro Tools recorta el clip y crea regiones) y grupos dentro de grupos.
+
+## Cuidado del disco y del servidor
+
+- ✅ Trabajos: id validado, «después» de una lista fija, proceso reconocido por su inicio,
+  `matar` solo si sigue corriendo.
+- ✅ No pisar: `instalar` respalda la configuración, `reemplazar_sesion` exige una sesión
+  legible, `convertir_audio` y `golpes --mid` no sobrescriben.
+- ✅ Sesiones dañadas: `ErrorSesion` con mensaje claro; `revisar` acusa el archivo cortado.
+- ✅ `TRARIN_RAICES` (carpetas permitidas) y herramientas anotadas como de solo lectura o
+  destructivas.
+- Pendiente: **escritura atómica de las sesiones** (escribir a un temporal y renombrar; hoy
+  `aplicar` escribe la salida y, si hay automatización, la vuelve a escribir: si el proceso
+  muere en medio queda un archivo con nombre definitivo e incompleto).
+- Pendiente: **una sola función de «escribir nuevo, verificar y anotar»** para la línea de
+  comandos y el servidor (hoy cada orden de `__main__.py` repite lo que hace su herramienta).
+- Pendiente: `trarin instalar` no encuentra la configuración de las versiones de Claude
+  Desktop que guardan sus datos fuera de `%APPDATA%\Claude` (falta conocer la ruta).
+- Pendiente: la caché usa `pickle`; pasarla a un formato que no ejecute código al leer.
 
 ## Rendimiento
 
