@@ -139,7 +139,8 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
 regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 
-- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 38 pruebas, 11 s):
+- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 41 pruebas, 15 s; corren solas en GitHub en Linux,
+  Windows y Mac con cada cambio):
   descifrar → cifrar mismos bytes; aplicar sin cambios deja el modelo igual; tempo con ancla,
   renombrar y mezcla sobreviven la ida y vuelta; la revisión da limpio en lo guardado por Pro
   Tools y acusa un ancla distinta de 0 en un show; una nota MIDI escrita por trarin se lee
