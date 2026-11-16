@@ -77,6 +77,13 @@ def reemplazar(sesion, nueva, motivo=""):
         raise ErrorRespaldo(f"no existe {n}")
     if s == n:
         raise ErrorRespaldo("la sesión y la nueva son el mismo archivo")
+    if n.suffix.lower() != s.suffix.lower():
+        raise ErrorRespaldo(f"la nueva ({n.name}) no es del mismo tipo que la sesión ({s.name})")
+    try:                                         # que la nueva sea una sesión que se puede leer
+        from .comun import leer_comun
+        leer_comun(str(n))
+    except Exception as e:
+        raise ErrorRespaldo(f"{n.name} no se puede leer como sesión; no se reemplazó nada ({type(e).__name__}: {e})") from e
     c = carpeta(s)
     c.mkdir(parents=True, exist_ok=True)
     respaldo = _nombre_libre(c, s.stem, "trarin")

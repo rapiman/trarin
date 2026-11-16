@@ -58,7 +58,8 @@ def _t_consolidar(a, registro):
 
 def _t_convertir_audio(a, registro):
     from . import audio
-    rutas = audio.convertir(a["entrada"], a["salida"], a.get("frecuencia"), a.get("bits"), a.get("mono", False))
+    rutas = audio.convertir(a["entrada"], a["salida"], a.get("frecuencia"), a.get("bits"), a.get("mono", False),
+                            nuevo=True)
     return {"archivos": rutas}
 
 

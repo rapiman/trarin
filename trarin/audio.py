@@ -125,25 +125,36 @@ def remuestrear(senal, desde, hasta, calidad="VHQ"):
     return soxr.resample(senal, desde, hasta, quality=calidad)
 
 
-def convertir(entrada, salida, frecuencia=None, bits=None, mono=False):
+def destinos(salida, canales, mono=False):
+    """Los archivos que escribe convertir(): 'salida' con «.wav», o con
+    mono=True uno por canal (.L.wav/.R.wav en estéreo; .1.wav, .2.wav… con más)."""
+    salida = Path(salida)
+    # el nombre puede tener puntos (voz.L_48k): solo se quita o agrega «.wav»
+    base = salida.with_suffix("") if salida.suffix.lower() == ".wav" else salida
+    if not mono or canales == 1:
+        return [base.parent / (base.name + ".wav")]
+    sufijos = [".L", ".R"] if canales == 2 else [f".{k + 1}" for k in range(canales)]
+    return [base.parent / (base.name + s + ".wav") for s in sufijos]
+
+
+def convertir(entrada, salida, frecuencia=None, bits=None, mono=False, nuevo=False):
     """Convierte un WAV a otra frecuencia (y bits). Con mono=True escribe un
     archivo por canal: 'salida' sin extensión + .L.wav/.R.wav (estéreo) o
-    .wav (mono); con más canales, .1.wav, .2.wav… Devuelve las rutas escritas."""
+    .wav (mono); con más canales, .1.wav, .2.wav… Devuelve las rutas escritas.
+    nuevo=True: falla, sin escribir nada, si alguno de esos archivos ya existe."""
+    i = info(entrada)
+    rutas = destinos(salida, i["canales"], mono)
+    if nuevo:
+        hay = [str(r) for r in rutas if r.exists()]
+        if hay:
+            raise ErrorAudio("ya existe: " + ", ".join(hay) + " (elija otro nombre)")
     x, i = leer(entrada)
     fs = frecuencia or i["frecuencia"]
     y = remuestrear(x, i["frecuencia"], fs)
     b = bits or (24 if i["formato"] == 1 and i["bits"] >= 24 else (16 if i["formato"] == 1 else -32))
-    salida = Path(salida)
-    # el nombre puede tener puntos (voz.L_48k): solo se quita o agrega «.wav»
-    base = salida.with_suffix("") if salida.suffix.lower() == ".wav" else salida
-    if not mono or y.shape[1] == 1:
-        destino = base.parent / (base.name + ".wav")
-        escribir(destino, y, fs, b)
-        return [str(destino)]
-    sufijos = [".L", ".R"] if y.shape[1] == 2 else [f".{k + 1}" for k in range(y.shape[1])]
-    rutas = []
-    for k, s in enumerate(sufijos):
-        destino = base.parent / (base.name + s + ".wav")
-        escribir(destino, y[:, k], fs, b)
-        rutas.append(str(destino))
-    return rutas
+    if len(rutas) == 1:
+        escribir(rutas[0], y, fs, b)
+    else:
+        for k, destino in enumerate(rutas):
+            escribir(destino, y[:, k], fs, b)
+    return [str(r) for r in rutas]
