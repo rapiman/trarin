@@ -11,6 +11,7 @@ import gzip
 import re
 import xml.etree.ElementTree as ET
 
+from ..errores import lectura_clara
 from ..protools import tiempo
 
 FORMATO = "trarin/0"
@@ -157,6 +158,7 @@ def _clip(c, es_audio):
 _TIPOS = {"AudioTrack": "audio", "MidiTrack": "midi", "ReturnTrack": "retorno", "GroupTrack": "grupo"}
 
 
+@lectura_clara("Ableton Live")
 def leer(ruta):
     """Lee un .als y devuelve un dict con el formato trarin/0."""
     ruta = Path(ruta)

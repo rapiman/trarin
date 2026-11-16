@@ -9,6 +9,7 @@ from .descifrado import leer_descifrado
 from . import tiempo
 from . import pistas as P
 from .mezcla import leer_mezcla
+from ..errores import lectura_clara
 
 FORMATO = "trarin/0"
 
@@ -61,7 +62,7 @@ def _timecode(d, bloques):
             s_, f = divmod(cuadros, nominal)
             out["inicio"] = f"{s_ // 3600:02d}:{s_ // 60 % 60:02d}:{s_ % 60:02d}:{f:02d}"
     texto = d[p:b.fin].rsplit(b"\x00", 1)[-1]
-    if len(texto) == 11 and texto[2:3] == b":":
+    if re.fullmatch(rb"\d\d:\d\d:\d\d:\d\d", texto):
         out["duracion"] = texto.decode("ascii")
     return out
 
@@ -78,6 +79,7 @@ def _fin(ev, tempo, compases):
     return ev
 
 
+@lectura_clara("Pro Tools")
 def leer(ruta) -> dict:
     """Lee una sesión .ptx y devuelve un dict listo para volcar a YAML/JSON.
 

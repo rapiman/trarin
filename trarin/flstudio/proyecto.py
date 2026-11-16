@@ -15,6 +15,7 @@ from pathlib import Path
 import math
 import struct
 
+from ..errores import lectura_clara
 from ..protools import tiempo
 
 FORMATO = "trarin/0"
@@ -103,6 +104,7 @@ def _texto(v, unicode=True):
     return v.decode("latin-1").rstrip("\x00")
 
 
+@lectura_clara("FL Studio")
 def leer(ruta):
     """Lee un .flp y devuelve un dict con el formato trarin/0."""
     ruta = Path(ruta)

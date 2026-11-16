@@ -23,6 +23,13 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   escribe si alguno de los `.L.wav`/`.R.wav` ya existe; `trarin golpes --mid`
   tampoco pisa un `.mid`; `notas` y `anotar` no crean carpetas para una sesión
   que no existe.
+- **Sesiones dañadas** (pruebas en `pruebas/test_sesiones_danadas.py`, 180 sesiones
+  rotas a propósito): leer una sesión dañada, cortada o de una versión desconocida
+  falla con `ErrorSesion` (`trarin/errores.py`: qué archivo, y el detalle técnico al
+  final) en vez de un `struct.error` o una división por cero; vale para `.ptx`,
+  `.als` y `.flp`. `revisar` acusa primero un archivo que no termina en su índice
+  `0x0002` (cortado), que muchas veces se lee sin error; la regla se cumple en 150
+  sesiones reales de Pro Tools.
 - Las plantillas de reglas ya no vienen con trarin: cada quien guarda las suyas en
   `~/.trarin/plantillas`.
 
