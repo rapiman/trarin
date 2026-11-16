@@ -10,6 +10,7 @@ argumentos y una función 'registro' para ir contando lo que hace)."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -26,7 +27,13 @@ def carpeta_base():
     return (Path(raiz) / "trarin" / "trabajos") if raiz else (Path.home() / ".trarin" / "trabajos")
 
 
+_ID = re.compile(r"\d{8}-\d{6}-[0-9a-f]{4}")
+
+
 def _carpeta(ident):
+    # el id llega desde el cliente: solo la forma que arma lanzar(), nunca una ruta
+    if not isinstance(ident, str) or not _ID.fullmatch(ident):
+        raise ValueError(f"id de trabajo no válido: {ident!r}")
     c = carpeta_base() / ident
     if not c.is_dir():
         raise ValueError(f"no existe el trabajo {ident!r}")
@@ -96,14 +103,29 @@ TAREAS = {"armar_show": _t_armar_show, "escuchar": _t_escuchar, "consolidar": _t
           "convertir_audio": _t_convertir_audio, "bpm": _t_bpm, "fichas": _t_fichas}
 
 
+def _d_verificar(argumentos, resultado):
+    from .vistas import tras_trabajo
+    return tras_trabajo(argumentos, resultado)
+
+
+# lo que se puede pedir para después de un trabajo: por nombre, de esta lista (el pedido
+# viaja en un archivo; no dice qué código correr, solo cuál de estos)
+DESPUES = {"verificar": _d_verificar}
+
+_LANZADOS = []          # procesos lanzados por este proceso que siguen corriendo
+
+
 # ------------------------------------------------------------------ lanzar y consultar
 
 def lanzar(tarea, argumentos, despues=None):
     """Lanza la tarea en un proceso aparte. Devuelve el id del trabajo.
-    despues: (módulo, función) a llamar con (argumentos, resultado) al terminar
-    bien (p. ej. verificar lo escrito y anotarlo en las notas del proyecto)."""
+    despues: nombre de DESPUES, que se llama con (argumentos, resultado) al
+    terminar bien ("verificar": revisa lo escrito y lo anota en las notas del
+    proyecto)."""
     if tarea not in TAREAS:
         raise ValueError(f"tarea desconocida: {tarea!r}")
+    if despues is not None and despues not in DESPUES:
+        raise ValueError(f"'despues' desconocido: {despues!r}")
     ident = datetime.now().strftime("%Y%m%d-%H%M%S-") + os.urandom(2).hex()
     c = carpeta_base() / ident
     c.mkdir(parents=True)
@@ -120,7 +142,10 @@ def lanzar(tarea, argumentos, despues=None):
     entorno = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONPATH=raiz + os.pathsep + os.environ.get("PYTHONPATH", ""))
     p = subprocess.Popen([sys.executable, "-m", "trarin", "_trabajo", str(c)], stdout=log, stderr=subprocess.STDOUT,
                          stdin=subprocess.DEVNULL, cwd=raiz, env=entorno, **opciones)
-    (c / "pid").write_text(str(p.pid))
+    log.close()                                   # el proceso del trabajo ya tiene el suyo
+    _LANZADOS[:] = [x for x in _LANZADOS if x.poll() is None] + [p]     # recoge los que ya terminaron
+    # pid + marca de inicio: el sistema reutiliza los números de proceso
+    (c / "pid").write_text(f"{p.pid} {_inicio_proceso(p.pid) or ''}".strip())
     return ident
 
 
@@ -135,11 +160,12 @@ def correr(carpeta):
     try:
         registro(f"inicio: {pedido['tarea']}")
         res = TAREAS[pedido["tarea"]](pedido["argumentos"], registro)
-        if pedido.get("despues"):
-            import importlib
-            mod, fun = pedido["despues"]
+        despues = pedido.get("despues")
+        if despues:
             try:
-                extra = getattr(importlib.import_module(mod), fun)(pedido["argumentos"], res)
+                if not isinstance(despues, str) or despues not in DESPUES:
+                    raise ValueError(f"'despues' desconocido: {despues!r}")
+                extra = DESPUES[despues](pedido["argumentos"], res)
                 if extra:
                     res.update(extra)
             except Exception as e:                       # la verificación no tumba el trabajo
@@ -151,15 +177,59 @@ def correr(carpeta):
         registro("error: " + traceback.format_exc().strip().splitlines()[-1])
 
 
-def _vivo(pid):
+def _inicio_proceso(pid):
+    """Marca del momento en que partió el proceso 'pid' (texto), o None si no
+    existe o ya terminó. Sirve para reconocer un proceso aunque el sistema
+    haya entregado su número a otro."""
     if os.name == "nt":
-        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True)
-        return str(pid) in r.stdout
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        k.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        k.GetProcessTimes.argtypes = (wintypes.HANDLE,) + (ctypes.POINTER(wintypes.FILETIME),) * 4
+        k.CloseHandle.argtypes = (wintypes.HANDLE,)
+        h = k.OpenProcess(0x1000, False, pid)           # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            codigo = wintypes.DWORD()
+            if not k.GetExitCodeProcess(h, ctypes.byref(codigo)) or codigo.value != 259:    # STILL_ACTIVE
+                return None
+            t = [wintypes.FILETIME() for _ in range(4)]
+            if not k.GetProcessTimes(h, *(ctypes.byref(x) for x in t)):
+                return None
+            return str((t[0].dwHighDateTime << 32) | t[0].dwLowDateTime)
+        finally:
+            k.CloseHandle(h)
+    try:                                                # Linux: estado y starttime de /proc
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            campos = f.read().rsplit(b")", 1)[1].split()
+        return None if campos[0] == b"Z" else campos[19].decode()
+    except (OSError, IndexError):
+        pass
+    r = subprocess.run(["ps", "-o", "stat=", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True)
+    partes = r.stdout.split(None, 1)
+    if len(partes) < 2 or partes[0].startswith("Z"):    # no existe, o terminó y nadie lo recogió
+        return None
+    return partes[1].strip()
+
+
+def _leer_pid(c):
+    """(pid, marca de inicio o None) del archivo pid del trabajo, o (None, None)."""
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+        partes = (c / "pid").read_text().split(None, 1)
+        return int(partes[0]), (partes[1].strip() if len(partes) > 1 else None)
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def _vivo(pid, inicio=None):
+    """El proceso del trabajo sigue corriendo: existe y, si se conoce su marca
+    de inicio, es el mismo que se lanzó."""
+    actual = _inicio_proceso(pid)
+    return actual is not None and (inicio is None or actual == inicio)
 
 
 def estado(ident, desde=0, max_lineas=200):
@@ -180,8 +250,8 @@ def estado(ident, desde=0, max_lineas=200):
         out["estado"] = "error"
         out["error"] = (c / "error.txt").read_text(encoding="utf-8")[-3000:]
     else:
-        pid = int((c / "pid").read_text()) if (c / "pid").exists() else None
-        out["estado"] = "corriendo" if pid and _vivo(pid) else "interrumpido"
+        pid, inicio = _leer_pid(c)
+        out["estado"] = "corriendo" if pid and _vivo(pid, inicio) else "interrumpido"
     return out
 
 
@@ -197,10 +267,14 @@ def esperar(ident, segundos=30, desde=0):
 
 
 def matar(ident):
+    """Detiene el trabajo solo si sigue corriendo y su proceso es el que se
+    lanzó; uno que ya terminó no se toca (su número de proceso puede ser hoy
+    de otro programa)."""
     c = _carpeta(ident)
-    if not (c / "pid").exists():
-        return {"id": ident, "matado": False}
-    pid = int((c / "pid").read_text())
+    e = estado(ident, max_lineas=0)["estado"]
+    pid, inicio = _leer_pid(c)
+    if e != "corriendo" or not pid:
+        return {"id": ident, "matado": False, "estado": e}
     if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
     else:

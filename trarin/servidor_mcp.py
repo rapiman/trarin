@@ -692,7 +692,7 @@ def crear():
         Corre como trabajo: devuelve su id (ver trabajo_esperar)."""
         from . import trabajos
         ident = trabajos.lanzar("armar_show", {"show": show, "salida": str(_salida_nueva(salida))},
-                                despues=("trarin.vistas", "tras_trabajo"))
+                                despues="verificar")
         return {"trabajo": ident}
 
     # ------------------------------------------------------------ cambiar una sesión
@@ -722,7 +722,7 @@ def crear():
         from . import trabajos
         ident = trabajos.lanzar("consolidar", {"sesion": _existe(sesion), "reglas": _reglas(reglas),
                                                "salida": str(_salida_nueva(salida))},
-                                despues=("trarin.vistas", "tras_trabajo"))
+                                despues="verificar")
         return {"trabajo": ident}
 
     @herramienta
