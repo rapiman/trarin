@@ -653,6 +653,7 @@ def crear():
         """Las notas del proyecto (trarin/notas.md junto a la sesión): decisiones,
         lo hecho y lo pendiente. Leerlas al empezar a trabajar en un proyecto."""
         from . import notas as N
+        sesion = _existe(sesion)
         return {"archivo": str(N.archivo(sesion)), "texto": N.leer(sesion) or "(todavía no hay notas)"}
 
     @herramienta
@@ -663,7 +664,7 @@ def crear():
         from . import notas as N
         if seccion not in ("Decisiones", "Hecho", "Pendiente"):
             raise ValueError('seccion: "Decisiones", "Hecho" o "Pendiente"')
-        return {"archivo": N.anotar(sesion, texto, seccion)}
+        return {"archivo": N.anotar(_existe(sesion), texto, seccion)}      # no crea notas de una sesión que no existe
 
     # ------------------------------------------------------------ shows
 
@@ -931,10 +932,14 @@ def crear():
     def convertir_audio(entrada: str, salida: str, frecuencia: int, bits: int = 0, mono: bool = False) -> dict:
         """Cambia la frecuencia de muestreo de un WAV (soxr, calidad muy alta).
         mono=True: un archivo por canal (.L.wav/.R.wav), como los usa Pro Tools.
-        Corre como trabajo."""
-        from . import trabajos
+        Corre como trabajo; falla sin escribir si alguno de los archivos de
+        salida ya existe."""
+        from . import audio, trabajos
         _salida_nueva(salida if salida.lower().endswith(".wav") else salida + ".wav")
         salida = str(Path(salida).resolve())
+        hay = [str(r) for r in audio.destinos(salida, audio.info(_existe(entrada))["canales"], mono) if r.exists()]
+        if hay:
+            raise ValueError("ya existe: " + ", ".join(hay) + " (elija otro nombre)")
         return {"trabajo": trabajos.lanzar("convertir_audio", {"entrada": _existe(entrada), "salida": salida,
                                                                  "frecuencia": frecuencia, "bits": bits or None,
                                                                  "mono": mono})}

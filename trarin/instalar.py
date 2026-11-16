@@ -67,18 +67,35 @@ def revisar():
 
 def instalar(config=None, nombre="trarin", python=None):
     """Escribe la entrada en el archivo de configuración (lo crea si falta).
-    Devuelve {config, entrada, antes}."""
+    Si el archivo ya existía, antes deja una copia al lado
+    (`<nombre>.trarin-<fecha>.bak`); si no se puede leer como JSON, no lo toca.
+    Conserva las variables de entorno que tuviera la entrada. Devuelve
+    {config, entrada, antes, respaldo}."""
+    import shutil
+    from datetime import datetime
     ruta = Path(config) if config else rutas_config()[0]
-    d = {}
+    d, respaldo = {}, None
     if ruta.exists():
-        d = json.loads(ruta.read_text(encoding="utf-8-sig") or "{}")
+        texto = ruta.read_text(encoding="utf-8-sig")
+        try:
+            d = json.loads(texto or "{}")
+        except ValueError as e:
+            raise ValueError(f"{ruta} no es un JSON válido ({e}); no se modificó") from e
+        if not isinstance(d, dict) or not isinstance(d.get("mcpServers", {}), dict):
+            raise ValueError(f"{ruta} no tiene la forma esperada (un objeto con «mcpServers»); no se modificó")
+        respaldo = ruta.with_name(f"{ruta.name}.trarin-{datetime.now():%Y%m%d_%H%M%S}.bak")
+        shutil.copy2(ruta, respaldo)
     servidores = d.setdefault("mcpServers", {})
     antes = servidores.get(nombre)
-    entrada = {"command": python or sys.executable, "args": ["-m", "trarin", "mcp"]}
+    entorno = dict(antes.get("env") or {}) if isinstance(antes, dict) and isinstance(antes.get("env"), dict) else {}
+    entorno.setdefault("PYTHONIOENCODING", "utf-8")
+    entrada = {"command": python or sys.executable, "args": ["-m", "trarin", "mcp"], "env": entorno}
     servidores[nombre] = entrada
     ruta.parent.mkdir(parents=True, exist_ok=True)
-    ruta.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"config": str(ruta), "entrada": entrada, "antes": antes}
+    tmp = ruta.with_name(ruta.name + ".trarin-tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, ruta)                        # el archivo queda entero o no cambia
+    return {"config": str(ruta), "entrada": entrada, "antes": antes, "respaldo": str(respaldo) if respaldo else None}
 
 
 def texto(r):

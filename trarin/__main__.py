@@ -300,6 +300,8 @@ def main(argv=None):
             if "mcp" in r["falta"]:
                 p.error('falta el paquete mcp: pip install "trarin[mcp]" antes de instalar')
             x = IN.instalar(a.config, a.nombre)
+            if x.get("respaldo"):
+                print(f"respaldo de la configuración anterior: {x['respaldo']}")
             print(f"escrita la entrada «{a.nombre}» en {x['config']}: {json.dumps(x['entrada'], ensure_ascii=False)}"
                   + (f" (antes: {json.dumps(x['antes'], ensure_ascii=False)})" if x["antes"] else "")
                   + "\nReiniciar Claude Desktop para que la vea.")
@@ -491,6 +493,8 @@ def main(argv=None):
             r = G.escribir(plan, a.salida, a.destino)
             print(f"{r['notas']} notas en «{r['pista']}»; escrito {a.salida}")
         if a.mid:
+            if Path(a.mid).exists():
+                p.error(f"{a.mid} ya existe")
             print(G.escribir_mid(plan, a.mid, leer_comun(a.sesion)["tempo"]))
         return
     if a.orden == "cruces":
@@ -607,7 +611,7 @@ def main(argv=None):
                 from pathlib import Path
                 if Path(a.salida).exists():
                     p.error(f"{a.salida} ya existe")
-                for r in audio.convertir(a.entrada, a.salida, a.frecuencia, a.bits, a.mono):
+                for r in audio.convertir(a.entrada, a.salida, a.frecuencia, a.bits, a.mono, nuevo=True):
                     print(f"escrito {r}")
         except audio.ErrorAudio as e:
             p.error(str(e))
