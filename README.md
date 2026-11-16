@@ -220,7 +220,14 @@ compara con lo que guardó Pro Tools al hacer lo mismo a mano.
 
 ## Licencia
 
-GNU LGPL 2.1 o posterior (ver `LICENSE`).
+Copyright (C) 2026 Juan Pablo Rapiman Risco
+
+trarin es software libre: puede redistribuirse y modificarse bajo los términos de la
+[GNU Lesser General Public License](LICENSE) publicada por la Free Software Foundation,
+versión 2.1 o (a elección) cualquier versión posterior (`LGPL-2.1-or-later`).
+
+Se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA.
+
 `trarin/protools/descifrado.py` es un port de
 [libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit), que tiene
 la misma licencia.
