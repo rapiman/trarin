@@ -180,7 +180,16 @@ entera:
   `~/.trarin/plantillas` y los trabajos (`%LOCALAPPDATA%\trarin\trabajos` en
   Windows, `~/.trarin/trabajos` en los demás).
 - El servidor MCP lee y escribe en cualquier ruta que le indique el cliente, con
-  los permisos de quien lo corre.
+  los permisos de quien lo corre. Para acotarlo, `TRARIN_RAICES` lleva una o más
+  carpetas (separadas por `;` en Windows y `:` en los demás): las rutas que
+  entrega el cliente (sesiones, salidas, reglas, las rutas absolutas dentro de
+  la descripción de un show) tienen que caer dentro de ellas. No alcanza al
+  audio que una sesión referencia por su cuenta, que se lee de donde la sesión
+  diga.
+- Las herramientas del servidor declaran lo que hacen: las que solo leen van
+  marcadas así (el cliente puede aprobarlas sin preguntar) y las que mueven la
+  sesión de trabajo o detienen un trabajo (`reemplazar_sesion`, `deshacer`,
+  `trabajo_matar`), como destructivas.
 
 Variables de entorno: `TRARIN_TRABAJOS`, `TRARIN_CACHE` y `TRARIN_PLANTILLAS`
 cambian esas carpetas; `TRARIN_SIN_CACHE=1` apaga la caché. La caché se guarda
