@@ -3,6 +3,21 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-11-16
+
+- **Licencia: GNU AGPL 3.0 o posterior** (antes LGPL 2.1 o posterior). El descifrado
+  portado de libptformat queda bajo GPL 3 o posterior (ver README).
+- **Preparación para publicar el repositorio:** sin nombres ni rutas propias en la
+  documentación, el código y las sesiones de prueba; README, `pyproject` (Python
+  3.10) y hoja de ruta al día; `trarin --help` ya no se cae en consolas cp1252.
+- **Trabajos más seguros** (`trabajos.py`): el id se valida, lo que corre después de
+  un trabajo sale de una lista fija, el proceso se reconoce por su inicio y no
+  solo por su número, y `matar` no toca un trabajo que ya terminó. Pruebas nuevas
+  (`pruebas/test_trabajos.py`); `revisar(archivos_en_disco=False)` para que las
+  pruebas no dependan del audio del disco.
+- Las plantillas de reglas ya no vienen con trarin: cada quien guarda las suyas en
+  `~/.trarin/plantillas`.
+
 ## 2026-11-02
 
 - **Automatización del fader de las pistas de instrumento, verificada en Pro Tools.**

@@ -1,7 +1,9 @@
 # Descifrado de sesiones Pro Tools (.ptf/.ptx).
 #
 # Portado a Python desde libptformat (Damien Zammit, https://github.com/zamaudio/ptformat),
-# distribuido bajo GNU LGPL 2.1 o posterior. Este módulo mantiene esa licencia.
+# distribuido bajo GNU LGPL 2.1 o posterior. Este módulo se distribuye bajo GNU GPL
+# versión 3 o posterior, como permite la sección 3 de la LGPL 2.1, y se combina con el
+# resto de trarin (GNU AGPL 3 o posterior) según la sección 13 de ambas licencias.
 """Quita la capa XOR de un archivo de sesión de Pro Tools."""
 
 from pathlib import Path

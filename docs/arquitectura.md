@@ -114,11 +114,11 @@ Decisiones tomadas para el armador de shows (en desarrollo):
 
 | Proyecto | Licencia | Uso en trarin |
 |---|---|---|
-| ptformat | LGPL-2.1+ | base del descifrado de `.ptx` (portado) |
+| ptformat | LGPL-2.1+ | base del descifrado de `.ptx` (portado; aquí bajo GPL-3.0+, ver README) |
 | pt_api | LGPL-2.1+ | referencia de formato PT2024 y de la tabla de punteros |
 | ableton-als | MIT | referencia de formato y reglas de escritura de `.als` |
 | DAWproject (Bitwig) | MIT | posible formato puente hacia Bitwig, Studio One, Cubase y Nuendo |
-| PyFLP | GPL-3.0 | no se usa (licencia incompatible, sin mantenimiento, no funciona en Python ≥ 3.11) |
+| PyFLP | GPL-3.0 | no se usa (sin mantenimiento, no funciona en Python ≥ 3.11) |
 | DawVert | GPL-3.0 | no se usa; su repositorio pide no ser analizado por agentes de IA |
 
 ## Decisiones
