@@ -30,6 +30,10 @@ Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.
   `.als` y `.flp`. `revisar` acusa primero un archivo que no termina en su índice
   `0x0002` (cortado), que muchas veces se lee sin error; la regla se cumple en 150
   sesiones reales de Pro Tools.
+- **Pruebas automáticas en GitHub** (`.github/workflows/pruebas.yml`): Linux con Python
+  3.10, 3.12 y 3.13, Windows y Mac con 3.12. Prueba de humo del servidor MCP
+  (`pruebas/test_servidor.py`): las 53 herramientas, con descripción, una lectura y
+  un error con su mensaje.
 - Las plantillas de reglas ya no vienen con trarin: cada quien guarda las suyas en
   `~/.trarin/plantillas`.
 
