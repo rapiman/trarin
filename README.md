@@ -223,13 +223,17 @@ compara con lo que guardó Pro Tools al hacer lo mismo a mano.
 Copyright (C) 2026 Juan Pablo Rapiman Risco
 
 trarin es software libre: puede redistribuirse y modificarse bajo los términos de la
-[GNU Lesser General Public License](LICENSE) publicada por la Free Software Foundation,
-versión 2.1 o (a elección) cualquier versión posterior (`LGPL-2.1-or-later`).
+[GNU Affero General Public License](LICENSE) publicada por la Free Software Foundation,
+versión 3 o (a elección) cualquier versión posterior (`AGPL-3.0-or-later`).
 
-Se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA.
+Se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA. Quien
+ofrezca una versión modificada a usuarios a través de una red debe poner a su
+disposición el código fuente correspondiente (sección 13 de la licencia).
 
 `trarin/protools/descifrado.py` es un port de
-[libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit), que tiene
-la misma licencia.
+[libptformat](https://github.com/zamaudio/ptformat) (Damien Zammit), publicado
+bajo GNU LGPL 2.1 o posterior. Ese módulo se distribuye aquí bajo GNU GPL versión 3
+o posterior, como permite la sección 3 de la LGPL 2.1, y se combina con el resto de
+trarin según la sección 13 de la GPL 3 y de la AGPL 3.
 
 Pro Tools, Ableton Live y FL Studio son marcas de sus respectivos dueños.
