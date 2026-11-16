@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 license = {text = "LGPL-2.1-or-later"}
+authors = [{name = "rapiman", email = "jprapiman@gmail.com"}]
 keywords = ["pro tools", "ptx", "ableton", "fl studio", "daw", "mcp", "audio", "midi"]
 classifiers = [
     "Development Status :: 3 - Alpha",
