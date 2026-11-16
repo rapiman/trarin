@@ -18,6 +18,7 @@ import re
 import struct
 from pathlib import Path
 
+from .errores import lectura_clara
 from .protools.bloques import arbol, buscar
 from .protools.descifrado import leer_descifrado
 from .protools import pistas as P
@@ -77,6 +78,7 @@ def _regiones_mal_formadas(d, b):
     return mal, sin_inicio
 
 
+@lectura_clara("Pro Tools")
 def revisar(ruta, comun=None, archivos_en_disco=True):
     """Devuelve {"ok", "errores": [...], "avisos": [...], "revisado": {...}}.
     Un error es algo que Pro Tools mostrará roto; un aviso, algo que conviene
@@ -87,6 +89,15 @@ def revisar(ruta, comun=None, archivos_en_disco=True):
     d = leer_descifrado(ruta)
     b = arbol(d)
     errores, avisos, revisado = [], [], {}
+
+    # --- el archivo entero: termina en su índice (0x0002) y el puntero del comienzo lo apunta.
+    # Si no, está cortado o dañado y lo demás no vale la pena mirarlo.
+    final = b[-1] if b else None
+    if (final is None or final.tipo_contenido != 0x0002 or final.fin != len(d) or len(d) < 0x14 + 11
+            or struct.unpack_from("<I", d, 0x14 + 7)[0] != final.pos):
+        return {"ok": False, "avisos": [], "revisado": {},
+                "errores": ["el archivo no termina en su índice: está cortado o dañado (o es de una versión que "
+                            "trarin no conoce); Pro Tools probablemente no lo abre"]}
 
     # --- regiones de audio
     archivos = P.leer_archivos_audio(d, b)
