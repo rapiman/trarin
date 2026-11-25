@@ -3,6 +3,13 @@
 Formato: por fecha, de lo más nuevo a lo más antiguo. Versión del paquete: 0.1.0
 (todavía sin versiones publicadas).
 
+## 2026-11-25
+
+- **Caché que solo lee datos** (`cache.py`, pruebas en `pruebas/test_cache.py`): un
+  archivo de la caché que intente cargar una clase o una función se descarta en vez
+  de ejecutarse. El modelo común es solo datos, así que la caché sigue igual de
+  rápida (un show de 120 pistas: 0,40 s al leer, 0,03 s desde la caché).
+
 ## 2026-11-16
 
 - **Licencia: GNU AGPL 3.0 o posterior** (antes LGPL 2.1 o posterior). El descifrado

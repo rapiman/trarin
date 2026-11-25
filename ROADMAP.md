@@ -139,7 +139,7 @@ Lo aprendido en Pizarrita Edit Pro y PizarriSound, que se reutiliza:
 Los tres últimos errores graves (ancla de la línea de tiempo, convención CERO de las notas,
 regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
 
-- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 43 pruebas, 15 s; corren solas en GitHub en Linux,
+- ✅ **Pruebas de regresión** (`python -m unittest discover -s pruebas`, 45 pruebas, 15 s; corren solas en GitHub en Linux,
   Windows y Mac con cada cambio):
   descifrar → cifrar mismos bytes; aplicar sin cambios deja el modelo igual; tempo con ancla,
   renombrar y mezcla sobreviven la ida y vuelta; la revisión da limpio en lo guardado por Pro
@@ -180,7 +180,8 @@ regiones con desplazamiento) se descubrieron abriendo Pro Tools. Pendiente:
   comandos y el servidor (hoy cada orden de `__main__.py` repite lo que hace su herramienta).
 - Pendiente: `trarin instalar` no encuentra la configuración de las versiones de Claude
   Desktop que guardan sus datos fuera de `%APPDATA%\Claude` (falta conocer la ruta).
-- Pendiente: la caché usa `pickle`; pasarla a un formato que no ejecute código al leer.
+- ✅ La caché (`pickle`) solo acepta datos al leer: un archivo que pida cargar una clase o
+  una función se descarta sin ejecutarlo.
 
 ## Rendimiento
 

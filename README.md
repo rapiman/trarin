@@ -193,8 +193,8 @@ entera:
 
 Variables de entorno: `TRARIN_TRABAJOS`, `TRARIN_CACHE` y `TRARIN_PLANTILLAS`
 cambian esas carpetas; `TRARIN_SIN_CACHE=1` apaga la caché. La caché se guarda
-con `pickle`: no apuntar `TRARIN_CACHE` a una carpeta donde otras personas puedan
-escribir.
+con `pickle`, pero al leerla solo se aceptan datos: un archivo que intente
+cargar código se descarta sin ejecutarlo.
 
 ## Representación (`formato: trarin/0`)
 

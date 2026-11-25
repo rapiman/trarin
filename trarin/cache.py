@@ -2,7 +2,9 @@
 mientras el archivo no cambie (hoy: el modelo común). Vive en ~/.trarin/cache
 (o TRARIN_CACHE); la llave lleva la ruta absoluta, la fecha de modificación y
 el tamaño, así una sesión reescrita nunca lee una caché vieja. Se guarda con
-pickle y cada lectura devuelve un objeto nuevo. TRARIN_SIN_CACHE=1 la apaga.
+pickle, pero al leer solo se aceptan datos (ver _SoloDatos): un archivo que
+intente cargar código se descarta. Cada lectura devuelve un objeto nuevo.
+TRARIN_SIN_CACHE=1 la apaga.
 Se poda sola: más de MAXIMO archivos, se borran los más viejos."""
 
 import hashlib
@@ -37,9 +39,19 @@ def leer(ruta, que):
         if not f.exists():
             return None
         with open(f, "rb") as h:
-            return pickle.load(h)
-    except Exception:              # una caché rota o ilegible nunca frena la lectura
+            return _SoloDatos(h).load()
+    except Exception:              # una caché rota, ajena o ilegible nunca frena la lectura
         return None
+
+
+class _SoloDatos(pickle.Unpickler):
+    """Lee solo datos (diccionarios, listas, tuplas, textos, números, bytes). El
+    modelo común no lleva otra cosa, así que cualquier archivo que pida cargar
+    una clase o una función no es una caché de trarin: se rechaza en vez de
+    ejecutarlo (un pickle cualquiera puede correr código al abrirse)."""
+
+    def find_class(self, modulo, nombre):
+        raise pickle.UnpicklingError(f"la caché solo guarda datos; no se carga {modulo}.{nombre}")
 
 
 def guardar(ruta, que, objeto):
